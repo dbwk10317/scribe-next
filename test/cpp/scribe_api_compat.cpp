@@ -420,12 +420,20 @@ static void testRouting(const std::string& filename) {
 
 #include "filestore_contracts.h"
 #include "loopback_rpc.h"
+#include "relay_contracts.h"
 
 int main(int argc, char** argv) {
   try {
     require(argc == 4, "usage: fixture mode config temporary-directory");
     if (std::string(argv[1]) == "loopback-server") {
       runLoopbackServer(argv[2], argv[3]);
+      return 0;
+    } else if (std::string(argv[1]) == "relay-driver") {
+      alarm(20);  // Test-only absolute child lifetime; the owner still reaps it.
+      runRelayDriver(argv[2]);
+    } else if (std::string(argv[1]) == "relay-loopback-server") {
+      alarm(20);
+      runRelayLoopbackServer(argv[2], argv[3]);
       return 0;
     } else if (std::string(argv[1]) == "wire") {
       testWire(argv[2], argv[3]);

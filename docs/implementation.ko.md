@@ -8,7 +8,7 @@
 
 설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 첫 upstream 도입과 제한된 빌드·Thrift API 경계를 수행했다. 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04), 의존성·초기 실패는 [빌드 기록](build-status.md), scribed clean compile/link 이력은 [API 이식 기록](api-compat-status.md), 이후 ordinary spool·config/routing 55개 시험과 메모리 수정은 [계약 검증 기록](contracts-status.md)을 따른다. IDL·queue/store/spool 알고리즘과 기존 시험 소스는 그대로다. 운영 daemon 기동·배포·회사 baseline 동등성 판정은 수행하지 않았다.
 
-기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux다. 클라우드 Debian 13·GCC 14와 봉구서버 Ubuntu 26.04.1·GCC 15.2에서 Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 build와 당시 계약 시험 55개를 통과했다. 후속 최신 loopback suite는 cloud·Ubuntu 각 89개 통과이며 아래 실행 기록을 따른다. 회사 승인 배포판·toolchain·feature matrix는 미확정이다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
+기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux다. 클라우드 Debian 13·GCC 14와 봉구서버 Ubuntu 26.04.1·GCC 15.2에서 Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 build와 당시 계약 시험 55개를 통과했다. 후속 loopback suite는 cloud·Ubuntu 각89개 통과이고, 최신 fixed-host relay suite는 cloud·Ubuntu 각101개 통과이며 아래 실행 기록을 따른다. 회사 승인 배포판·toolchain·feature matrix는 미확정이다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
 
 ## 작업 0 upstream 도입과 운영 기준 확보
 
@@ -74,7 +74,11 @@ main `ffc73ee` 이후 실제 FileStore의 write_category/add_newlines bytes, rea
 
 ### Loopback RPC 실행 경계
 
-main `24692d6` 이후 native Thrift server에 127.0.0.1 전용 test transport를 넣어 실제 processor/handler/worker와 파일 bytes를 검증한다. production main/startServer의 wildcard bind는 변경·실행하지 않았다. v8은 cloud·Ubuntu 각 89개 시험을 통과했으며 Ubuntu에서는 새 clean build·help와 TCP 10개 × 5회, kernel 관측 listener 50개 모두 127.0.0.1 및 소유 자식 55개 회수를 확인했다. 새 서버 결과는 상위 작업이 검증한 요약이며 raw files 미수신을 명시한다. 프레임·운영 RPC·재초기화·정상 종료와 오류 cleanup의 최신 실행 범위는 [loopback 기록](loopback-rpc-status.md)을 따른다. 전체 old/new runtime·network relay·실패 queue drain과 운영 승인 gate를 대신하지 않는다.
+main `24692d6` 이후 native Thrift server에 127.0.0.1 전용 test transport를 넣어 실제 processor/handler/worker와 파일 bytes를 검증한다. production main/startServer의 wildcard bind는 변경·실행하지 않았다. v8은 cloud·Ubuntu 각 89개 시험을 통과했으며 Ubuntu에서는 새 clean build·help와 TCP 10개 × 5회, kernel 관측 listener 50개 모두 127.0.0.1 및 소유 자식 55개 회수를 확인했다. 당시 v9는 상위 작업이 검증한 요약으로 기록했고, 이후 v10 인계에서 해당 raw records를 수신·검증했다. 프레임·운영 RPC·재초기화·정상 종료와 오류 cleanup의 최신 실행 범위는 [loopback 기록](loopback-rpc-status.md)을 따른다. 전체 old/new runtime·network relay·실패 queue drain과 운영 승인 gate를 대신하지 않는다.
+
+### Relay·connection pool 실행 경계
+
+main `32004a6` 이후 production 변경 없이 실제 NetworkStore/ConnPool의 fixed-loopback bytes·응답·pool 수명·명시적 retry를 시험했다. 응답 유실 뒤 peer6개 수신/sent3, 모의 downstream prefix 처리 뒤 A,A,B,C를 기록하며 의미를 바꾸지 않았다. 정상 두-worker relay→FileStore와 기존89개를 포함한 cloud·Ubuntu 각101개 시험을 통과했다. Ubuntu v11은 새 clean build·help와 relay 반복50회·loopback/자식 회수도 통과했으며 상위 작업 검증 요약으로 기록한다. 새 raw files는 미수신이다. 새 Mac 검증, 실제 worker 실패 scheduler·service/list/dynamic failover·동시 pool race·full old/new runtime과 성능은 미검증이다. 상세 근거는 [relay 기록](relay-contracts-status.md)을 따른다.
 
 ## 작업 5 제한된 현대 C++ 정리
 
