@@ -8,7 +8,8 @@ must have matching sources, generated code, and non-stale compiler dependencies.
 Only temporary fixture files are created; no dependency download/build occurs.
 
 This is a single-version golden and config/handler fixture, not old/new differential,
-socket-server coverage, file/spool compatibility, or a durability guarantee.
+socket-server coverage, full old/new file/spool compatibility, or a durability guarantee.
+FileStore cases use real temporary files and controlled primary replay outcomes.
 """
 
 import os
@@ -134,16 +135,227 @@ class ScribeApiIntegrationTests(unittest.TestCase):
                  *(f"-L{path}" for path in libdirs), "-lfb303", "-lthrift", "-lthriftnb",
                  "-levent", "-lboost_filesystem", "-lboost_system", "-o", cls.fixture], ROOT, cls.env)
 
-    def run_fixture(self, mode, config_text=None):
+    def run_fixture(self, mode, config_text=None, input_files=None):
         directory = Path(tempfile.mkdtemp(prefix=mode + "-", dir=self.temporary))
         config = directory / "scribe.conf"
         # A port is required by initialize(); no socket/server is constructed.
         if config_text is None:
             config_text = "port=1463\n<store>\ncategory=accepted\ntype=null\n</store>\n"
+        config_text = config_text.replace("@DIRECTORY@", str(directory))
         config.write_bytes(config_text.encode("utf-8"))
+        for relative, contents in (input_files or {}).items():
+            path = directory / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(contents)
         output = checked([self.fixture, mode, config, directory], directory, self.env, timeout=20)
         self.assertIn("PASS " + mode, output)
         return directory
+
+    @staticmethod
+    def file_config(**values):
+        # All writes/deletes stay inside a new fixture directory. No production
+        # spool path, network service or time-based rotation is used.
+        defaults = {"file_path": "@DIRECTORY@/data", "base_filename": "fixture",
+                    "rotate_period": "never", "create_symlink": "yes",
+                    "fs_type": "std", "test_framed": 1, "test_multi": 0,
+                    "write_category": "no", "add_newlines": 0,
+                    "max_size": 0, "max_write_size": 7}
+        defaults.update(values)
+        return ("port=1463\n<store>\ncategory=accepted\ntype=null\n</store>\n" +
+                "".join(f"{key}={value}\n" for key, value in defaults.items()))
+
+    @staticmethod
+    def file_frame(payload):
+        return struct.pack("<I", len(payload)) + payload
+
+    @staticmethod
+    def file_entries(entries):
+        return "".join(category.hex() + ":" + payload.hex() + "\n"
+                       for category, payload in entries).encode("ascii")
+
+    def test_filestore_plain_category_newline_bytes_and_relative_symlink(self):
+        entries = ((b"cat\x00\xff", b"A\x00B\n\xff"), (b"", b""), (b"tail", b"ends\n"))
+        for category in (False, True):
+            for newline in (False, True):
+                with self.subTest(category=category, newline=newline):
+                    directory = self.run_fixture("filestore-write", self.file_config(
+                        test_framed=0, write_category="yes" if category else "no",
+                        add_newlines=int(newline)))
+                    expected = b"".join((cat + b"\n" if category else b"") + payload +
+                                        (b"\n" if newline else b"") for cat, payload in entries)
+                    self.assertEqual((directory / "data/fixture_00000").read_bytes(), expected)
+                    link = directory / "data/fixture_current"
+                    self.assertTrue(link.is_symlink())
+                    self.assertEqual(os.readlink(link), "fixture_00000")
+                    self.assertEqual(sorted(p.name for p in link.parent.iterdir()),
+                                     ["fixture_00000", "fixture_current"])
+
+    def test_filestore_buffer_category_newline_frames_and_actual_replay(self):
+        entries = ((b"cat\x00\xff", b"A\x00B\n\xff"), (b"", b""), (b"tail", b"ends\n"))
+        for category in (False, True):
+            for newline in (False, True):
+                with self.subTest(category=category, newline=newline):
+                    directory = self.run_fixture("filestore-write", self.file_config(
+                        write_category="yes" if category else "no", add_newlines=int(newline)))
+                    expected = b"".join((self.file_frame(cat + b"\n") if category else b"") +
+                                        self.file_frame(payload + (b"\n" if newline else b""))
+                                        for cat, payload in entries)
+                    self.assertEqual((directory / "data/fixture_00000").read_bytes(), expected)
+                    replay = entries if newline else entries[:1]  # zero frame stops actual replay
+                    self.assertEqual((directory / "read.txt").read_bytes(), self.file_entries(
+                        ((cat if category else b"fallback", payload + (b"\n" if newline else b""))
+                         for cat, payload in replay)))
+                    self.assertEqual([p.name for p in (directory / "data").iterdir()], ["fixture_00000"])
+
+    def test_filestore_multi_buffer_forces_category_and_disables_chunks_rotation(self):
+        directory = self.run_fixture("filestore-write", self.file_config(
+            test_multi=1, write_category="no", add_newlines=1,
+            chunk_size=8, rotate_period="hourly"))
+        entries = ((b"cat\x00\xff", b"A\x00B\n\xff"), (b"", b""), (b"tail", b"ends\n"))
+        expected = b"".join(self.file_frame(cat + b"\n") + self.file_frame(payload + b"\n")
+                            for cat, payload in entries)
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), expected)
+        self.assertEqual((directory / "read.txt").read_bytes(), self.file_entries(
+            ((cat, payload + b"\n") for cat, payload in entries)))
+        self.assertEqual([p.name for p in (directory / "data").iterdir()], ["fixture_00000"])
+
+    def test_filestore_close_reopen_appends_without_new_suffix(self):
+        directory = self.run_fixture("filestore-reopen", self.file_config())
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(),
+                         self.file_frame(b"A\x00B") * 2)
+        self.assertEqual((directory / "read.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"A\x00B")] * 2))
+        self.assertEqual([p.name for p in (directory / "data").iterdir()], ["fixture_00000"])
+
+    def test_filestore_read_appends_and_uses_fallback_category(self):
+        directory = self.run_fixture("filestore-read-delete", self.file_config(test_append=1), {
+            "data/fixture_00000": self.file_frame(b"one\x00\xff") + self.file_frame(b"two\n")})
+        self.assertEqual((directory / "read-0.txt").read_bytes(), self.file_entries([
+            (b"sentinel", b"keep"), (b"fallback", b"one\x00\xff"), (b"fallback", b"two\n")]))
+        self.assertEqual((directory / "states.txt").read_text(), "before-0=0\nafter-0=0\nempty-0=1\n")
+        self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def test_filestore_category_reader_strips_last_byte_without_validating_newline(self):
+        directory = self.run_fixture("filestore-read-delete", self.file_config(write_category="yes"), {
+            "data/fixture_00000": b"".join(self.file_frame(x) for x in
+                (b"cat\x00\xff\n", b"first\n", b"bad!", b"second", b"\n", b"third"))})
+        self.assertEqual((directory / "read-0.txt").read_bytes(), self.file_entries([
+            (b"cat\x00\xff", b"first\n"), (b"bad", b"second"), (b"", b"third")]))
+
+    def test_filestore_zero_partial_header_orphan_category_are_uncounted_on_delete(self):
+        cases = ((False, self.file_frame(b"") + self.file_frame(b"hidden")),
+                 (False, b"\x05\x00\x00"),
+                 (True, self.file_frame(b"orphan\n")),
+                 (True, self.file_frame(b"orphan\n") + b"\x05\x00"),
+                 (True, self.file_frame(b"empty\n") + self.file_frame(b"") +
+                  self.file_frame(b"later\n") + self.file_frame(b"hidden")))
+        for category, content in cases:
+            with self.subTest(category=category, content=content):
+                directory = self.run_fixture("filestore-read-delete", self.file_config(
+                    write_category="yes" if category else "no"), {"data/fixture_00000": content})
+                self.assertEqual((directory / "read-0.txt").read_bytes(), b"")
+                self.assertEqual((directory / "states.txt").read_text(), "before-0=0\nafter-0=0\nempty-0=1\n")
+                self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def test_filestore_truncated_payload_loss_at_delete_then_clean_read_adds_no_loss(self):
+        content = self.file_frame(b"abc") + struct.pack("<I", 5) + b"xy"
+        self.assertEqual(len(content), 13)
+        directory = self.run_fixture("filestore-read-delete", self.file_config(test_cycles=2), {
+            "data/fixture_00000": content, "data/fixture_00001": self.file_frame(b"later")})
+        self.assertEqual((directory / "read-0.txt").read_bytes(), self.file_entries([(b"fallback", b"abc")]))
+        self.assertEqual((directory / "read-1.txt").read_bytes(), self.file_entries([(b"fallback", b"later")]))
+        self.assertEqual((directory / "states.txt").read_text(),
+                         "before-0=0\nafter-0=13\nempty-0=0\nbefore-1=13\nafter-1=13\nempty-1=1\n")
+
+    def test_filestore_oldest_numeric_order_and_unrelated_files_survive(self):
+        directory = self.run_fixture("filestore-read-delete", self.file_config(test_cycles=2), {
+            "data/fixture_00010": self.file_frame(b"ten"),
+            "data/fixture_00002": self.file_frame(b"two"), "data/unrelated_00001": b"keep"})
+        self.assertEqual((directory / "read-0.txt").read_bytes(), self.file_entries([(b"fallback", b"two")]))
+        self.assertEqual((directory / "read-1.txt").read_bytes(), self.file_entries([(b"fallback", b"ten")]))
+        self.assertEqual((directory / "data/unrelated_00001").read_bytes(), b"keep")
+        self.assertEqual([p.name for p in (directory / "data").iterdir()], ["unrelated_00001"])
+
+    def test_filestore_replace_existing_overwrites_oldest_and_keeps_newest(self):
+        # Approved app-flag correction enables the existing replacement path.
+        original = self.file_frame(b"original")
+        directory = self.run_fixture("filestore-replace", self.file_config(), {
+            "data/fixture_00000": original, "data/fixture_00001": self.file_frame(b"newest")})
+        self.assertEqual((directory / "states.txt").read_text(), "replace=1\nopen=1\n")
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), self.file_frame(b"remaining"))
+        self.assertEqual((directory / "data/fixture_00001").read_bytes(), self.file_frame(b"newest"))
+
+    def test_filestore_missing_oldest_preserves_output_and_replace_returns_false(self):
+        directory = self.run_fixture("filestore-read-delete", self.file_config(test_append=1))
+        self.assertEqual((directory / "read-0.txt").read_bytes(), self.file_entries([(b"sentinel", b"keep")]))
+        self.assertEqual((directory / "states.txt").read_text(), "before-0=0\nafter-0=0\nempty-0=1\n")
+        directory = self.run_fixture("filestore-replace", self.file_config())
+        self.assertEqual((directory / "states.txt").read_text(), "replace=0\nopen=0\n")
+        self.assertFalse((directory / "data").exists())
+
+    def test_filestore_delete_active_writer_leaves_unlinked_inode_until_close(self):
+        directory = self.run_fixture("filestore-delete-open", self.file_config(), {
+            "data/fixture_00000": self.file_frame(b"old")})
+        self.assertEqual((directory / "states.txt").read_text(),
+                         "open-after-delete=1\nwrite-after-delete=1\n")
+        self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def test_filestore_buffer_successful_replay_deletes_and_transitions_streaming(self):
+        directory = self.run_fixture("filestore-buffer-replay", self.file_config(), {
+            "data/fixture_00000": self.file_frame(b"one") + self.file_frame(b"two")})
+        self.assertEqual((directory / "received.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"one"), (b"fallback", b"two")]))
+        self.assertEqual((directory / "accepted.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"one"), (b"fallback", b"two")]))
+        self.assertEqual((directory / "states.txt").read_text(),
+                         "lost=0\nbytes-lost=0\nretries=0\ndisconnected=0\nstreaming=1\nempty=1\n")
+        self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def test_filestore_buffer_partial_replay_retains_two_unhandled_messages(self):
+        directory = self.run_fixture("filestore-buffer-replay", self.file_config(test_partial=1), {
+            "data/fixture_00000": b"".join(self.file_frame(x) for x in (b"one", b"two", b"three"))})
+        self.assertEqual((directory / "received.txt").read_bytes(), self.file_entries(
+            [(b"fallback", x) for x in (b"one", b"two", b"three")]))
+        self.assertEqual((directory / "accepted.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"one")]))
+        self.assertEqual((directory / "states.txt").read_text(),
+                         "lost=0\nbytes-lost=0\nretries=1\ndisconnected=1\nstreaming=0\nempty=0\n")
+        expected = self.file_frame(b"two") + self.file_frame(b"three")
+        self.assertEqual((directory / "remaining.bin").read_bytes(), expected)
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), expected)
+
+    def test_filestore_partial_then_success_replays_only_retained_messages(self):
+        directory = self.run_fixture("filestore-buffer-replay", self.file_config(
+            test_partial=1, test_resume=1), {"data/fixture_00000": b"".join(
+                self.file_frame(x) for x in (b"one", b"two", b"three"))})
+        self.assertEqual((directory / "remaining.bin").read_bytes(),
+                         self.file_frame(b"two") + self.file_frame(b"three"))
+        self.assertEqual((directory / "received-again.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"two"), (b"fallback", b"three")]))
+        self.assertEqual((directory / "accepted-again.txt").read_bytes(), self.file_entries(
+            [(b"fallback", x) for x in (b"one", b"two", b"three")]))
+        self.assertEqual((directory / "states-again.txt").read_text(),
+                         "lost=0\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
+        self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def test_filestore_partial_rewrite_preserves_categories_and_reapplies_add_newlines(self):
+        # Input already has the LF added by an earlier write. Existing writer
+        # semantics append another LF on replacement; do not silently normalize.
+        entries = ((b"one\x00\xff", b"one\n"), (b"two", b"two\n"), (b"", b"three\n"))
+        directory = self.run_fixture("filestore-buffer-replay", self.file_config(
+            test_partial=1, test_resume=1, write_category="yes", add_newlines=1), {
+            "data/fixture_00000": b"".join(self.file_frame(cat + b"\n") +
+                                          self.file_frame(payload) for cat, payload in entries)})
+        expected = b"".join(self.file_frame(cat + b"\n") + self.file_frame(payload + b"\n")
+                            for cat, payload in entries[1:])
+        self.assertEqual((directory / "remaining.bin").read_bytes(), expected)
+        remaining = [(cat, payload + b"\n") for cat, payload in entries[1:]]
+        self.assertEqual((directory / "received-again.txt").read_bytes(), self.file_entries(remaining))
+        self.assertEqual((directory / "accepted-again.txt").read_bytes(),
+                         self.file_entries([entries[0]] + remaining))
+        self.assertEqual((directory / "states-again.txt").read_text(),
+                         "lost=0\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
+        self.assertEqual(list((directory / "data").iterdir()), [])
 
     def test_framed_non_strict_binary_golden_and_payload_bytes(self):
         directory = self.run_fixture("wire")

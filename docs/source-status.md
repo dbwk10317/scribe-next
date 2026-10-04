@@ -22,8 +22,8 @@
 | 공개 기준 | [facebookarchive/scribe](https://github.com/facebookarchive/scribe), SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2` |
 | 제안 후보 | C++17, Thrift 0.25.0; 요구 표준과 주요 API는 정적 확인, 실제 build·runtime 채택은 미확정 |
 | 미확인 | 회사 fork·patch·production config·client/store/HDFS 사용, 실측 baseline, 배포판·compiler·dependency matrix |
-| 저장소 상태 | 최신 base `75c36bfe`의 후속 작업 트리에서 클라우드·Ubuntu ordinary spool·config/routing 55개 시험과 scribed build 성공, StdFile 해제 불일치 최소 수정. Ubuntu의 제한된 reader LSan도 통과, 클라우드 ptrace 제약은 별도 유지. [최신 계약 기록](contracts-status.md), 이전 [API](api-compat-status.md)·[Ubuntu 검증](ubuntu-validation-20261004.md) 참조 |
-| 검증 gate | A 기본 cloud·Ubuntu C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B/C는 제한된 API·config/routing·ordinary StdFile component 비교만 완료. 두 RPC old/new·10 store·동적 갱신·thriftfile/relay/fault/종료와 D 회사 성능·운영은 미완료 |
+| 저장소 상태 | main `ffc73ee` 이후 FileStore characterization 70개와 사용자 승인된 최소 truncate 수정. 최신 cloud·Ubuntu clean build·74개 시험/skip 0에서 미처리 2개 보존과 다음 replay 확인. [최신 수정 기록](truncate-fix-status.md), [수정 전 FileStore](filestore-contracts-status.md), 이전 [55개 계약](contracts-status.md) 참조 |
+| 검증 gate | A 기본 cloud·Ubuntu C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B/C는 제한된 API·config/routing·ordinary StdFile component와 실제 FileStore byte/replay characterization만 완료. 잘못된 truncate mode만 승인 수정; crash/write-failure/unlink 위험은 남음. 두 RPC old/new·10 store·동적 갱신·thriftfile/relay/fault/종료와 D 회사 성능·운영은 미완료 |
 | 작업 환경·원격·배포 | 클라우드에서 구현, 검증된 변경은 Mac에서 동기화해 승인된 `codex/upstream-baseline` 브랜치로 반영. GitHub `dbwk10317/scribe-next` 비공개 유지. 봉구서버 import 검증 통과. main 반영 상태는 Git 이력 참조. Scribe 서비스 기동·배포 미실행 |
 
 ## upstream 코드 도입 전략

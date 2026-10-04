@@ -26,6 +26,12 @@ int main(int argc, char** argv) {
               << hex(unframed.getFrame(length)) << std::endl;
     return 0;
   }
+  if (mode == "truncate") {
+    StdFile output(argv[2], true);
+    std::cout << output.openTruncate() << ":" << output.isOpen() << std::endl;
+    output.close();
+    return 0;
+  }
   if (mode == "write") {
     StdFile output(argv[2], true);
     if (!output.openWrite()) return 3;

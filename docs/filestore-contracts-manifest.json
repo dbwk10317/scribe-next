@@ -1,0 +1,155 @@
+{
+  "recorded_utc": "2026-10-04T11:53:01.857482+00:00",
+  "base_commit": "ffc73ee268a8a3430e57464f460bdf3556c983bb",
+  "base_branch": "main",
+  "working_tree_committed": false,
+  "production_changes": [],
+  "input_handoff": {
+    "library_file_id": "libfile_c728242ac9b08191a21827a7d1831d63",
+    "version": 3,
+    "filename": "scribe-next-main-20261004.tar.gz",
+    "size_bytes": 909300,
+    "sha256": "e46be008ab10e3ccfe5cc3547dc0c0095ef05d13e52d65dd2bd23b791bae2966",
+    "source_files": 131,
+    "manifest_records": 304,
+    "hash_mode_bundle_fsck_clean_head_verified": true
+  },
+  "environment": {
+    "os": "Debian GNU/Linux13 x86_64",
+    "compiler": "GCC14.2.0",
+    "python": "3.12.14",
+    "boost": "1.83.0",
+    "thrift_compiler_runtime": "0.25.0",
+    "fb303": "same verified0.25.0",
+    "new_software_or_dependencies": false
+  },
+  "project_tests": {
+    "passed": 70,
+    "skipped": 0,
+    "duration_seconds": 29.342,
+    "breakdown": {
+      "import_verifier": 18,
+      "build_boundary": 10,
+      "thrift_generation": 1,
+      "mutex": 6,
+      "existing_api_config_cli": 11,
+      "filestore_integration_added": 14,
+      "ordinary_spool_previous": 9,
+      "raw_legacy_current_truncate_added": 1
+    }
+  },
+  "fixture_scope": {
+    "production_objects": "real source-matching FileStore/StdFile/BufferStore plus unchanged related Scribe objects",
+    "fake_part": "controlled primary Store success/partial acceptance only",
+    "replay_entry": "actual changeState(SENDING_BUFFER), asserts real secondary open",
+    "initialization": "real handler/null-store worker initialized then stopped/joined; handler retained for config and counters",
+    "files": "one temporary directory per scenario, no production paths",
+    "network_or_daemon": false,
+    "legacy_runtime": "raw unchanged pinned StdFile component C++03 versus current C++17, same modern Boost; not full old daemon/Thrift",
+    "upstream_commit": "fcd294faffd1e88af1643a3a8c2359c41713f7c2"
+  },
+  "known_hazards": [
+    {
+      "id": "STD-TRUNCATE-MODE",
+      "current": "out|app|trunc fails to open and preserves existing bytes",
+      "raw_upstream_same_failure": true,
+      "production_fix_applied": false,
+      "minimal_proposal": "remove app; keep out|trunc; requires separate behavior approval"
+    },
+    {
+      "id": "BUFFER-PARTIAL-REPLACE-LOSS",
+      "offered_messages": 3,
+      "fake_primary_accepted_messages": 1,
+      "unhandled_messages_lost": 2,
+      "lost_counter": 2,
+      "retries_counter": 1,
+      "state": "DISCONNECTED",
+      "oldest_file_deleted": true,
+      "production_fix_applied": false
+    },
+    {
+      "id": "DELETE-OPEN-WRITER",
+      "open_after_unlink": true,
+      "subsequent_handleMessages_returns_true": true,
+      "pathname_absent_after_flush_close": true,
+      "production_fix_applied": false
+    },
+    {
+      "id": "ZERO-ORPHAN-ACCOUNTING",
+      "zero_or_partial_header_or_orphan_can_discard_following_bytes_without_loss_counter": true,
+      "valid_prefix_plus_truncated_payload_reports_whole_file_bytes": 13,
+      "production_fix_applied": false
+    }
+  ],
+  "fix_risks": [
+    "out|trunc alone does not provide atomic replacement or durability",
+    "truncate before failed write or crash can destroy old contents",
+    "BufferStore replace failure loss/delete policy remains",
+    "add_newlines during rewrite may append another LF",
+    "open-writer unlink hazard is separate"
+  ],
+  "build": {
+    "new_full_scribed_build_this_stage": false,
+    "reused_binary": "scribe-next-deps/build/scribe-contracts/src/scribed",
+    "reused_binary_sha256": "a8302e40329fb8233cef5f08afbfa5488f01ac1708c9354939f5f5dd5cf0a19b",
+    "source_generated_and_dependency_freshness_checked_by_tests": true,
+    "new_test_fixture_compiled_each_suite": true
+  },
+  "sanitizers": {
+    "previous_ordinary_reader_ASan_UBSan_rerun_in_70_suite": true,
+    "new_full_FileStore_BufferStore_objects_instrumented": false,
+    "cloud_LSan": "ptrace unsupported, detect_leaks0 remains explicit",
+    "prior_Ubuntu_LSan": "bounded reader9 only, historical result; raw logs retained from main handoff",
+    "whole_daemon_leak_claim": false
+  },
+  "server_validation_this_stage": "not run for new70 suite",
+  "thrift_upstream29": "historical only, not rerun or added to70",
+  "gates_A_D": "full matrix/runtime/company gates incomplete",
+  "source_hashes": {
+    "src/store.cpp": "1d235654f09915e50e9c7887864e14aea6582d03e81c2db06838024a5b492181",
+    "src/store.h": "94c36426ed46ae50c5d92f876b2590f7f504e542b69faada33c55af02115f760",
+    "src/file.cpp": "de08b02c30278d318fbda80f219ab3b6982b3c990735700520bc681e5292e5c0",
+    "src/file.h": "50f64e30ae0cd11acc700a12f5be1e2294493fa07c3d484b14604a77cfbe0ed3",
+    "src/compat_mutex.h": "dba6cf9658c2fc150d037b3037427ee1de787556a1bf491d352cbe36e9cca521"
+  },
+  "test_hashes": {
+    "test/cpp/filestore_contracts.h": "588284a701b246556ad97f4ebe78ffb67e7c65dd56e79c984947d0a998df01e3",
+    "test/cpp/scribe_api_compat.cpp": "24d1122f84b3b4fb861fccfede5727da06e7aac7691b206915da25a92b7cbbe6",
+    "test/cpp/spool_component.cpp": "192721f94d703d1c22bda637001922f8855972b8b4016620129b32a44992f385",
+    "test/test_scribe_api_compat.py": "f02c03545f855d4c6f5ee39f59bf920ceb87677d355021ba0b64c8e23c4c3eb1",
+    "test/test_ordinary_spool.py": "6cfd9da220c3d585227da8510640d909a97ebae251c0a8ef54b9c9d9a9d2543d"
+  },
+  "commands": {
+    "environment": "existing approved toolchain; THRIFT_PREFIX, FB303_PREFIX, SCRIBE_BUILD, TOOLS_PREFIX as documented",
+    "focused_filestore": "python3 -B -m unittest discover -s test -p test_scribe_api_compat.py -k filestore -v",
+    "ordinary_spool": "python3 -B -m unittest discover -s test -p test_ordinary_spool.py -v",
+    "full": "python3 -B -m unittest discover -s test -p 'test_*.py' -v"
+  },
+  "log_records": [
+    {
+      "file": "filestore-all-tests.log",
+      "size_bytes": 11646,
+      "sha256": "ef7d01d5d8bde090f0cf89759fe92c29ff59b8d83479365aa9d85485e436d339"
+    },
+    {
+      "file": "filestore-final-tests.log",
+      "size_bytes": 11644,
+      "sha256": "bbe1ffcf039a7c2c453fd97da8fd3c77430e6f7c7ab195c8073ea7c80974c5a9"
+    },
+    {
+      "file": "filestore-first-tests.log",
+      "size_bytes": 2645,
+      "sha256": "f654d247c465b02675afcfb9457f13af6e8698c6c94794268e83fb0afac74f65"
+    },
+    {
+      "file": "filestore-focused-final.log",
+      "size_bytes": 2843,
+      "sha256": "2d11b6f5341b5e1d89086ce1afeb630c58f172ed475df6e4ba030d4b0037a867"
+    },
+    {
+      "file": "strict-import.log",
+      "size_bytes": 731,
+      "sha256": "dbedf9eeb035d923e5ffffcbc8dc9ad2c7f8bc3fbe2d7818ae80dda5c5e867a9"
+    }
+  ]
+}

@@ -4,6 +4,8 @@
 
 관련 문서: [README](../README.md) · [계약 manifest](contracts-manifest.json) · [이전 API 이식](api-compat-status.md) · [이전 Ubuntu 검증](ubuntu-validation-20261004.md)
 
+> 이 문서는 이전 55개 단계의 측정 기록이다. main 반영 후 추가한 실제 FileStore 통합·기존 손실 경로는 [후속 기록](filestore-contracts-status.md)을 따른다.
+
 ## 결과와 구분
 
 이번 단계의 production 변경은 `src/file.cpp` 소멸자의 **delete[] → free 한 곳**이다. `readNext()`의 malloc 할당과 맞추며 주위 동작·프레임·오류 처리·큐·store 알고리즘을 바꾸지 않았다. 원본의 정상 3-byte frame 읽기 뒤 소멸에서 AddressSanitizer의 alloc-dealloc-mismatch를 재현했고, 수정 후 같은 출력과 정상 소멸을 확인했다.

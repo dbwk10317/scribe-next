@@ -418,6 +418,8 @@ static void testRouting(const std::string& filename) {
           "blank category must not enter default route");
 }
 
+#include "filestore_contracts.h"
+
 int main(int argc, char** argv) {
   try {
     require(argc == 4, "usage: fixture mode config temporary-directory");
@@ -441,6 +443,8 @@ int main(int argc, char** argv) {
       testHandlerInvalid(argv[2]);
     } else if (std::string(argv[1]) == "routing") {
       testRouting(argv[2]);
+    } else if (dispatchFileStore(argv[1], argv[2], argv[3])) {
+      // Actual filesystem contract mode completed.
     } else {
       throw std::runtime_error("unknown fixture mode");
     }

@@ -64,6 +64,14 @@ fb303는 동일 0.25.0 release로 실제 build·workspace 설치를 통과했다
 
 고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 malloc으로 할당한 inputBuffer를 소멸자가 delete[]로 해제하는 오류를 ASan으로 재현했다. 후속 별도 변경에서 해제만 free로 맞추고, 공개 원본 C++03 component 대 현재 C++17 component의 양방향 frame bytes·EOF·손상 입력 결과와 현재 ASan/UBSan 통과를 확인했다. [현재 계약 기록](contracts-status.md)을 따른다. 클라우드 LeakSanitizer는 ptrace 제약으로 미검증이며, 별도 Ubuntu에서는 37-byte 양성 대조와 제한된 reader의 LSan 활성 9개 시험을 통과했다. 전체 daemon 누수 검사나 full old Scribe/Thrift runtime 비교는 아니다. 미정의 동작을 호환 계약으로 보존하지 않고 빌드 복구나 일괄 RAII 정리와 분리했다.
 
+### 후속 FileStore 실행 기록
+
+main `ffc73ee` 이후 실제 FileStore의 write_category/add_newlines bytes, readOldest·deleteOldest·replaceOldest와 제한된 BufferStore replay를 검증했다. 전체 cloud 70개 시험이 통과했지만, 기존 app|trunc 실패 및 partial replay의 lost/delete 경로도 재현됐다. 시험 통과를 결함 해결로 해석하지 않으며 production 수정은 별도 승인·전후 검증으로 분리한다. [최신 FileStore 기록](filestore-contracts-status.md)을 따른다.
+
+### 승인된 truncate 최소 수정
+
+사용자가 재현된 부분 replay 손실을 예외적으로 수정하도록 승인한 뒤 StdFile openTruncate에서 app flag만 제거했다. cloud·Ubuntu의 새 clean build와 각 74개 시험에서 남은 2개 보존·다음 replay를 확인했다. 추가 LF 재적용은 기존 옵션 의미대로 남겨 검증했고, 원자적 교체·crash/write-failure 보장을 추가하지 않았다. 최신 근거와 남은 위험은 [수정 기록](truncate-fix-status.md)을 따른다.
+
 ## 작업 5 제한된 현대 C++ 정리
 
 작업 3과 4가 통과한 모듈만 대상으로 null 표현, explicit ownership, 지역 RAII 및 제거된 API를 정리한다. RAII로 바꾸는 경우 lock 획득·해제 지점과 예외 경로를 before/after 비교한다. raw backlink는 소유자가 아니므로 무조건 shared_ptr로 바꾸지 않는다. container 교체, hash 교체, time 기준 교체, batching 변경, move를 통한 shared batch 소유권 변경은 별도 증거 없이 수행하지 않는다.

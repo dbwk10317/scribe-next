@@ -8,7 +8,7 @@
 
 ## 현재 상태와 근거
 
-- 고정 upstream 도입 뒤 제한된 빌드 진입부 수정을 진행 중이다. 의존성·통합 시험 이력은 [빌드 경계 기록](docs/build-status.md), scribed compile/link·API 시험 이력은 [API 이식 기록](docs/api-compat-status.md), 최신 일반 spool·설정 계약과 최소 메모리 수정은 [계약 검증 기록](docs/contracts-status.md), 도입 이력은 [현재 상태](docs/source-status.md)를 따른다. import 검증기는 의도된 build 파일 수정도 실패로 표시하는 원본 보존 검사다. 원본 도입 commit의 검사와 현재 build 회귀 시험을 구분하며, 부분 build·의존성 시험과 단일 Linux compile/link 결과를 전체 matrix·runtime 호환성으로 확대하지 않는다.
+- 고정 upstream 도입 뒤 제한된 빌드 진입부 수정을 진행 중이다. 의존성·통합 시험 이력은 [빌드 경계 기록](docs/build-status.md), scribed compile/link·API 시험 이력은 [API 이식 기록](docs/api-compat-status.md), 일반 spool·설정 계약과 최소 메모리 수정은 [계약 검증 이력](docs/contracts-status.md), 실제 FileStore 통합과 수정 전 손실 경로는 [FileStore 기록](docs/filestore-contracts-status.md), 승인된 최소 truncate 수정과 최신 74개 시험은 [수정 기록](docs/truncate-fix-status.md), 도입 이력은 [현재 상태](docs/source-status.md)를 따른다. import 검증기는 의도된 build 파일 수정도 실패로 표시하는 원본 보존 검사다. 원본 도입 commit의 검사와 현재 build 회귀 시험을 구분하며, 부분 build·의존성 시험과 단일 Linux compile/link 결과를 전체 matrix·runtime 호환성으로 확대하지 않는다.
 - 기준 upstream은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe), 공개 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 회사 fork·실제 config·실측 baseline·배포판·toolchain은 미확인이다.
 - 대상 OS는 Linux다. C++17과 Thrift 0.25.0은 제안 검증 후보다. target release의 실제 요구 표준과 API를 확인하기 전 확정하거나 빌드 성공을 주장하지 않는다.
 - 문서의 공개 소스 정적 검토 사실, 사용자 보존 요구, 구현 제안, 실제 실행·실패·미실행을 구분한다. 한 환경에서의 결과로 회사 운영 동등성이나 전체 platform 지원을 선언하지 않는다.
@@ -23,7 +23,7 @@ karpathy-guidelines와 ponytail의 핵심 원칙을 이 저장소에 적용한�
 4. 기존 autotools와 구조를 우선한다. 전체 Boost 제거, 즉시 CMake 전환, 전체 ownership·thread·I/O 재설계는 별도 근거와 범위가 없으면 하지 않는다.
 5. build 경계 → Thrift/fb303 API 및 필요한 file transport 호환 → 행동 검증 → 통과한 모듈의 제한된 C++ 정리 순으로 작은 review 가능한 PR을 만든다. build 복구와 동작 변경을 한 diff에 섞지 않는다.
 6. 각 PR은 실제 수행한 검증, 결과, 미실행 항목과 남은 위험을 적는다. 필요한 실패 재현 또는 계약 검증을 최소로 남긴다. 구현을 그대로 반복하는 테스트와 목적 없는 framework는 만들지 않는다.
-7. 데이터 손실·보안·입력 경계 보호를 단순화로 없애지 않는다. 원본의 오류·중복·손실 가능성은 별도 이슈와 호환성 결정으로 다루며 조용히 의미를 바꾸지 않는다. 미정의 동작 자체는 보존 계약이 아니다. 원본 메모리 결함은 재현 시험과 외부 영향 비교를 갖춘 별도 수정으로 처리한다. StdFile의 malloc/delete[] 불일치는 실제 재현과 component bytes 비교 후 free로 수정했다. 클라우드 LSan은 ptrace 제약으로 미검증이며, 별도 Ubuntu에서 양성 대조 및 제한된 reader의 LSan 활성 검증만 통과했다. 전체 daemon 누수·runtime 동등성을 뜻하지 않는다.
+7. 데이터 손실·보안·입력 경계 보호를 단순화로 없애지 않는다. 원본의 오류·중복·손실 가능성은 별도 이슈와 호환성 결정으로 다루며 조용히 의미를 바꾸지 않는다. 재현된 부분 replay 손실은 사용자 예외 승인 후 openTruncate의 app 제거만 적용했다. 이것을 다른 loss/retry 정책 변경 승인으로 확대하지 않는다. 미정의 동작 자체는 보존 계약이 아니다. 원본 메모리 결함은 재현 시험과 외부 영향 비교를 갖춘 별도 수정으로 처리한다. StdFile의 malloc/delete[] 불일치는 실제 재현과 component bytes 비교 후 free로 수정했다. 클라우드 LSan은 ptrace 제약으로 미검증이며, 별도 Ubuntu에서 양성 대조 및 제한된 reader의 LSan 활성 검증만 통과했다. 전체 daemon 누수·runtime 동등성을 뜻하지 않는다.
 
 ## 반드시 보존할 계약
 
@@ -46,7 +46,7 @@ Gate C: 양방향 ordinary spool·thriftfile·relay, fault/retry와 종료 계�
 
 Gate D: 회사가 승인한 baseline·허용 차이에 따른 성능과 운영 승인. 그 뒤 배포·롤백 실행 권한을 확인한다.
 
-어느 gate도 현재 전체 통과하지 않았다. 클라우드 및 Ubuntu의 비-HDFS 기본 C++ lane은 scribed compile/link와 최신 프로젝트 55개 시험을 통과했으나 전체 platform/feature matrix와 runtime 동등성은 미검증이다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
+어느 gate도 현재 전체 통과하지 않았다. 클라우드 및 Ubuntu의 비-HDFS 기본 C++ lane은 scribed compile/link와 당시 프로젝트 55개 시험을 통과했고, 후속 cloud FileStore characterization은 70개, 승인된 truncate 수정본은 cloud·Ubuntu에서 새 clean build·74개 시험을 통과했으나 전체 platform/feature matrix와 runtime 동등성은 미검증이다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
 
 ## 저장소·배포·고지
 
