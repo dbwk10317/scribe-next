@@ -1,0 +1,41 @@
+# Local build products
+/build/
+/build-*/
+/cmake-build-*/
+/out/
+/artifacts/
+/scribed
+*.o
+*.lo
+*.a
+*.la
+*.so
+*.so.*
+*.dylib
+*.dSYM/
+.deps/
+.libs/
+autom4te.cache/
+
+# Runtime data and local dependency/download caches
+/spool/
+/logs/
+/data/
+/downloads/
+.cache/
+compile_commands.json
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS/editor temporary files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
