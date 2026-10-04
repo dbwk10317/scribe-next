@@ -23,24 +23,24 @@ karpathy-guidelines와 ponytail의 핵심 원칙을 이 저장소에 적용한�
 4. 기존 autotools와 구조를 우선한다. 전체 Boost 제거, 즉시 CMake 전환, 전체 ownership·thread·I/O 재설계는 별도 근거와 범위가 없으면 하지 않는다.
 5. build 경계 → Thrift/fb303 API 및 필요한 file transport 호환 → 행동 검증 → 통과한 모듈의 제한된 C++ 정리 순으로 작은 review 가능한 PR을 만든다. build 복구와 동작 변경을 한 diff에 섞지 않는다.
 6. 각 PR은 실제 수행한 검증, 결과, 미실행 항목과 남은 위험을 적는다. 필요한 실패 재현 또는 계약 검증을 최소로 남긴다. 구현을 그대로 반복하는 테스트와 목적 없는 framework는 만들지 않는다.
-7. 데이터 손실·보안·입력 경계 보호를 단순화로 없애지 않는다. 원본의 오류·중복·손실 가능성은 별도 이슈와 호환성 결정으로 다루며 조용히 의미를 바꾸지 않는다.
+7. 데이터 손실·보안·입력 경계 보호를 단순화로 없애지 않는다. 원본의 오류·중복·손실 가능성은 별도 이슈와 호환성 결정으로 다루며 조용히 의미를 바꾸지 않는다. 미정의 동작 자체는 보존 계약이 아니다. 원본 메모리 결함은 재현 시험과 외부 영향 비교를 갖춘 별도 수정으로 처리한다.
 
 ## 반드시 보존할 계약
 
-- **IDL·wire·운영 API:** 기존 `if/scribe.thrift`의 method, field ID, enum, requiredness, namespace, 예외 표현과 fb303 상속·method/counter/status/details를 유지한다. client/server 모두 framed binary, strictRead=false/strictWrite=false를 명시한다. old/new client·server와 양방향 relay를 비교한다.
+- **IDL·wire·운영 API:** 기존 `if/scribe.thrift`와 `if/bucketupdater.thrift`의 method, field ID, enum, requiredness, namespace, 예외 표현과 fb303 상속·method/counter/status/details를 유지한다. framed binary를 보존한다. 서버와 bucket mapping client의 명시적 strictRead=false/strictWrite=false, 기본값에 의존하는 relay client의 기존 runtime 설정을 구분해 고정한다. 모든 client를 일괄 false/false로 바꾸지 않는다. old/new client·server, 양방향 relay와 bucket mapping 호출을 비교한다.
 - **bytes·ACK:** category/message의 byte sequence를 보존한다. UTF-8 정규화, newline 보정과 payload 변환을 하지 않는다. OK는 기존 메모리 큐 수락 의미이며 영속 기록 완료가 아니다. 빈/미정의 category discard, queue limit의 TRY_LATER, 부분 수락 후 재시도 중복 등 원본 결과를 숨기지 않는다.
 - **queue·batch·thread:** message bytes 기준 큐 크기, `target_write_size=16384`, `max_write_interval=1초`, worker 수, lock 순서·scope, wakeup, command·실패 batch 우선순위, must_succeed, retry, flush_streaming, shutdown 의미를 유지한다. 새로운 thread/time API는 build에 필요한 경계만 다룬다.
 - **10 store:** file, buffer, network, bucket, thriftfile, null, multi, category, multifile, thriftmultifile과 해당 설정 이름을 유지한다. 미사용 store도 upstream 지원·검증 대상에서 조용히 제외하지 않는다.
-- **파일·라우팅·설정:** exact/prefix/default route, 기존 hash와 bucket 경계, fan-out 순서, filename·rotation·newline·meta·`_current` symlink, config default·파싱·오류·상속과 CLI 우선순위를 유지한다. 프로젝트 이름은 scribe-next지만 바이너리·서비스·CLI/config 이름은 legacy `scribed` 계약을 유지한다.
+- **파일·라우팅·설정:** exact/prefix/default route와 정렬된 map의 첫 prefix 일치, 기존 hash와 bucket 경계, 동적 목적지의 TTL·갱신 실패·counter, fan-out 순서, filename·rotation·newline·meta·`_current` symlink, config default·파싱·오류·상속과 CLI 우선순위를 유지한다. 서비스 이름 조회는 회사 환경 구현을 확인한다. 프로젝트 이름은 scribe-next지만 바이너리·서비스·CLI/config 이름은 legacy `scribed` 계약을 유지한다.
 - **spool:** 일반 replay는 4-byte little-endian 길이+payload이며 write_category의 category/newline은 별도 frame이다. thriftfile transport 형식은 별도다. old-write/new-read와 new-write/old-read를 두 형식 모두 검증한다. 동일 spool 경로에 두 프로세스가 동시에 쓰지 않는다.
 - **보장 수준:** stream flush를 fsync로 설명하지 않는다. durable ACK, exactly-once, 새 transport, 전역 ordering과 crash durability를 추가하거나 약속하지 않는다. 기존 retry·shutdown의 loss/duplicate 가능성을 설명한다.
-- **의존성:** compiler와 Thrift C++ runtime 버전을 맞추고 hash·flag·생성 결과를 고정한다. fb303 IDL 존재만으로 C++ 지원을 증명하지 않는다. optional HDFS 사용 여부와 feature lane을 조사한다. generated code는 생성 규칙으로 바꾸며 손으로 수정하지 않는다.
+- **의존성:** compiler와 Thrift C++ runtime 버전을 맞추고 hash·flag·생성 결과를 고정한다. fb303 C++ 소스의 존재만으로 build 호환성을 증명하지 않는다. Thrift 0.25.0에 남아 있는 파일 transport를 먼저 검증하며 제거됐다고 가정해 재구현하지 않는다. optional HDFS 사용 여부와 feature lane을 조사한다. generated code는 생성 규칙으로 바꾸며 손으로 수정하지 않는다.
 
 ## 완료 기준
 
 Gate A: 확인된 Linux platform/feature matrix의 compile·link 성공.
 
-Gate B: IDL/wire/fb303/config 및 10 store의 golden·old/new differential 통과.
+Gate B: 두 IDL/wire/fb303/config, 10 store와 동적 목적지 갱신의 golden·old/new differential 통과.
 
 Gate C: 양방향 ordinary spool·thriftfile·relay, fault/retry와 종료 계약 검증 통과.
 

@@ -11,11 +11,11 @@
 - [개발 에이전트 지침](AGENTS.md)
 - [문서 출처·현재 결정·코드 도입 전략](docs/source-status.md)
 
-설계와 구현 문서는 사용자 지정 최신 Library Markdown을 가져왔다. 저장소 안에서 안정적인 이름으로 배치하고 상대 링크만 추가했다. 원본 파일명·버전·SHA256과 공개 upstream 출처는 출처 문서에 남겼다.
+설계와 구현 문서는 사용자 지정 Library Markdown을 바탕으로 공개 upstream과 목표 Thrift의 정적 검토를 반영한 작업 문서다. 원본 파일명·버전·SHA256, 검토한 고정 소스와 미검증 범위는 출처 문서에 남겼다.
 
 ## 목표와 미확정 사항
 
-기준은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe)의 공개 SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 기존 Thrift IDL, framed binary와 strict=false/false, fb303, byte 보존, 메모리 큐 ACK, queue/batch/thread·종료·재시도, 10 store, 파일·설정·라우팅 및 spool 계약을 지킨다. durable ACK, exactly-once, 새 transport, 전면 재작성은 목표에 포함하지 않는다.
+기준은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe)의 공개 SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. `scribe.thrift`와 `bucketupdater.thrift`, framed binary와 경로별 strict 설정, fb303, byte 보존, 메모리 큐 ACK, queue/batch/thread·종료·재시도, 10 store, 동적 목적지 갱신과 파일·설정·라우팅·spool 계약을 지킨다. durable ACK, exactly-once, 새 transport, 전면 재작성은 목표에 포함하지 않는다.
 
 Linux는 대상 OS다. C++17과 Thrift 0.25.0은 검증 후보이며 아직 채택 완료 또는 빌드 성공을 뜻하지 않는다. 회사 fork SHA와 패치, 실측 baseline, 실제 config/client/store 사용, Linux 배포판과 GCC/Clang·의존성 버전은 미확인이다. 회사 운영 동등성은 이 자료와 승인된 판정 기준 없이 선언하지 않는다.
 
@@ -23,8 +23,8 @@ Linux는 대상 OS다. C++17과 Thrift 0.25.0은 검증 후보이며 아직 채�
 
 1. 회사 fork·설정·운영 기준과 Linux toolchain matrix를 확인한다. 회사 자료가 없으면 공개 upstream 이식 범위와 회사 호환성 미확정 상태를 구분한다.
 2. 별도 코드 도입 작업에서 고정 SHA의 upstream tree를 원래 경로와 이력을 보존하는 방식으로 가져온다. `LICENSE`, 존재하는 `NOTICE`, 파일별 copyright·attribution과 의존성 고지를 함께 확인한다.
-3. 기존 build/test driver와 설정 inventory를 조사하고 old 동작의 wire·10 store·양방향 relay/spool fixture를 만든다.
-4. 작은 PR로 의존성·빌드 경계, Thrift/fb303 API, 필요한 파일 transport 호환, 제한된 C++ 정리 순으로 진행한다. 매 단계의 실제 검증 결과가 다음 단계를 연다.
+3. 재현 가능한 old binary를 확보하고 기존 PHP 시험을 격리 환경에 맞춘다. `make check`는 이 suite를 실행하지 않는다. 두 RPC·10 store·동적 라우팅·양방향 relay/spool fixture와 설정 inventory를 만든다.
+4. 작은 PR로 의존성·빌드 경계, Thrift/fb303 API, 기존 파일 transport와 spool 호환, 제한된 C++ 정리 순으로 진행한다. Thrift 0.25.0의 `TFileTransport`를 먼저 재사용·검증한다. 원본의 메모리 결함은 외부 계약과 구분해 재현 시험이 있는 별도 수정으로 다룬다.
 
 현재 실행 가능한 프로젝트 build/test 명령은 없다. 구현 문서의 명령은 향후 전체 source tree와 도구를 확인한 뒤 조정할 **미실행 예시**다. Gate A–D는 모두 미통과 상태다.
 

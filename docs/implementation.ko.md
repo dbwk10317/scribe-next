@@ -10,19 +10,23 @@
 
 기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux이며 배포판과 toolchain은 미확정이다. 봉구서버는 Linux 검증 환경 후보이며 사용 전 배포판과 toolchain을 확인한다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
 
-## 작업 0 운영 기준 확보
+## 작업 0 upstream 도입과 운영 기준 확보
 
-수정 파일 없음. 회사 fork SHA, upstream 대비 diff, compiler 및 link flags, dependency 버전·패치·라이선스, service unit, 실행 옵션, config 전체, 환경변수, filesystem 및 spool 위치를 수집한다. secrets는 제거하고 설정 key와 구조는 남긴다. client 언어·생성 compiler·protocol/transport 설정, health-check와 fb303 query, HDFS 사용 여부를 포함한다.
+별도 도입 변경으로 고정 upstream tree·경로·이력과 고지를 보존한다. 도입 변경에 이식 코드를 섞지 않는다. 회사 fork SHA, upstream 대비 diff, compiler 및 link flags, dependency 버전·패치·라이선스, service unit, 실행 옵션, config 전체, 환경변수, filesystem 및 spool 위치를 수집한다. secrets는 제거하고 설정 key와 구조는 남긴다. client 언어·생성 compiler·protocol/transport 설정, health-check와 fb303 query, HDFS·동적 bucket mapping·서비스 디스커버리 사용 여부를 포함한다. 공개판 `getService()`는 항상 실패하므로 회사 환경 구현 없이 서비스 이름 기반 경로의 동등성을 가정하지 않는다.
 
-기존 실행 binary의 해시와 재현 가능한 build recipe를 고정한다. 정상, burst, category 폭증, relay outage, disk full 및 shutdown 조건의 baseline을 확보한다. throughput, p50/p95/p99 latency, CPU, RSS, queue bytes, lost/requeue/retry counter, spool 증가량, 복구 시간과 종료 시간을 기록한다. 지표별 허용 차이와 측정 반복 횟수는 운영팀 승인을 받아 확정한다.
+기존 실행 binary의 해시와 재현 가능한 build recipe를 고정한다. 정상, burst, category 폭증, relay outage, disk full 및 shutdown 조건의 baseline을 확보한다. category 수·batch 크기·fan-out·장애 지속 시간을 통제하고 throughput, p50/p95/p99 latency, CPU, RSS, thread 수, queue bytes, lost/requeue/retry counter, spool 증가량, 복구 시간과 종료 시간을 기록한다. 지표별 허용 차이와 측정 반복 횟수는 운영팀 승인을 받아 확정한다.
 
 완료 조건은 회사와 upstream의 차이 목록, 승인된 platform matrix 및 baseline manifest이다. 회사 자료가 없으면 upstream 이식 작업만 가능하며 회사 호환성 gate는 열린 상태로 남긴다.
 
 ## 작업 1 계약 fixture 만들기
 
-대상은 `if/scribe.thrift`, `src/scribe_server.cpp`, `src/store_queue.cpp`, `src/store.cpp`, `src/file.cpp`, `src/env_default.cpp`, 설정 파서 `src/conf.cpp`와 sample config 파일이다. `src/conf.cpp`의 key 조회·값 변환과 store별 configure 호출을 연결해 기본값, 잘못된 값 처리와 부모 설정 상속을 목록화한다. sample config 목록과 include 관계는 고정 SHA의 전체 tree에서 완성한다.
+대상은 `if/scribe.thrift`, `if/bucketupdater.thrift`, `src/scribe_server.cpp`, `src/store_queue.cpp`, `src/store.cpp`, `src/file.cpp`, `src/env_default.cpp`, `src/dynamic_bucket_updater.cpp`, `src/network_dynamic_config.cpp`, 설정 파서 `src/conf.cpp`와 sample config 파일이다. `src/conf.cpp`의 key 조회·값 변환과 store별 configure 호출을 연결해 기본값, 잘못된 값 처리와 부모 설정 상속을 목록화한다. sample config 목록과 include 관계는 고정 SHA의 전체 tree에서 완성한다.
 
-old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 생성하고 SHA256과 생성 조건을 보존한다. 빈 batch, 빈/미정의 category, exact/prefix/default, NUL·비ASCII·개행 포함 message, 중복 category, 다중 store, 큐 제한 직전·일치·초과, 거대 batch를 넣는다. status, counter 및 호출 응답을 같이 기록한다. nondeterministic timestamp·random retry는 허용된 필드만 정규화하고 payload나 category는 정규화하지 않는다.
+old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 생성하고 SHA256과 생성 조건을 보존한다. 빈 batch, 빈/미정의 category discard 뒤 OK, exact/prefix/default와 겹치는 prefix의 map 첫 일치, NUL·비ASCII·개행 포함 message, 중복 category, 다중 store, 큐 제한 직전·일치·초과, 수락 뒤 제한을 넘기는 거대 batch를 넣는다. 요청과 무관한 category의 과부하도 거절을 유발하는지 비교한다. status, counter 및 호출 응답을 같이 기록한다. nondeterministic timestamp·random retry는 허용된 필드만 정규화하고 payload나 category는 정규화하지 않는다.
+
+두 번째 RPC는 old/new mapping client·server 양방향 wire와 예외를 비교하고 TTL 만료, 갱신 실패, 빈 mapping, 누락 bucket, 목적지 변경·재연결과 counter를 검증한다. host/port 직접 지정과 회사 서비스 이름 조회 경로를 구분한다. 정적 bucket hash fixture만으로 동적 갱신을 통과시키지 않는다.
+
+기존 PHP `test/testsuite.php`와 설정 fixture를 먼저 조사한다. 고정 포트·임시 경로·프로세스 종료 대상과 PHP/Thrift client 의존성을 격리 환경에 맞추고 시험별 assertion·실패 exit를 확인한다. root 실행을 기본으로 복사하지 않는다. `make check`에는 PHP suite 실행 연결이 없고 `lib/py/Makefile.am`의 `check-local`은 `all`에 의존할 뿐이므로 별도 명시적 실행이 필요하다.
 
 완료 조건은 독립된 old/new process에 같은 입력을 넣고 반환·bytes·관찰 가능한 side effect를 비교할 수 있는 harness다. helper framework나 production 추상화를 추가하지 않는다. 기존 test driver가 있으면 먼저 재사용한다.
 
@@ -32,27 +36,31 @@ old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 �
 
 먼저 공식 Thrift 0.25.0 release와 checksum을 고정하고, 목표 Linux에서 compiler와 필요한 C++ runtime을 빌드·검증한다. 이 의존성 build가 통과한 뒤 Scribe build를 연결한다. compiler/runtime 버전을 일치시키고 prefix와 include/link 경로를 명시한다. libthriftnb와 libevent 포함 여부, pthread linkage, fb303 header/library, HDFS feature off/on을 각각 확인한다. compiler flag는 C++17 후보로 고정하고 target Thrift의 요구 표준과 충돌하면 문서의 결정을 갱신한다. compiler warning은 기록하되 모든 경고를 한번에 수정하지 않는다.
 
-IDL field와 method를 변경하지 않고 목표 compiler로 다시 생성한다. pure_enums 등 기존 generator option의 지원 여부와 generated signature를 비교한다. generated files를 손으로 고치지 않는다. old language client가 의존하는 설치·패키지 위치도 보존한다.
+두 IDL의 field와 method를 변경하지 않고 목표 compiler로 다시 생성한다. v0.25.0 소스에서 `cpp:pure_enums` 지원과 최소 C++11 요구를 확인했지만 실제 생성 결과와 C++17 build는 아직 미검증이다. 기존 generator option과 generated signature를 비교하며 generated files를 손으로 고치지 않는다. old language client가 의존하는 설치·패키지 위치도 보존한다.
 
 완료 조건은 청결한 격리 환경에서 목표 Thrift의 compiler/runtime 빌드와 필요한 library 탐지가 성공하고, build manifest에 compiler, dependency hash, flags와 generated diff가 남는 것이다. 이때 Scribe를 최초 compile해 API·링크 오류를 분류한다. Scribe 전체 compile/link 통과는 작업 3과 4의 경계 수정 후 Gate A에서 판정한다. 의존성 build 성공만으로 wire·runtime 호환성을 선언하지 않는다.
 
 ## 작업 3 Thrift와 fb303 API 맞추기
 
-대상은 `src/common.h`, `src/env_default.cpp`, `src/scribe_server.cpp`, `src/conn_pool.cpp`, generated interface를 사용하는 `src/store.cpp` 및 각 모듈의 관련 header다. 고정 SHA의 include graph를 따라 수정 범위를 좁히고 선언과 구현을 함께 검토한다.
+대상은 `src/common.h`, `src/env_default.h/.cpp`, `src/scribe_server.cpp`, `src/conn_pool.cpp`, `src/dynamic_bucket_updater.h/.cpp`, `src/network_dynamic_config.h/.cpp`, generated interface를 사용하는 `src/store.cpp` 및 각 모듈의 관련 header다. 고정 SHA의 include graph를 따라 수정 범위를 좁히고 선언과 구현을 함께 검토한다.
 
-목표 release의 TProcessor, protocol factory, socket/server transport, TNonblockingServer, ThreadManager와 thread factory constructor를 원문에서 대조한다. Boost shared_ptr에서 std::shared_ptr로 바뀐 boundary를 하나의 작업 단위로 이식하고 중복 소유권을 만들지 않는다. client와 server 모두 framed binary 및 strict=false/false를 명시하며 목표 release의 frame/message limit, timeout과 예외 default를 목록화한다.
+목표 release의 TProcessor, protocol factory, socket/server transport, TNonblockingServer, ThreadManager와 thread factory constructor를 대조한다. port를 직접 받던 서버 생성부를 목표 server transport 객체 경계에 맞춘다. Boost shared_ptr에서 std::shared_ptr로 바뀐 boundary와 Boost를 사용하는 fb303 `setServer()`의 소유권을 함께 이식하고 중복 control block을 만들지 않는다. framed binary와 서버·mapping client의 명시적 strict=false/false를 보존한다. relay client는 생성자 기본값에 의존하므로 old runtime과 wire fixture로 경로별 strict 값을 확인한 뒤 명시한다. 목표 release의 frame/message limit, timeout과 예외 default도 목록화한다.
 
-fb303 IDL 존재와 C++ 지원은 별개의 확인 항목이다. 현재 FacebookBase 사용, status/details/counters, reinitialize/shutdown 및 기타 상속 method를 mapping한다. 기존 라이브러리가 목표 runtime에서 동작하면 유지한다. 제거된 thread나 mutex API는 기존 concurrency wrapper 안에서 필요한 부분만 대체한다. worker queue의 pthread 동작은 그대로 둔다.
+fb303 IDL과 C++ source 존재는 확인했으며 build·설치·운영 호환성은 별도 확인 항목이다. 현재 FacebookBase 사용, status/details/counters, reinitialize/shutdown 및 기타 상속 method를 mapping한다. 기존 라이브러리가 목표 runtime에서 동작하면 유지한다. 기존 `PosixThreadFactory`·`ReadWriteMutex` 사용부는 현재 concurrency wrapper 안에서 필요한 부분만 대체하고 lock 순서·scope를 비교한다. worker queue의 pthread 동작은 그대로 둔다.
 
-완료 조건은 old/new client와 relay 네 방향 테스트, fb303 전체 method 비교 및 server lifecycle 비교 통과다. server 종류를 blocking으로 바꾸거나 fb303를 없애는 방법으로 컴파일 오류를 회피하지 않는다.
+완료 조건은 old/new client와 relay 네 방향 테스트, bucket mapping 양방향 호출·갱신, fb303 전체 method 비교 및 server lifecycle 비교 통과다. server 종류를 blocking으로 바꾸거나 fb303를 없애는 방법으로 컴파일 오류를 회피하지 않는다.
 
-## 작업 4 파일과 제거된 transport 호환
+## 작업 4 파일 transport와 spool 호환
 
-대상은 `src/file.h/.cpp`, `src/store.h/.cpp`의 FileStore 및 ThriftFileStore와 multifile 계열이다. std::filesystem은 기존 Boost 경로·예외·filename 처리와 동등성이 확인된 사용 지점만 바꾼다. 없어진 Thrift transport는 사용 call graph와 기존 구현 license를 조사한 뒤 호환 코드를 좁게 남긴다. 처음부터 모든 I/O를 새 interface로 감싸지 않는다.
+대상은 `src/file.h/.cpp`, `src/store.h/.cpp`의 FileStore 및 ThriftFileStore와 multifile 계열이다. std::filesystem은 기존 Boost 경로·예외·filename 처리와 동등성이 확인된 사용 지점만 바꾼다. v0.25.0의 `TFileTransport`·`TSimpleFileTransport` 및 chunk/flush/event buffer 설정 API를 먼저 사용해 비교한다. API·형식 차이가 재현된 부분만 호환 처리하며 transport 삭제를 전제로 재구현하거나 모든 I/O를 새 interface로 감싸지 않는다.
 
 일반 spool은 길이 field의 endian·폭, category 별도 frame, zero frame, truncated header/payload, 손상 길이 처리와 EOF 의미를 검증한다. thriftfile은 원본 transport의 기록 단위·메타데이터·복구 규칙을 별도로 fixture화한다. ordinary file 출력은 byte-for-byte로 비교하고 이름·rotation·symlink는 file tree manifest로 비교한다.
 
 완료 조건은 old-write/new-read 및 new-write/old-read가 ordinary spool과 thriftfile 모두에서 통과하는 것이다. 같은 spool 동시 writer는 테스트에서도 금지한다. reader가 corruption을 다르게 처리하면 호환성 이슈로 남기고 배포 gate를 열지 않는다.
+
+### 원본 메모리 결함의 별도 검증
+
+고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 `malloc()`으로 할당한 `inputBuffer`를 소멸자가 `delete[]`로 해제하는 불일치를 정적으로 확인했다. scribe-next에는 아직 이 코드가 없으며 sanitizer 재현도 미실행이다. 도입 후 버퍼가 남는 작은 framed file 읽기·객체 소멸 경로로 할당/해제 불일치를 재현하고, 별도 변경에서 할당 방식과 맞는 해제로 수정한다. 수정 후 sanitizer와 읽은 bytes·EOF·손상 입력 결과를 비교한다. 미정의 동작을 호환 계약으로 보존하지 않으며 빌드 복구나 일괄 RAII 정리에 섞지 않는다.
 
 ## 작업 5 제한된 현대 C++ 정리
 
@@ -64,14 +72,15 @@ fb303 IDL 존재와 C++ 지원은 별개의 확인 항목이다. 현재 Facebook
 
 | 모듈 | 구현 시 허용 변경 | 유지할 계약 |
 | --- | --- | --- |
-| if/scribe.thrift와 생성 코드 | 동일 IDL의 목표 compiler 재생성 | method, field ID, enum 값, namespace |
+| if/scribe.thrift·if/bucketupdater.thrift와 생성 코드 | 동일 IDL의 목표 compiler 재생성 | method, field ID, enum 값, namespace, 예외 |
 | configure.ac와 Makefile 규칙 | 의존성 탐지, flag, 생성·링크 순서 | feature 선택, 설치 산출물과 경로 |
-| src/env_default.cpp와 common.h | 목표 Thrift 생성자·타입 경계 | nonblocking server와 framed binary |
+| src/env_default.h/.cpp와 common.h | 목표 Thrift 생성자·타입·동시성 경계 | nonblocking server, framed binary, lock 의미와 환경 조회 |
 | src/scribe_server.cpp | generated interface 및 fb303 연결 | Log 반환, 라우팅, 운영 API |
 | src/store_queue.cpp | 컴파일에 필요한 최소 타입 변경 | 큐 크기, lock 순서, batch와 종료 |
 | src/store.cpp | Thrift·파일 API 사용 지점 호환 | 10 store, 상태 전이, 기본값 |
 | src/conn_pool.cpp | client·transport 생성 경계 | pool 재사용, 재연결, 예외와 timeout |
-| src/file.cpp | 제거된 API의 좁은 호환 구현 | bytes, framing, rotation, flush |
+| src/dynamic_bucket_updater.h/.cpp·network_dynamic_config.h/.cpp | mapping client의 Thrift API 경계 | TTL, 실패·빈 응답·목적지 변경, counter와 서비스 조회 |
+| src/file.cpp | 필요한 API 호환과 별도 메모리 결함 수정 | bytes, framing, rotation, flush |
 | src/conf.cpp | 필요한 컴파일 오류만 수정 | 파싱, 값 변환, 오류·상속 의미 |
 
 새 파일이 필요하면 책임과 기존 파일에 둘 수 없는 이유를 PR에 적는다. 테스트 harness 외의 공용 framework나 대규모 디렉터리 재편을 기본 작업으로 만들지 않는다.
@@ -82,8 +91,8 @@ fb303 IDL 존재와 C++ 지원은 별개의 확인 항목이다. 현재 Facebook
 | --- | --- |
 | file | byte 출력, newline, meta record, size/time rotation, filename, `_current` symlink |
 | buffer | DISCONNECTED/SENDING_BUFFER/STREAMING 전이, primary 실패, replay, flush_streaming, retry 및 fallback |
-| network | OK/TRY_LATER/transport exception, reconnect, pool 재사용, timeout 및 dummy Log |
-| bucket | delimiter, hash 입력, bucket 수 및 경계, 대상 선택과 출력 bytes |
+| network | OK/TRY_LATER/transport exception, reconnect, pool 재사용, timeout, dummy Log와 동적 목적지 갱신 |
+| bucket | delimiter, hash 입력, bucket 수 및 경계, 대상 선택과 출력 bytes; 동적 mapping 조합은 별도 fixture |
 | thriftfile | 기존 transport bytes, file rotation, old/new reader 호환 |
 | null | discard와 반환·counter 의미 |
 | multi | 복수 하위 store 성공·부분 실패와 순서 |
@@ -99,11 +108,11 @@ Golden test는 고정 request/response bytes, output files와 spool을 비교한
 
 Fault test는 relay disconnect 전후, response loss 후 재시도, partial write, disk full, permission denied, corrupted spool, config reload 실패, STOPPING 중 category 생성, SIGTERM 및 강제 종료를 포함한다. ACK 이후 강제 종료 손실이나 재시도 중복을 새 버전에서 숨기지 않는다. shutdown 후 잔여 queue와 spool, counters 및 재기동 결과를 기록한다. fsync 또는 exactly-once 기대를 fixture에 넣지 않는다.
 
-Performance test는 승인된 normal/burst/outage workload를 동일 장비에서 old/new 교대로 반복한다. Release 최적화 조건과 dependency version 차이를 manifest에 남기고 throughput·latency·CPU·RSS·queue·recovery를 보고한다. sanitizer build는 correctness 보조이며 성능 판정에 사용하지 않는다. ASan/UBSan과 가능한 TSan lane을 분리하고 기존 race가 발견되면 known issue와 수정 승인 경계를 기록한다.
+Performance test는 승인된 normal/burst/outage workload를 동일 장비에서 old/new 교대로 반복한다. category 수·batch 크기·fan-out·장애 지속 시간을 명시하고 category별 worker 생성 비용을 측정한다. Release 최적화 조건과 dependency version 차이를 manifest에 남기고 throughput·latency·CPU·RSS·thread 수·queue·recovery를 보고한다. sanitizer build는 correctness 보조이며 성능 판정에 사용하지 않는다. ASan/UBSan과 가능한 TSan lane을 분리하고 기존 race가 발견되면 known issue와 수정 승인 경계를 기록한다.
 
 ## 제안 검증 명령
 
-아래는 구현 승인 후 격리된 checkout에서 조정해 사용할 명령 예시다. 현재 실행하지 않았으며 기존 bootstrap script의 요구 도구와 configure option은 전체 tree 확인 후 확정해야 한다. dependency 설치 및 실제 service 실행 권한은 별도다.
+아래는 구현 승인 후 source가 도입된 격리 checkout에서 조정해 사용할 미실행 예시다. `bootstrap.sh`가 autoreconf 뒤 configure를 호출하므로 configure 인자를 함께 전달한다. 실제 toolchain에서 요구 도구·옵션을 확인하며 dependency 설치 및 실제 service 실행 권한은 별도다.
 
 ```sh
 git rev-parse HEAD
@@ -113,25 +122,24 @@ c++ --version
 pkg-config --modversion libevent
 rg -n 'boost::shared_ptr|TNonblockingServer|ThreadFactory|TFileTransport' src
 rg -n 'DEFAULT_|getString|getUnsigned|flush_streaming' src
-./bootstrap.sh
-./configure --with-thriftpath="$THRIFT_PREFIX" \
-  --with-fb303path="$FB303_PREFIX" \
-  CXXFLAGS='-O2 -std=c++17'
+CXXFLAGS='-O2 -std=c++17' ./bootstrap.sh \
+  --with-thriftpath="$THRIFT_PREFIX" \
+  --with-fb303path="$FB303_PREFIX"
 make -j2
 make check
 ```
 
-`make check`가 의미 있는 suite를 실행하는지 먼저 확인한다. 새 harness는 기존 harness가 부족할 때 최소로 만들며 명령 이름을 지금 존재하는 것처럼 제시하지 않는다. 승인된 driver로 golden, old/new matrix, fault 및 performance workload를 실행하고 결과 JSON·bytes·file manifest와 해시를 보존한다. 종료나 장애 주입 명령은 production 대상에 실행하지 않는다.
+현재 upstream의 `make check`는 PHP suite를 실행하지 않는다. 위 명령의 성공을 행동 검증으로 간주하지 말고, 격리 경로·포트·프로세스 대상으로 조정한 기존 PHP driver를 명시적으로 실행한다. 새 harness는 기존 harness가 부족할 때 최소로 만든다. 실제 연결한 driver로 golden, old/new matrix, fault 및 performance workload를 실행하고 결과 JSON·bytes·file manifest와 해시를 보존한다. 종료나 장애 주입 명령은 production 대상에 실행하지 않는다.
 
 ## 완료와 배포 gate
 
-Gate A는 platform/feature matrix의 compile·link 성공이다. Gate B는 IDL, wire, fb303, 설정 및 10 store differential 통과다. Gate C는 양방향 spool·relay, fault와 종료 결과가 승인된 계약에 맞는 것이다. Gate D는 회사 baseline 기반 성능과 운영 기준 승인이며 그 뒤 canary 배포·롤백 실행 권한을 받는다. 어느 gate도 이번 문서 작성에서 통과했다고 표시하지 않는다.
+Gate A는 platform/feature matrix의 compile·link 성공이다. Gate B는 두 IDL, wire, fb303, 설정, 10 store와 동적 목적지 갱신 differential 통과다. Gate C는 양방향 spool·relay, fault와 종료 결과가 승인된 계약에 맞는 것이다. Gate D는 회사 baseline 기반 성능과 운영 기준 승인이며 그 뒤 canary 배포·롤백 실행 권한을 받는다. 원본 메모리 결함의 재현·수정 검증은 별도 변경으로 연결하고 미검증 상태를 숨기지 않는다. 어느 gate도 현재 통과하지 않았다.
 
 배포 runbook에는 old artifact 해시, 신규 artifact 해시, dependency manifest, spool writer 소유자, canary route, traffic 중지 절차, rollback threshold 및 담당자를 채운다. 역호환 spool 검증 실패, 새로운 loss/duplicate 양상, 운영 API 차이 또는 승인 성능 기준 초과 시 rollout을 멈춘다. 구현 PR은 목적별로 build, API, file transport, 제한된 refactor 순으로 나누고 각 PR에 실제 수행한 검증만 쓴다.
 
 ## 근거 상태와 남은 확인
 
-IDL, handler, queue, store factory 및 buffer 설정, 파일 framing/flush, 기본 server 환경, conn_pool, configure.ac를 공개 SHA URL로 정적 열람했다. fb303 v0.25.0 IDL도 확인했다. 원본 전체 tree를 내려받거나 target Thrift C++ headers를 전부 대조하지는 못했다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key 목록과 store별 기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. 최신 Thrift와 Scribe의 실제 compile 가능성은 검증하지 않았다.
+고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Scribe·의존성 build, PHP suite, sanitizer, old/new·성능 시험은 미실행이다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
 
 설계 문서의 링크를 evidence entrypoint로 사용한다. 구현 시 각 계약에 source path·symbol·line, fixture ID, old 결과, new 결과, 검증 command, timestamp와 reviewer를 연결한다. upstream 사실, 요청에서 제공된 보존 조건, 구현 제안 및 회사 확인이 필요한 항목을 ledger에서 구분한다. 실패와 미실행도 보존한다.
 

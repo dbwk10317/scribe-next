@@ -14,7 +14,7 @@ scribe-next는 기존 Scribe의 구조와 외부 동작을 유지하면서 최�
 
 1차 범위는 IDL 생성, Thrift C++ API 및 fb303 연결, autotools 의존성 탐지, 현대 컴파일러 오류의 최소 수정이다. 2차 범위는 소유권과 타입 표현을 현대적으로 정리하고 제거된 의존 API를 동일 의미의 호환 구현으로 대체하는 것이다.
 
-Rust나 Go 재작성, 비동기 런타임 교체, thread pool 재설계, lock-free queue, 새로운 저장소 플러그인 체계, 설정 언어 변경, TLS나 인증 추가, durable ACK, exactly-once 보장은 범위 밖이다. 보안·데이터 손실 결함을 발견하면 별도 이슈로 기록하고 호환성 변경 승인을 받는다. 기존 비정상 동작을 조용히 개선하지 않는다.
+Rust나 Go 재작성, 비동기 런타임 교체, thread pool 재설계, lock-free queue, 새로운 저장소 플러그인 체계, 설정 언어 변경, TLS나 인증 추가, durable ACK, exactly-once 보장은 범위 밖이다. 보안·데이터 손실 결함을 발견하면 별도 이슈로 기록하고 외부 계약을 바꿀 때 호환성 변경 승인을 받는다. 미정의 동작 자체를 보존 대상으로 삼지는 않는다. 원본 결함은 재현 시험과 외부 영향 비교를 갖춘 별도 수정으로 다루며 이식 변경에 숨기지 않는다.
 
 ## 기존 구조
 
@@ -22,13 +22,15 @@ Rust나 Go 재작성, 비동기 런타임 교체, thread pool 재설계, lock-fr
 
 이 흐름과 기존 클래스 경계를 보존한다. 현재 Store factory를 그대로 사용하고 새 registry나 adapter framework를 만들지 않는다. Thrift에 직접 닿는 선언과 생성 코드에서 필요한 타입만 우선 바꾼다.
 
+`if/bucketupdater.thrift`의 `BucketStoreMapping.getMapping()`과 `src/dynamic_bucket_updater.cpp`, `src/network_dynamic_config.cpp`도 기본 빌드에 포함된다. 이 두 번째 RPC와 동적 목적지 갱신을 정적 bucket 분배와 별도로 보존한다. 공개판 `env_default.cpp`의 서비스 이름 조회 `getService()`는 항상 실패하므로, 회사에서 해당 기능을 사용하면 회사 환경 구현과 설정을 baseline에 포함해야 한다.
+
 ## 호환성 계약
 
 ### 요청과 응답
 
 `Log(1: list<LogEntry> messages)`를 유지한다. LogEntry의 field 1은 category 문자열, field 2는 message 문자열이며 enum 값은 OK=0, TRY_LATER=1이다. namespace, field ID, requiredness, method 이름, fb303 상속과 예외 표현을 임의 변경하지 않는다. 문자열은 기존 byte sequence를 보존하며 UTF-8 정규화나 newline 보정을 하지 않는다.
 
-네트워크는 framed binary, strictRead=false 및 strictWrite=false를 유지한다. 새로운 Thrift 기본값에 기대지 않고 생성 시 명시한다. old client → new server, new client → old server 및 old/new relay 조합을 모두 검증한다. serializer wire 비교와 request/response 의미 비교는 함께 수행한다.
+네트워크는 framed binary를 유지한다. `env_default.cpp`의 서버 factory와 `dynamic_bucket_updater.cpp`의 mapping client는 strictRead=false/strictWrite=false를 명시한다. 반면 `conn_pool.cpp`의 relay client는 `TBinaryProtocol` 생성자 기본값에 의존하므로 기존 runtime의 값과 wire fixture를 먼저 확인한다. 이 경로들을 일괄 false/false로 바꾸지 않고 경로별 기존 값을 목표 runtime에 명시한다. old client → new server, new client → old server 및 old/new relay 조합을 모두 검증한다. serializer wire 비교와 request/response 의미 비교는 함께 수행한다.
 
 OK는 메모리 큐 수락 경로의 응답이며 영속 저장 완료가 아니다. 빈 category 및 route를 찾지 못한 category를 버려도 OK가 될 수 있다. 한 store의 큐가 제한을 초과하면 해당 요청과 무관한 category도 TRY_LATER가 될 수 있다. 종료 중 동적 category 생성 경로에서 일부 메시지가 이미 큐에 들어간 뒤 TRY_LATER가 반환될 가능성과 재시도 중복을 보존한다. 성공을 원자적 durable transaction으로 설명하지 않는다.
 
@@ -36,11 +38,13 @@ OK는 메모리 큐 수락 경로의 응답이며 영속 저장 완료가 아니
 
 기본 target_write_size=16384 bytes, max_write_interval=1초를 유지한다. 큐 크기는 message bytes 기준인 현재 계산을 동결한다. 기존 큐, mutex, condition variable, worker 수, command 처리 순서, 실패 batch 우선 처리, must_succeed, retry, flush_streaming 및 종료 동작을 초기 단계에서 유지한다. chrono 또는 std::thread 도입은 시간 기준과 wakeup 의미를 바꿀 수 있으므로 빌드 복구에 필요하지 않으면 유보한다.
 
+큐 제한은 요청을 넣기 전에 전체 category의 큐를 검사하고 `size > max_queue_size`일 때 거절한다. 경계와 같은 크기 및 한 번에 제한을 넘기는 batch를 별도 fixture로 둔다. 이 설정은 프로세스 RSS의 엄격한 상한이 아니다. 기본 `new_thread_per_category=true`에서 category가 증가하면 worker·메모리 비용도 증가하므로 category 수와 thread 수를 성능 비교에 포함한다.
+
 ### 저장과 라우팅
 
-file, buffer, network, bucket, thriftfile, null, multi, category, multifile, thriftmultifile의 10 store와 설정 이름을 보존한다. exact category, prefix 및 default routing, hash 결과, bucket 경계, fan-out 순서, 파일명, rotation 조건, newline, meta 출력, `_current` symlink, 설정 상속 및 기본값을 계약으로 기록한다. std::hash 또는 filesystem의 경로 정규화로 기존 결과를 대체하지 않는다.
+file, buffer, network, bucket, thriftfile, null, multi, category, multifile, thriftmultifile의 10 store와 설정 이름을 보존한다. exact category, prefix 및 default routing, hash 결과, bucket 경계, fan-out 순서, 파일명, rotation 조건, newline, meta 출력, `_current` symlink, 설정 상속 및 기본값을 계약으로 기록한다. prefix는 정렬된 map에서 처음 일치한 항목을 선택하며 longest-prefix match로 바꾸지 않는다. 동적 목적지의 TTL 만료, 갱신 실패·빈 응답·목적지 변경과 counter도 비교한다. std::hash 또는 filesystem의 경로 정규화로 기존 결과를 대체하지 않는다.
 
-일반 replay buffer는 4 byte little-endian 길이와 payload를 사용한다. write_category 사용 시 category와 newline은 별도 프레임이다. ThriftFileStore의 transport 형식은 일반 replay framing과 구분한다. 제거된 Thrift file transport가 확인되면 원본 형식을 읽고 쓰는 최소 호환 구현만 유지하며 통합 새 포맷을 만들지 않는다.
+일반 replay buffer는 4 byte little-endian 길이와 payload를 사용한다. write_category 사용 시 category와 newline은 별도 프레임이다. ThriftFileStore의 transport 형식은 일반 replay framing과 구분한다. Thrift 0.25.0의 `TFileTransport`와 `TSimpleFileTransport`를 먼저 사용해 형식·flush·복구 동작을 검증한다. 호환 차이가 확인된 지점만 좁게 수정하며 통합 새 포맷을 만들지 않는다.
 
 구 버전이 만든 spool을 신 버전이 읽고 신 버전 spool을 구 버전이 읽을 수 있어야 한다. 같은 spool 경로에 두 프로세스가 동시에 쓰지 않는다. 원본 stream flush는 fsync가 아니며 이번 이식은 crash durability를 추가하지 않는다. 오류와 재시도에 의한 손실·중복의 기존 가능성을 운영 설명에 남긴다.
 
@@ -52,7 +56,16 @@ CLI의 -p, -c, positional config 경로, port 설정의 우선순위, 프로세�
 
 Thrift 0.25.0을 첫 검증 후보로 제안한다. 2026년 10월 4일 확인한 공식 다운로드 페이지는 이를 2026년 9월 30일 발표된 최신 안정판으로 표시한다. compiler와 C++ runtime은 동일 버전으로 고정하고 해시, 옵션, 생성 결과를 기록한다. upstream 최신 브랜치를 빌드 입력으로 사용하지 않는다.
 
-fb303가 사라졌다고 가정하지 않는다. Thrift v0.25.0의 `contrib/fb303/if/fb303.thrift`가 공개 소스에 존재하는 것을 확인했다. 이것은 C++ FacebookBase 구현의 빌드·배포 호환성까지 증명하지 않는다. 실제 release의 IDL, header, library 및 운영 메서드를 조사해 가능한 기존 구성부터 사용한다. 필요 시 기존 fb303 IDL와 동작을 유지하는 좁은 호환 구현을 검토한다.
+Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6`에서 아래 경계를 정적으로 확인했다. 이는 compile·link 또는 runtime 호환성의 증거가 아니다.
+
+| 경계 | 확인한 상태와 이식 방향 |
+| --- | --- |
+| C++ 표준·생성 옵션 | 최소 C++11, CMake 기본값 11, `cpp:pure_enums` 지원. C++17 후보와 요구 표준은 충돌하지 않지만 실제 빌드는 별도 검증 |
+| 파일 transport | `TFileTransport`·`TSimpleFileTransport`가 빌드 목록에 있고 `setChunkSize`·`setFlushMaxUs`·`setEventBufferSize`도 존재. 재구현보다 기존 API와 bytes 비교 우선 |
+| fb303 | IDL과 C++ `FacebookBase`가 존재하며 `setServer()`는 Boost shared_ptr 사용. 현대 Thrift의 std shared_ptr 경계와 소유권을 함께 검토 |
+| 서버·동시성 | `TNonblockingServer`는 port 대신 서버 transport 객체를 받음. 기존 `PosixThreadFactory`·`ReadWriteMutex` 사용부는 환경 wrapper 안에서 이식 필요 |
+
+fb303의 source 존재만으로 header/library 설치·운영 method 호환성을 선언하지 않는다. 기존 구현의 빌드 경계부터 검증하고 필요한 부분만 수정한다.
 
 autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, fb303 연결을 우선 유지한다. optional HDFS는 회사 사용 여부 확인 후 독립 build lane으로 검증하며 조용히 제거하지 않는다. Boost를 일괄 제거하지 않는다. CMake 전환은 의존성 이식과 행동 변경에서 분리한 후속 선택 작업이다. 기존 운영 install 경로가 동등하게 유지되어야 한다.
 
@@ -60,17 +73,19 @@ autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, f
 
 C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 향후 Linux 검증 장비는 봉구서버를 후보로 두며, 사용 전에 배포판·CPU·GCC/Clang 버전을 확인한다. 회사 Linux 배포판과 compiler 버전은 baseline 확보 단계에서 확정한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
 
-shared_ptr 전환은 generated interface와 Thrift constructor boundary에서 시작한다. Boost와 std 포인터가 서로 같은 객체의 별도 control block을 만들지 않도록 소유권 연결부를 함께 수정한다. 내부 포인터의 일괄 치환, raw StoreQueue backlink의 소유권 변경, global handler 재설계는 하지 않는다. 새로운 thread API를 적용할 때 현재 concurrency wrapper에 필요한 부분만 맞추고 lock 순서와 scope는 유지한다. 삭제된 파일 transport는 먼저 사용 지점과 byte format을 조사한 다음 최소 구현을 선택한다.
+shared_ptr 전환은 generated interface와 Thrift constructor boundary에서 시작한다. Boost와 std 포인터가 서로 같은 객체의 별도 control block을 만들지 않도록 소유권 연결부를 함께 수정한다. 내부 포인터의 일괄 치환, raw StoreQueue backlink의 소유권 변경, global handler 재설계는 하지 않는다. 새로운 thread API를 적용할 때 현재 concurrency wrapper에 필요한 부분만 맞추고 lock 순서와 scope는 유지한다. 파일 transport는 기존 구현의 API와 byte format을 비교한 뒤 호환에 필요한 변경만 선택한다.
 
 ## 결정과 미확정 사항
 
 확정 방향은 두 단계 이식, 기존 구조 유지, IDL 및 spool 불변, 초기 concurrency 동결, 기존 autotools 우선이다. 제안값은 C++17과 Thrift 0.25.0이다. 확정에 필요한 자료는 회사 fork SHA와 patch 목록, production configs, 실제 store 사용률, 지원 플랫폼, client 언어와 버전, HDFS 사용, 기존 빌드 산출물 및 baseline 부하다.
 
-성능 동등성은 같은 machine, compiler 옵션, filesystem, client, payload/category 분포, 지속 시간과 장애 조건에서 측정한다. throughput, latency 분포, CPU, RSS, queue peak, retry, loss 및 recovery 시간을 비교한다. 허용 차이는 회사가 baseline과 함께 승인한다. 이 문서는 임의 성능 수치나 무손실을 보장하지 않는다.
+성능 동등성은 같은 machine, compiler 옵션, filesystem, client, payload/category 분포, category 수, batch 크기, fan-out, 지속 시간과 장애 지속 조건에서 측정한다. throughput, latency 분포, CPU, RSS, thread 수, queue peak, retry, loss 및 recovery 시간을 비교한다. 허용 차이는 회사가 baseline과 함께 승인한다. 이 문서는 임의 성능 수치나 무손실을 보장하지 않는다.
 
 ## 위험과 대응
 
 generated API 변경은 wire golden과 양방향 client 검증으로 막는다. pointer·thread API 변경은 lifetime 및 종료 경로 검증으로 막는다. filesystem 대체는 bytes, filenames와 symlink 비교로 막는다. timeout과 frame size 기본값 차이는 목표 Thrift의 실제 defaults를 조사하고 기존 효과를 명시적으로 구성해 막는다. 동시성 결함과 입력 한계가 새 컴파일러에서 드러나면 sanitizer 보고와 기존 결과를 함께 검토하며 호환성 정책 결정을 별도로 남긴다.
+
+원본 `StdFile`의 할당·해제 불일치는 [구현 계획의 별도 결함 검증](implementation.ko.md#원본-메모리-결함의-별도-검증) 대상으로 둔다. 기존 PHP suite는 `make check`에 연결되어 있지 않으므로 명시적이고 격리된 실행 없이 계약 검증을 통과한 것으로 보지 않는다.
 
 ## 배포와 롤백
 
@@ -92,5 +107,9 @@ generated API 변경은 wire golden과 양방향 client 검증으로 막는다. 
 - [conn_pool.cpp](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/conn_pool.cpp) · [conf.cpp](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/conf.cpp)
 - [configure.ac](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/configure.ac) · [Thrift 공식 release 정보](https://thrift.apache.org/download)
 - [Thrift v0.25.0 fb303 IDL](https://raw.githubusercontent.com/apache/thrift/v0.25.0/contrib/fb303/if/fb303.thrift) · [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+- [bucketupdater.thrift](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/if/bucketupdater.thrift) · [dynamic_bucket_updater.cpp](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/dynamic_bucket_updater.cpp) · [network_dynamic_config.cpp](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/network_dynamic_config.cpp)
+- [upstream 빌드 목록](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/Makefile.am) · [PHP 시험 실행기](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/test/testsuite.php) · [check-local](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/lib/py/Makefile.am)
+- [Thrift C++ 표준 기본값](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/build/cmake/DefineCMakeDefaults.cmake) · [C++ 요구·API 변경](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/lib/cpp/README.md) · [pure_enums generator](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/compiler/cpp/src/thrift/generate/t_cpp_generator.cc)
+- [TFileTransport](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/lib/cpp/src/thrift/transport/TFileTransport.h) · [Thrift C++ 빌드 목록](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/lib/cpp/CMakeLists.txt) · [FacebookBase](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/contrib/fb303/cpp/FacebookBase.h) · [TNonblockingServer](https://github.com/apache/thrift/blob/27e8a425ffb498e190df3a12e239326bf5ba9ed6/lib/cpp/src/thrift/server/TNonblockingServer.h)
 
 karpathy-guidelines와 ponytail의 지침을 적용해 가정을 명시하고, 기존 구현을 우선 재사용하며, 필요한 경계만 수정하도록 설계했다. 각 작업은 관찰 가능한 완료 조건을 갖고, 기능을 추가하기 위한 추상화나 전면 재작성은 도입하지 않는다.
