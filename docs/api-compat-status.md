@@ -4,6 +4,8 @@
 
 관련 문서: [README](../README.md) · [이전 의존성/빌드 단계](build-status.md) · [manifest](build-manifest.json) · [구현 계획](implementation.ko.md)
 
+> 이 문서는 API 이식 단계의 38개 시험과 source 상태 기록이다. 후속 일반 spool·설정 시험과 StdFile 메모리 수정은 [최신 계약 기록](contracts-status.md)을 따른다. 아래의 file.cpp qualification-only 설명과 sanitizer 미실행은 이 이전 단계 기준이다.
+
 ## 현재 결과와 범위
 
 클라우드 Debian 13 x86_64, GCC 14.2.0, C++17, Thrift compiler/runtime 0.25.0, fb303 0.25.0, Boost 1.83.0과 libevent 2.1.13의 **기본 비-HDFS C++ lane에서 scribed clean compile/link가 성공했다**. 두 RPC는 정적 library이며 Thrift runtime은 공유 library를 링크한다. `scribed --help`는 exit 0과 기존 usage를 출력했다. 이 실행에서 기존 fd-limit 요청이 거부됐다는 경고도 기록했다. 시스템 설정은 변경하지 않았다.

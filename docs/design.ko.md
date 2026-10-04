@@ -8,7 +8,7 @@
 
 scribe-next는 기존 Scribe의 구조와 외부 동작을 유지하면서 최신 Thrift 및 현대 Linux 환경에서 빌드할 수 있도록 이식하는 프로젝트다. 프로젝트 이름은 scribe-next로 정하되 기존 바이너리, 서비스, IDL namespace, 설정 key와 설치 경로의 이름은 호환성 검증 없이 바꾸지 않는다. 먼저 빌드와 의존성 경계만 복구하고, 동작 비교가 통과한 뒤 오래된 C++ 표현을 작은 변경으로 정리한다. 처리 구조, 저장 형식, 전달 보장, 성능 정책을 새로 설계하지 않는다.
 
-이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. IDL·queue/store/spool 로직과 기존 시험 소스는 유지한다. 최신 제한 시험·남은 차이는 [API 이식 기록](api-compat-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 운영 daemon 기동·성능 측정·old/new 동등성 검증은 수행하지 않았다.
+이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. IDL·queue/store/spool 로직과 기존 시험 소스는 유지한다. API 시험 이력은 [API 이식 기록](api-compat-status.md), 최신 ordinary spool·설정 계약과 메모리 수정은 [계약 기록](contracts-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 운영 daemon 기동·성능 측정·전체 old/new 동등성 검증은 수행하지 않았다.
 
 ## 범위와 비목표
 
@@ -71,7 +71,7 @@ autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, f
 
 ## 현대화 경계와 제안값
 
-C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 봉구서버의 Ubuntu 26.04.1에서 첫 소스 도입 검증을 통과했다. 이는 build 검증이 아니며 후속 build 전에 CPU·GCC/Clang·의존성 버전을 확인한다. 회사 Linux 배포판과 compiler 버전은 baseline 확보 단계에서 확정한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
+C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 봉구서버의 Ubuntu 26.04.1에서 첫 소스 도입 검사 후 GCC 15.2·Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 clean build와 최신 계약 시험 55개를 통과했다. 이는 확인한 lane의 결과이며 전체 platform/feature matrix를 대신하지 않는다. 회사 Linux 배포판과 compiler 버전은 baseline 확보 단계에서 확정한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
 
 shared_ptr 전환은 generated interface와 Thrift constructor boundary에서 시작한다. Boost와 std 포인터가 서로 같은 객체의 별도 control block을 만들지 않도록 소유권 연결부를 함께 수정한다. 내부 포인터의 일괄 치환, raw StoreQueue backlink의 소유권 변경, global handler 재설계는 하지 않는다. 새로운 thread API를 적용할 때 현재 concurrency wrapper에 필요한 부분만 맞추고 lock 순서와 scope는 유지한다. 파일 transport는 기존 구현의 API와 byte format을 비교한 뒤 호환에 필요한 변경만 선택한다.
 
@@ -85,7 +85,7 @@ shared_ptr 전환은 generated interface와 Thrift constructor boundary에서 �
 
 generated API 변경은 wire golden과 양방향 client 검증으로 막는다. pointer·thread API 변경은 lifetime 및 종료 경로 검증으로 막는다. filesystem 대체는 bytes, filenames와 symlink 비교로 막는다. timeout과 frame size 기본값 차이는 목표 Thrift의 실제 defaults를 조사하고 기존 효과를 명시적으로 구성해 막는다. 동시성 결함과 입력 한계가 새 컴파일러에서 드러나면 sanitizer 보고와 기존 결과를 함께 검토하며 호환성 정책 결정을 별도로 남긴다.
 
-원본 `StdFile`의 할당·해제 불일치는 [구현 계획의 별도 결함 검증](implementation.ko.md#원본-메모리-결함의-별도-검증) 대상으로 둔다. 기존 PHP suite는 `make check`에 연결되어 있지 않으므로 명시적이고 격리된 실행 없이 계약 검증을 통과한 것으로 보지 않는다.
+원본 `StdFile`의 할당·해제 불일치는 [별도 재현·최소 수정](contracts-status.md)을 완료했다. component 범위의 bytes/ASan/UBSan 및 Ubuntu reader LSan 성공과 전체 runtime·daemon 누수 검증을 구분한다. 클라우드 LSan은 ptrace 제약으로 미검증이다. 기존 PHP suite는 `make check`에 연결되어 있지 않으므로 명시적이고 격리된 실행 없이 계약 검증을 통과한 것으로 보지 않는다.
 
 ## 배포와 롤백
 

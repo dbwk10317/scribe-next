@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in real Scribe API smoke tests, without a daemon, sockets, or service.
+"""Opt-in real Scribe API/config contracts, without a daemon, sockets, or service.
 
 Set THRIFT_PREFIX, FB303_PREFIX, SCRIBE_BUILD, and TOOLS_PREFIX to a prepared
 Thrift 0.25.0/fb303 build and its compiler/Boost/libevent environment. SCRIBE_BUILD
@@ -7,7 +7,7 @@ is a configured in-source build copy of the current checkout. Reused objects
 must have matching sources, generated code, and non-stale compiler dependencies.
 Only temporary fixture files are created; no dependency download/build occurs.
 
-This is a single-version golden and handler smoke, not old/new differential,
+This is a single-version golden and config/handler fixture, not old/new differential,
 socket-server coverage, file/spool compatibility, or a durability guarantee.
 """
 
@@ -134,12 +134,13 @@ class ScribeApiIntegrationTests(unittest.TestCase):
                  *(f"-L{path}" for path in libdirs), "-lfb303", "-lthrift", "-lthriftnb",
                  "-levent", "-lboost_filesystem", "-lboost_system", "-o", cls.fixture], ROOT, cls.env)
 
-    def run_fixture(self, mode):
-        directory = self.temporary / mode
-        directory.mkdir()
+    def run_fixture(self, mode, config_text=None):
+        directory = Path(tempfile.mkdtemp(prefix=mode + "-", dir=self.temporary))
         config = directory / "scribe.conf"
         # A port is required by initialize(); no socket/server is constructed.
-        config.write_text("port=1463\n<store>\ncategory=accepted\ntype=null\n</store>\n")
+        if config_text is None:
+            config_text = "port=1463\n<store>\ncategory=accepted\ntype=null\n</store>\n"
+        config.write_bytes(config_text.encode("utf-8"))
         output = checked([self.fixture, mode, config, directory], directory, self.env, timeout=20)
         self.assertIn("PASS " + mode, output)
         return directory
@@ -167,6 +168,83 @@ class ScribeApiIntegrationTests(unittest.TestCase):
 
     def test_actual_null_ack_counters_fb303_and_worker_reinitialize(self):
         self.run_fixture("handler")
+
+    def test_config_values_conversions_and_missing_getters(self):
+        self.run_fixture("config-values", (
+            " \t# full-line comment\n"
+            " \ttext \t= alpha=beta \t # inline comment\n"
+            'quoted="before#after"\n'
+            "duplicate=first\nduplicate=last\nempty=\n=empty key\n"
+            "carriage=value\r\nhex=0x2a\noctal=010\nsigned=-17tail\n"
+            "garbage=nonsense\nlarge=4294967301suffix\nreal=1.25suffix\n"
+        ))
+
+    def test_config_nested_stores_sorted_enumeration_and_serialization(self):
+        config = "z=last\na=first\n"
+        for i in range(12):
+            config += f"<store>\nid={i}\n"
+            if i == 0:
+                config += "<inner>\nvalue=nested\n</inner>\n"
+            config += "</store>\n"
+        directory = self.run_fixture("config-hierarchy", config)
+        expected = "a=first\nz=last\n"
+        for i in (0, 1, 10, 11, 2, 3, 4, 5, 6, 7, 8, 9):
+            expected += f"<store{i}>\n  id={i}\n"
+            if i == 0:
+                expected += "  <inner>\n    value=nested\n  </inner>\n"
+            expected += f"</store{i}>\n"
+        self.assertEqual((directory / "parsed.conf").read_bytes(), expected.encode())
+
+    def test_config_explicit_parent_typed_inheritance_and_global_fallback(self):
+        self.run_fixture("config-inheritance", (
+            "port=1463\nfile::nearest=global-nearest\n"
+            "file::ancestor=root-typed\nfile::global_only=global-value\n"
+            "<store>\ncategory=accepted\ncategories=another\ntype=null\n"
+            "unqualified=not-inherited\nfile::nearest=parent-typed\n"
+            "file::direct=parent-typed\nfile::self=parent-self\nfile::empty=parent-nonempty\n"
+            "file::category=must-not-inherit\nfile::categories=must-not-inherit\n"
+            "buffer::nearest=buffer-parent\n"
+            "<leaf>\ntype=file\ndirect=leaf-direct\nfile::self=leaf-typed\nempty=\n"
+            "</leaf>\n</store>\n"
+        ))
+
+    def test_config_malformed_input_is_permissive_and_missing_file_throws(self):
+        directory = self.run_fixture("config-malformed", (
+            "not-an-assignment\n<bad-open\nafter_bad_open=retained\n"
+            "key=first\nkey=last\n"
+            "<duplicate>\nid=old\n</different-name>\n"
+            "<duplicate>ignored trailing text\nid=new\n</duplicate>\n"
+            "<unclosed>\ninside=accepted at EOF\n"
+        ))
+        self.assertEqual((directory / "parsed.conf").read_text(), (
+            "after_bad_open=retained\nkey=last\n"
+            "<duplicate>\n  id=new\n</duplicate>\n"
+            "<unclosed>\n  inside=accepted at EOF\n</unclosed>\n"
+        ))
+
+    def test_handler_defaults_and_constructor_port_without_config_port(self):
+        self.run_fixture("config-defaults", "<store>\ncategory=accepted\ntype=null\n</store>\n")
+
+    def test_handler_config_overrides_constructor_port_and_limits(self):
+        self.run_fixture("config-overrides", (
+            "port=0xBEEF\nnum_thrift_server_threads=07\nmax_conn=17suffix\n"
+            "max_queue_size=4294967301suffix\n"
+            "<store>\ncategory=accepted\ntype=null\n</store>\n"
+        ))
+
+    def test_handler_invalid_config_warns_but_acks_unrouted_messages(self):
+        for settings in ("", "port=0\n", "port=1463\nnum_thrift_server_threads=0\n",
+                         "port=1463\nnum_thrift_server_threads=garbage\n"):
+            with self.subTest(settings=settings):
+                self.run_fixture("config-invalid", settings +
+                                 "<store>\ncategory=accepted\ntype=null\n</store>\n")
+
+    def test_routing_exact_sorted_prefix_default_and_fanout(self):
+        config = "port=1463\nnew_thread_per_category=no\n"
+        # Longer prefix appears first in the file; sorted map chooses ab*.
+        for category in ("abc*", "ab*", "ab.exact", "default", "ab*"):
+            config += f"<store>\ncategory={category}\ntype=null\n</store>\n"
+        self.run_fixture("routing", config)
 
     def test_actual_scribed_help_without_starting_service(self):
         output = checked([self.scribed, "--help"], self.temporary, self.env, timeout=10)

@@ -4,6 +4,8 @@
 
 고정 upstream 도입 `00826b8` 이후 빌드 경계와 Thrift 0.25 API를 좁게 이식했다. 클라우드 Debian 13·GCC 14·C++17의 기본 비-HDFS C++ lane에서 **scribed clean compile/link와 CLI help 실행에 성공했다**. Thrift upstream C++ 시험 29개도 통과했다. 동일 source commit `96a7fc1`은 Ubuntu 26.04·GCC 15·Boost 1.83에서도 clean build, 프로젝트 38개 및 Thrift 29개 시험을 skip 없이 통과했다. [Ubuntu 검증 기록](docs/ubuntu-validation-20261004.md)을 따른다. 프로젝트 시험과 코드 변경 범위는 [API 이식 기록](docs/api-compat-status.md), 의존성 준비 이력은 [빌드 기록](docs/build-status.md)을 따른다. IDL·queue/store/spool 로직은 유지했으며 전체 platform matrix·old/new 행동 동등성·운영 승인을 완료한 상태는 아니다.
 
+후속 클라우드 단계에서 **일반 spool component 양방향 비교·설정/라우팅을 포함한 55개 시험**이 통과했다. 원본 StdFile의 malloc/delete[] 오류를 재현하고 해제를 free로 맞췄다. 최신 결과와 실제 비교 범위는 [계약 검증 기록](docs/contracts-status.md)을 따른다. 동일 구현은 Ubuntu 26.04.1·GCC 15.2에서도 clean build·CLI help와 55개 시험(skip 0)을 통과했고, 제한된 StdFile reader의 LSan 활성 검증도 통과했다. 클라우드의 LSan ptrace 제약과 전체 daemon 누수 미검증은 별도로 유지한다. 이 후속 결과는 base `75c36bf`의 당시 미commit 작업 트리에서 측정했다. 현재 반영 상태는 Git 이력과 인계 manifest를 따른다.
+
 ## 문서
 
 - [설계 및 호환성 계약](docs/design.ko.md)
@@ -13,6 +15,7 @@
 - [빌드 경계 변경·검증·의존성 준비 상태](docs/build-status.md)
 - [API 이식·실제 C++ build·제한된 시험](docs/api-compat-status.md)
 - [Ubuntu 26.04 + Boost 1.83 재검증](docs/ubuntu-validation-20261004.md)
+- [최신 일반 spool·설정 계약·메모리 수정](docs/contracts-status.md)
 
 설계와 구현 문서는 사용자 지정 Library Markdown을 바탕으로 공개 upstream과 목표 Thrift의 정적 검토를 반영한 작업 문서다. 원본 파일명·버전·SHA256, 검토한 고정 소스와 미검증 범위는 출처 문서에 남겼다.
 
@@ -36,7 +39,7 @@ python3 -B test/verify_upstream_import.py
 python3 -B -m unittest discover -s test -p 'test_verify_upstream_import.py' -v
 ```
 
-첫 명령은 작업 트리 내용·Git 실행 권한·ignore 누락을 검사한다. 두 번째는 임시 checkout에서 변조·누락·symlink·ignore·Git object 실패와 실제 staging을 시험한다. 작업 트리의 stage/commit이나 네트워크 fetch는 하지 않는다. 현재 빌드 경계 변경과 원본 검증기의 회귀 시험은 아래 명령으로 실행한다. 실제 autotools 또는 명시한 dependency prefix가 없으면 해당 통합/생성 시험을 명시적으로 skip하며 성공으로 세지 않는다. 전체 최신 시험에 필요한 THRIFT_PREFIX·FB303_PREFIX·SCRIBE_BUILD·TOOLS_PREFIX와 실제 결과는 [API 이식 기록](docs/api-compat-status.md)을 따른다.
+첫 명령은 작업 트리 내용·Git 실행 권한·ignore 누락을 검사한다. 두 번째는 임시 checkout에서 변조·누락·symlink·ignore·Git object 실패와 실제 staging을 시험한다. 작업 트리의 stage/commit이나 네트워크 fetch는 하지 않는다. 현재 빌드 경계 변경과 원본 검증기의 회귀 시험은 아래 명령으로 실행한다. 실제 autotools 또는 명시한 dependency prefix가 없으면 해당 통합/생성 시험을 명시적으로 skip하며 성공으로 세지 않는다. 전체 최신 시험에 필요한 THRIFT_PREFIX·FB303_PREFIX·SCRIBE_BUILD·TOOLS_PREFIX와 실제 결과는 [계약 검증 기록](docs/contracts-status.md)을 따른다.
 
 ```sh
 python3 -B -m unittest discover -s test -p 'test_*.py' -v
@@ -51,4 +54,4 @@ sh -n bootstrap.sh
 
 ## 라이선스와 출처
 
-공개 upstream은 [Apache License 2.0](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)을 제공한다. 원본 [LICENSE](LICENSE), README와 파일별 copyright·attribution을 보존했다. 고정 upstream tree에 `NOTICE`는 없다. 첫 도입에서는 `.gitignore`에만 표시된 프로젝트 규칙을 덧붙였다. 후속 `bootstrap.sh`, `configure.ac`, `acinclude.m4`, `src/Makefile.am`의 빌드 경계 수정은 파일과 [변경 기록](docs/build-status.md)에 표시했다. 후속 C++ API 경계의 변경과 기존 Boost 포인터 이름 한정은 [API 기록](docs/api-compat-status.md)에 표시했다. IDL·queue/store/spool 알고리즘과 기존 시험 소스는 그대로다. 이 안내로 개인 또는 회사의 새 저작권·배포 권한을 주장하지 않는다. 후속 수정에도 변경 사실을 표시한다. 회사 fork의 공개·배포 권한은 Apache 2.0 여부와 별도로 확인한다.
+공개 upstream은 [Apache License 2.0](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)을 제공한다. 원본 [LICENSE](LICENSE), README와 파일별 copyright·attribution을 보존했다. 고정 upstream tree에 `NOTICE`는 없다. 첫 도입에서는 `.gitignore`에만 표시된 프로젝트 규칙을 덧붙였다. 후속 `bootstrap.sh`, `configure.ac`, `acinclude.m4`, `src/Makefile.am`의 빌드 경계 수정은 파일과 [변경 기록](docs/build-status.md)에 표시했다. 후속 C++ API 경계의 변경과 기존 Boost 포인터 이름 한정은 [API 기록](docs/api-compat-status.md)에 표시했다. IDL·queue/store/spool 형식과 기존 upstream 시험 소스는 그대로다. 이후 StdFile 할당·해제 오류의 최소 수정은 [계약 검증 기록](docs/contracts-status.md)에 분리했다. 이 안내로 개인 또는 회사의 새 저작권·배포 권한을 주장하지 않는다. 후속 수정에도 변경 사실을 표시한다. 회사 fork의 공개·배포 권한은 Apache 2.0 여부와 별도로 확인한다.

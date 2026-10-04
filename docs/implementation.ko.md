@@ -6,9 +6,9 @@
 
 ## 개요
 
-설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 첫 upstream 도입과 제한된 빌드·Thrift API 경계를 수행했다. 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04), 의존성·초기 실패는 [빌드 기록](build-status.md), scribed clean compile/link 성공과 최신 제한 시험은 [API 이식 기록](api-compat-status.md)을 따른다. IDL·queue/store/spool 알고리즘과 기존 시험 소스는 그대로다. 운영 daemon 기동·배포·회사 baseline 동등성 판정은 수행하지 않았다.
+설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 첫 upstream 도입과 제한된 빌드·Thrift API 경계를 수행했다. 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04), 의존성·초기 실패는 [빌드 기록](build-status.md), scribed clean compile/link 이력은 [API 이식 기록](api-compat-status.md), 이후 ordinary spool·config/routing 55개 시험과 메모리 수정은 [계약 검증 기록](contracts-status.md)을 따른다. IDL·queue/store/spool 알고리즘과 기존 시험 소스는 그대로다. 운영 daemon 기동·배포·회사 baseline 동등성 판정은 수행하지 않았다.
 
-기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux이며 배포판과 toolchain은 미확정이다. 봉구서버의 Ubuntu 26.04.1에서 소스 도입 검증을 통과했다. build toolchain·의존성과 회사 승인 matrix는 후속 단계에서 확인한다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
+기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux다. 클라우드 Debian 13·GCC 14와 봉구서버 Ubuntu 26.04.1·GCC 15.2에서 Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 build와 최신 계약 시험 55개를 통과했다. 회사 승인 배포판·toolchain·feature matrix는 미확정이다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
 
 ## 작업 0 upstream 도입과 운영 기준 확보
 
@@ -62,7 +62,7 @@ fb303는 동일 0.25.0 release로 실제 build·workspace 설치를 통과했다
 
 ### 원본 메모리 결함의 별도 검증
 
-고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 `malloc()`으로 할당한 `inputBuffer`를 소멸자가 `delete[]`로 해제하는 불일치를 정적으로 확인했다. scribe-next에 원본 그대로 도입했으며 sanitizer 재현은 미실행이다. 후속 별도 작업에서 버퍼가 남는 작은 framed file 읽기·객체 소멸 경로로 할당/해제 불일치를 재현하고, 별도 변경에서 할당 방식과 맞는 해제로 수정한다. 수정 후 sanitizer와 읽은 bytes·EOF·손상 입력 결과를 비교한다. 미정의 동작을 호환 계약으로 보존하지 않으며 빌드 복구나 일괄 RAII 정리에 섞지 않는다.
+고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 malloc으로 할당한 inputBuffer를 소멸자가 delete[]로 해제하는 오류를 ASan으로 재현했다. 후속 별도 변경에서 해제만 free로 맞추고, 공개 원본 C++03 component 대 현재 C++17 component의 양방향 frame bytes·EOF·손상 입력 결과와 현재 ASan/UBSan 통과를 확인했다. [현재 계약 기록](contracts-status.md)을 따른다. 클라우드 LeakSanitizer는 ptrace 제약으로 미검증이며, 별도 Ubuntu에서는 37-byte 양성 대조와 제한된 reader의 LSan 활성 9개 시험을 통과했다. 전체 daemon 누수 검사나 full old Scribe/Thrift runtime 비교는 아니다. 미정의 동작을 호환 계약으로 보존하지 않고 빌드 복구나 일괄 RAII 정리와 분리했다.
 
 ## 작업 5 제한된 현대 C++ 정리
 
@@ -141,7 +141,7 @@ Gate A는 platform/feature matrix의 compile·link 성공이다. Gate B는 두 I
 
 ## 근거 상태와 남은 확인
 
-고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Thrift/fb303·Scribe RPC library build와 초기 전체 compile 실패는 [빌드 기록](build-status.md), 후속 성공과 현재 범위는 [API 이식 기록](api-compat-status.md)에 남겼다. Scribe 운영 daemon, PHP suite, sanitizer, old/new·성능 시험은 미실행이다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
+고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Thrift/fb303·Scribe RPC library build와 초기 전체 compile 실패는 [빌드 기록](build-status.md), 후속 성공과 현재 범위는 [API 이식 기록](api-compat-status.md)에 남겼다. 제한된 StdFile component ASan/UBSan·양방향 frame 비교와 config/routing 55개 시험의 cloud·Ubuntu 결과 및 Ubuntu reader LSan 성공은 [최신 기록](contracts-status.md)에 추가했다. Scribe 운영 daemon, PHP suite, 전체 sanitizer/LeakSanitizer, full old/new·성능 시험은 미실행이다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
 
 설계 문서의 링크를 evidence entrypoint로 사용한다. 구현 시 각 계약에 source path·symbol·line, fixture ID, old 결과, new 결과, 검증 command, timestamp와 reviewer를 연결한다. upstream 사실, 요청에서 제공된 보존 조건, 구현 제안 및 회사 확인이 필요한 항목을 ledger에서 구분한다. 실패와 미실행도 보존한다.
 

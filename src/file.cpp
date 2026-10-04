@@ -65,7 +65,8 @@ StdFile::StdFile(const std::string& name, bool frame)
 
 StdFile::~StdFile() {
   if (inputBuffer) {
-    delete[] inputBuffer;
+    // scribe-next modification: readNext allocates this buffer with malloc.
+    free(inputBuffer);
     inputBuffer = NULL;
   }
 }
