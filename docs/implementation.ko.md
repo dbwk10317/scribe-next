@@ -6,11 +6,13 @@
 
 ## 개요
 
-설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 아래 작업은 실제 구현을 승인한 다음 수행할 계획이다. 이 문서는 구현 계획이며 코드 수정, 의존성 설치, 빌드 및 배포 결과를 포함하지 않는다. 회사 baseline이 없으므로 production 동등성 판정도 하지 않았다.
+설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 아래 작업은 단계별 구현 계획이며 현재는 승인된 첫 upstream 도입만 수행했다. 도입 검증과 실패 사례 시험 결과는 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)에 분리해 기록한다. 원본 C++·IDL·기존 build/test 파일을 수정하거나 의존성 설치, Scribe 빌드 및 배포를 수행하지 않았다. 회사 baseline이 없으므로 production 동등성 판정도 하지 않았다.
 
-기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux이며 배포판과 toolchain은 미확정이다. 봉구서버는 Linux 검증 환경 후보이며 사용 전 배포판과 toolchain을 확인한다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
+기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux이며 배포판과 toolchain은 미확정이다. 봉구서버의 Ubuntu 26.04.1에서 소스 도입 검증을 통과했다. build toolchain·의존성과 회사 승인 matrix는 후속 단계에서 확인한다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
 
 ## 작업 0 upstream 도입과 운영 기준 확보
+
+현재 상태: 고정 원본 105개 경로 도입과 로컬 upstream 이력 보존, 재현 가능한 import 검증은 완료했다. 회사 차이 목록·승인된 platform matrix·old binary·baseline manifest는 미확보이므로 작업 0 전체 완료가 아니다. 프로젝트와 upstream 이력의 merge·원격 반영은 미실행이다.
 
 별도 도입 변경으로 고정 upstream tree·경로·이력과 고지를 보존한다. 도입 변경에 이식 코드를 섞지 않는다. 회사 fork SHA, upstream 대비 diff, compiler 및 link flags, dependency 버전·패치·라이선스, service unit, 실행 옵션, config 전체, 환경변수, filesystem 및 spool 위치를 수집한다. secrets는 제거하고 설정 key와 구조는 남긴다. client 언어·생성 compiler·protocol/transport 설정, health-check와 fb303 query, HDFS·동적 bucket mapping·서비스 디스커버리 사용 여부를 포함한다. 공개판 `getService()`는 항상 실패하므로 회사 환경 구현 없이 서비스 이름 기반 경로의 동등성을 가정하지 않는다.
 
@@ -60,7 +62,7 @@ fb303 IDL과 C++ source 존재는 확인했으며 build·설치·운영 호환�
 
 ### 원본 메모리 결함의 별도 검증
 
-고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 `malloc()`으로 할당한 `inputBuffer`를 소멸자가 `delete[]`로 해제하는 불일치를 정적으로 확인했다. scribe-next에는 아직 이 코드가 없으며 sanitizer 재현도 미실행이다. 도입 후 버퍼가 남는 작은 framed file 읽기·객체 소멸 경로로 할당/해제 불일치를 재현하고, 별도 변경에서 할당 방식과 맞는 해제로 수정한다. 수정 후 sanitizer와 읽은 bytes·EOF·손상 입력 결과를 비교한다. 미정의 동작을 호환 계약으로 보존하지 않으며 빌드 복구나 일괄 RAII 정리에 섞지 않는다.
+고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 `malloc()`으로 할당한 `inputBuffer`를 소멸자가 `delete[]`로 해제하는 불일치를 정적으로 확인했다. scribe-next에 원본 그대로 도입했으며 sanitizer 재현은 미실행이다. 후속 별도 작업에서 버퍼가 남는 작은 framed file 읽기·객체 소멸 경로로 할당/해제 불일치를 재현하고, 별도 변경에서 할당 방식과 맞는 해제로 수정한다. 수정 후 sanitizer와 읽은 bytes·EOF·손상 입력 결과를 비교한다. 미정의 동작을 호환 계약으로 보존하지 않으며 빌드 복구나 일괄 RAII 정리에 섞지 않는다.
 
 ## 작업 5 제한된 현대 C++ 정리
 
@@ -112,7 +114,7 @@ Performance test는 승인된 normal/burst/outage workload를 동일 장비에�
 
 ## 제안 검증 명령
 
-아래는 구현 승인 후 source가 도입된 격리 checkout에서 조정해 사용할 미실행 예시다. `bootstrap.sh`가 autoreconf 뒤 configure를 호출하므로 configure 인자를 함께 전달한다. 실제 toolchain에서 요구 도구·옵션을 확인하며 dependency 설치 및 실제 service 실행 권한은 별도다.
+아래는 도입된 source의 후속 빌드 복구 단계에서 격리 checkout에 맞춰 조정할 미실행 예시다. 소스 도입 검증의 실제 명령과 결과는 [현재 상태](source-status.md#첫-소스-도입-검증-2026-10-04)에 별도로 기록한다. `bootstrap.sh`가 autoreconf 뒤 configure를 호출하므로 configure 인자를 함께 전달한다. 실제 toolchain에서 요구 도구·옵션을 확인하며 dependency 설치 및 실제 service 실행 권한은 별도다.
 
 ```sh
 git rev-parse HEAD

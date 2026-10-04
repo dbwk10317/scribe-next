@@ -22,22 +22,94 @@
 | 공개 기준 | [facebookarchive/scribe](https://github.com/facebookarchive/scribe), SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2` |
 | 제안 후보 | C++17, Thrift 0.25.0; 요구 표준과 주요 API는 정적 확인, 실제 build·runtime 채택은 미확정 |
 | 미확인 | 회사 fork·patch·production config·client/store/HDFS 사용, 실측 baseline, 배포판·compiler·dependency matrix |
-| 저장소 상태 | 문서와 개발 지침만 있음. upstream source와 build/test/CI 없음 |
+| 저장소 상태 | 고정 upstream 105개 경로와 기존 autotools·PHP 시험 도입. import 검증기와 18개 회귀 시험 통과. 현대 Linux 이식·새 행동 harness·CI는 미구현 |
 | 검증 gate | A compile/link, B 두 RPC/API/config/10 store/동적 목적지 갱신, C spool/relay/fault/종료, D 회사 성능·운영: 모두 미실행·미통과 |
-| 원격·배포 | GitHub `dbwk10317/scribe-next` 비공개 관리 승인, 서버 기동·배포 미실행 |
+| 작업 환경·원격·배포 | 클라우드에서 구현, 검증된 변경은 Mac에서 동기화해 승인된 `codex/upstream-baseline` 브랜치로 반영. GitHub `dbwk10317/scribe-next` 비공개 유지. 봉구서버 import 검증 통과. main merge·Scribe 서비스 기동·배포 미실행 |
 
 ## upstream 코드 도입 전략
 
-다음 코드 도입 작업은 이미 정적으로 검토한 고정 공개 SHA를 다시 확인하고 원본 source tree·경로·라이선스·이력을 보존하는 방향으로 수행한다. 현재 문서 저장소와 합치는 Git 방식은 원격 및 회사 fork 기준을 확인한 뒤 선택한다. 재현 가능한 old binary와 격리된 기존 PHP driver·fixture를 먼저 확보하며 도입만 하는 변경과 이식 변경을 분리한다. 최신 branch를 임의 build 입력으로 삼거나 generated code를 수동 수정하지 않는다.
+첫 코드 도입에서 고정 공개 SHA와 tree를 확인하고 원본 source 경로·라이선스·파일 mode를 보존했다. 원본 `.gitignore`의 bytes 뒤에 프로젝트 추가 규칙만 붙였다. 118개 upstream commit은 `refs/remotes/upstream/baseline`에 별도로 보존했고 현재 프로젝트 이력과 merge하지 않았다. 최종 이력 통합·원격 반영 방식은 별도 확인 후 선택한다. 재현 가능한 old binary와 격리된 기존 PHP driver·fixture를 먼저 확보하며 도입만 하는 변경과 이식 변경을 분리한다. 최신 branch를 임의 build 입력으로 삼거나 generated code를 수동 수정하지 않는다.
 
-첫 완료 조건은 기준 commit/tree 확인, 출처 고지 보존, 회사 대비 차이와 Linux matrix 정리, 계약 fixture 계획이다. 실제 검증 결과는 구현 시 source path·symbol·fixture·old/new 결과에 연결한다. 회사 자료가 없으면 공개 upstream 작업과 회사 호환성 미확정을 분명히 구분한다.
+첫 도입의 기준 commit/tree·원본 내용·출처 고지 확인은 완료했다. 회사 대비 차이·승인된 Linux matrix·계약 fixture와 실행 baseline은 다음 단계에 남아 있다. 실제 검증 결과는 구현 시 source path·symbol·fixture·old/new 결과에 연결한다. 회사 자료가 없으면 공개 upstream 작업과 회사 호환성 미확정을 분명히 구분한다.
+
+## 첫 소스 도입 검증 2026-10-04
+
+아래 검증은 프로젝트 base `739eda4ed5b02fca5663c1c30d310e2370472873` 위의 commit 전 도입 작업 트리를 대상으로 했다. Mac에서 시작한 소스 도입을 승인된 클라우드 Linux 사본에서 이어갔다. 이전 파일의 SHA256, 113개 파일의 bytes·mode와 Git bundle 무결성을 확인한 뒤 복원했으며 인증 정보나 Git 개인 설정은 옮기지 않았다.
+
+| 항목 | 실제 결과 |
+| --- | --- |
+| upstream commit | `fcd294faffd1e88af1643a3a8c2359c41713f7c2` |
+| upstream tree | `b4bf10438c6c3086a0e2dd78a6e4db659e49fbca` |
+| 원본 경로 | 105개: 104개는 bytes·Git mode 그대로, `.gitignore`는 원본 prefix 뒤에 프로젝트 규칙 추가 |
+| upstream 이력 | 118개 commit을 별도 로컬 `refs/remotes/upstream/baseline`에 보존. 프로젝트와 merge하지 않음 |
+| 고지 | `LICENSE`·원본 `README`·파일별 copyright·m4 고지 보존. upstream 전체 tree에 `NOTICE` 없음 |
+| import 검증 | 105개 경로의 내용·Git 실행 bit·파일 종류·부모 경로 및 Git ignore 노출 검사 통과 |
+| 실패·회귀 시험 | 18개 unittest 통과. 원본 코드·서비스·네트워크를 실행하지 않는 임시 checkout 시험 |
+| 소스 누락 방지 | `test/resultChecker/makefile`의 정확한 ignore 예외 추가. `core.ignorecase=false/true`에서 모든 원본 경로의 실제 staging 시험 통과 |
+| Git 무결성 | 복원한 이력의 `git fsck --full` 통과 |
+| 실제 서버 import 검증 | 봉구서버의 Ubuntu 26.04.1에서 동일한 105개 경로 검사·18개 회귀 시험 통과. 아래 별도 기록 참조 |
+| Scribe build·runtime | 실행하지 않음. 클라우드의 build prerequisites 부재는 아래 기록 참조. Gate A–D 미통과 |
+
+재실행 명령은 저장소 root 기준이다.
+
+```sh
+git rev-parse refs/remotes/upstream/baseline
+git rev-parse 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{tree}'
+git fsck --full
+python3 -B test/verify_upstream_import.py
+python3 -B -m unittest discover -s test -p 'test_verify_upstream_import.py' -v
+```
+
+검증기는 고정 object만 사용하며 Git replacement와 lazy fetch를 비활성화한다. 기준 object가 없으면 실패하고 명시적 획득 명령을 안내한다. 네트워크 접근을 자체 실행하지 않는다. 아직 upstream ref를 원격에 반영하지 않았으므로 프로젝트만 새로 clone한 환경에 해당 object가 있다고 가정하지 않는다. 아래 명령은 필요할 때 별도로 실행할 **재현 준비 절차**이며 이번 클라우드 작업에서는 실행하지 않았다. 이번 복원은 검증된 로컬 bundle을 사용했다.
+
+```sh
+git fetch https://github.com/facebookarchive/scribe.git \
+  fcd294faffd1e88af1643a3a8c2359c41713f7c2:refs/remotes/upstream/baseline
+```
+
+실패 사례는 source bytes 변경·파일 누락, owner 실행 bit 추가/제거, 파일/부모 디렉터리 symlink, 원본 ignore 규칙·appendix marker 변경, makefile 예외 누락·새 source ignore, 기준 object 누락·tree 불일치를 포함한다. 정상·프로젝트 추가 ignore·Git replacement 무시도 시험한다. Git mode는 owner 실행 bit로 판정한다. 두 ignorecase 설정의 결과는 Git 패턴 매칭 검증이며 실제 Mac filesystem을 시험한 결과는 아니다. 원래 작업 트리의 index는 변경하지 않으며, 현재 stage/commit/publication의 정확성이나 root 문서의 내용, Scribe의 행동 동등성을 증명하지 않는다. 후속 staging 시 staged diff·경로·mode를 별도로 검토해야 한다.
+
+### 클라우드 Linux 사전 점검
+
+실행 환경은 Debian GNU/Linux 13 (trixie) x86_64이며 회사 승인 target matrix가 아니다.
+
+| 확인한 도구 | 결과 |
+| --- | --- |
+| GCC C++ | 14.2.0 (Debian 14.2.0-19) |
+| Python | 3.12.14 |
+| Git | 2.52.0; import 검증은 `--no-lazy-fetch` 지원 필요 |
+| GNU Make | 4.4.1 |
+| pkg-config | 1.8.1 |
+| autotools | `autoreconf`, `autoconf`, `automake`, `aclocal`, `libtoolize`가 PATH에 없음 |
+| Thrift·PHP | `thrift`, `php`가 PATH에 없음 |
+| 개발 의존성 | 확인한 표준 include 위치에 Boost·libevent·Thrift·fb303 header가 없고, `pkg-config --modversion libevent` 실패 |
+
+원본 `README`, `bootstrap.sh`, `configure.ac`, `src/Makefile.am`, `lib/py/Makefile.am`을 읽고 위 prerequisites를 확인했다. `bootstrap.sh`·Scribe compile/link·PHP suite는 실행하지 않았다. 설치, 다른 dependency version 대체, system 설정 변경 또는 서버 접근으로 이 제약을 우회하지 않았다. 다음 빌드 단계에서 승인된 dependency/compiler 버전·prefix·hash를 고정한 격리 환경을 준비해야 한다. 이 도입 checkpoint는 현대 C++·Thrift API 이식이나 원본 메모리 결함을 수정하지 않는다.
+
+### 봉구서버의 격리 import 검증
+
+2026-10-04 승인된 서버 검증에서 첫 checkpoint를 기존 서비스 checkout과 분리한 사용자 소유 검증 경로에 복원했다. 아래 결과는 그 실행 보고를 반영한 기록이다. 클라우드 import 확인과 구분하며 회사 운영 baseline이나 Scribe compile/link 증거로 확대하지 않는다.
+
+| 항목 | 서버 실행 결과 |
+| --- | --- |
+| 검증한 checkpoint | `scribe-next-milestone-1-20261004.tar.gz`의 첫 버전 |
+| 검증한 archive SHA256 | `7f567523927306eba32a32c561fea2eff2becce22371a8f1d43d1764909c5a23` |
+| OS·kernel | Ubuntu 26.04.1, kernel `7.0.0-34` |
+| 검증 도구 | Git 2.53.0, Python 3.14.4 |
+| 원본 경로 검사 | 105개 경로 통과 |
+| 회귀 시험 | 18개 통과 |
+| 복원·Git 검사 | bundle 검증, `git fsck --full`, `git diff --check` 통과 |
+| 작업 상태 | HEAD `739eda4ed5b02fca5663c1c30d310e2370472873` 유지, staged 변경 없음 |
+| 수행하지 않은 항목 | dependency 설치, Scribe 전체 build·runtime, 서비스 기동·배포, Gate A–D |
+
+서버에서 검증한 소스·검증기·시험 코드는 이번 결과 기록 후에도 동일하다. 후속 checkpoint는 이 서버 결과를 설명하는 문서와 복원 기록만 갱신했다. 업데이트된 archive 전체를 서버에서 다시 실행한 것으로 주장하지 않는다. 검증된 변경의 Mac 동기화·작업 branch commit·push는 별도 사용자 승인 범위이며 main merge나 다음 변경의 push까지 승인된 것은 아니다.
 
 ## 정적 검토의 근거 범위
 
 검토 기준일은 2026-10-04다. 공개 upstream `fcd294faffd1e88af1643a3a8c2359c41713f7c2`와 Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6` 전체 tree를 별도 checkout에서 확보했다. 주요 경계의 source 링크와 채택 방향은 [설계의 의존성 전략](design.ko.md#의존성-전략)과 [근거 목록](design.ko.md#근거와-적용한-원칙)에 둔다.
 
-두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [별도 재현·수정 계획](implementation.ko.md#원본-메모리-결함의-별도-검증)이며 실행 재현은 하지 않았다. 코드 도입, 의존성/Scribe build, wire·spool differential, sanitizer와 성능 시험은 모두 미실행이다. 임시 source checkout을 이 저장소에 포함하지 않는다.
+두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [별도 재현·수정 계획](implementation.ko.md#원본-메모리-결함의-별도-검증)이며 실행 재현은 하지 않았다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 의존성/Scribe build, PHP suite, wire·spool differential, sanitizer와 성능 시험은 미실행이다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
 
 ## 라이선스 경계
 
-공개 기준 SHA의 [upstream LICENSE](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)는 Apache License 2.0이다. 현재 저장소에는 upstream 코드가 없다. 향후 도입·배포 시 LICENSE와 원본 copyright·attribution을 보존하고, NOTICE 존재 여부를 전체 tree에서 확인해 필요한 고지를 유지하며 변경 파일에 변경 사실을 표시한다. 의존성 고지도 검토한다. 이 기록은 개인·회사 저작권의 새 주장이나 회사 fork 공개 권한을 부여하지 않는다.
+공개 기준 SHA의 [upstream LICENSE](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)는 Apache License 2.0이다. 현재 저장소에 원본 `LICENSE`와 파일별 copyright·attribution을 포함했다. 고정 전체 tree에 `NOTICE`는 없음을 확인했다. 원본 104개 파일은 bytes와 Git mode가 동일하고 `.gitignore`만 원본 bytes 뒤에 명시된 프로젝트 규칙을 추가했다. 향후 변경·배포 시 고지를 유지하며 변경 파일에 변경 사실을 표시한다. 의존성 고지도 검토한다. 이 기록은 개인·회사 저작권의 새 주장이나 회사 fork 공개 권한을 부여하지 않는다.

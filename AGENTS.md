@@ -8,7 +8,7 @@
 
 ## 현재 상태와 근거
 
-- 문서 준비 상태다. 소스 코드, build system, harness와 CI가 아직 없다. 실제 파일과 실행 결과로 확인되지 않은 명령·기능을 존재하거나 성공한 것처럼 쓰지 않는다.
+- 고정 upstream 소스·기존 autotools·PHP 시험을 원래 경로로 가져온 첫 도입 상태다. `test/verify_upstream_import.py`와 실패 사례 시험은 실행했지만 현대 Linux 이식, Scribe build·runtime 검증과 새 계약 harness·CI는 아직 없다. 실제 결과는 [현재 상태](docs/source-status.md)를 따른다. 도입 검증을 동작 호환성으로 확대하지 않는다.
 - 기준 upstream은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe), 공개 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 회사 fork·실제 config·실측 baseline·배포판·toolchain은 미확인이다.
 - 대상 OS는 Linux다. C++17과 Thrift 0.25.0은 제안 검증 후보다. target release의 실제 요구 표준과 API를 확인하기 전 확정하거나 빌드 성공을 주장하지 않는다.
 - 문서의 공개 소스 정적 검토 사실, 사용자 보존 요구, 구현 제안, 실제 실행·실패·미실행을 구분한다. 한 환경에서의 결과로 회사 운영 동등성이나 전체 platform 지원을 선언하지 않는다.
@@ -46,10 +46,10 @@ Gate C: 양방향 ordinary spool·thriftfile·relay, fault/retry와 종료 계�
 
 Gate D: 회사가 승인한 baseline·허용 차이에 따른 성능과 운영 승인. 그 뒤 배포·롤백 실행 권한을 확인한다.
 
-어느 gate도 현재 통과하지 않았다. 의존성 build 성공을 Scribe build 성공 또는 runtime 호환성으로 확대하지 않는다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 source와 toolchain 도입 후 확인하며 지금 가짜 build/test 성공을 기록하지 않는다.
+어느 gate도 현재 통과하지 않았다. 의존성 build 성공을 Scribe build 성공 또는 runtime 호환성으로 확대하지 않는다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
 
 ## 저장소·배포·고지
 
-Mac workspace checkout을 소스 원본으로 사용하고 서버는 향후 동일 원격에서 clone/pull한다. 사용자가 승인한 원격 비공개 범위를 준수하고 공개 범위를 임의로 바꾸지 않는다. 기존 변경과 unrelated 파일을 보존하고 stage할 경로를 명시한다. 전역 Git 설정, 임의 Git identity, 비밀 값·캐시·runtime spool·거대 산출물을 저장소에 넣지 않는다.
+현재 구현은 사용자가 승인한 클라우드 작업 사본에서 수행한다. 검증된 변경의 동기화와 승인된 작업 브랜치의 commit·push는 Mac checkout에서 수행하며 다음 구현은 클라우드에서 이어간다. 이번 push 승인을 후속 push나 main merge 권한으로 확대하지 않는다. 봉구서버에서 첫 소스 도입의 격리 검증을 통과했으며 상세 결과는 [현재 상태](docs/source-status.md)를 따른다. 이후 실제 Linux build·runtime 검증은 별도 승인 범위에서 사용한다. 작업 사본 이전은 서버 기동·배포 권한을 뜻하지 않는다. 사용자가 승인한 원격 비공개 범위를 준수하고 공개 범위를 임의로 바꾸지 않는다. 기존 변경과 unrelated 파일을 보존하고 stage할 경로를 명시한다. 전역 Git 설정, 임의 Git identity, 비밀 값·캐시·runtime spool·거대 산출물을 저장소에 넣지 않는다.
 
 upstream 코드 도입 시 원본 Apache 2.0 `LICENSE`, 존재하는 `NOTICE`, 파일별 copyright·attribution 및 의존성 고지를 유지한다. 변경 사실을 표시하되 임의의 개인 저작권이나 회사 권리를 주장하지 않는다. 회사 fork의 공개·배포 권한은 별도로 확인한다.
