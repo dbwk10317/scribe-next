@@ -6,6 +6,10 @@
 
 후속 클라우드 단계에서 **일반 spool component 양방향 비교·설정/라우팅을 포함한 55개 시험**이 통과했다. 원본 StdFile의 malloc/delete[] 오류를 재현하고 해제를 free로 맞췄다. 최신 결과와 실제 비교 범위는 [계약 검증 기록](docs/contracts-status.md)을 따른다. 동일 구현은 Ubuntu 26.04.1·GCC 15.2에서도 clean build·CLI help와 55개 시험(skip 0)을 통과했고, 제한된 StdFile reader의 LSan 활성 검증도 통과했다. 클라우드의 LSan ptrace 제약과 전체 daemon 누수 미검증은 별도로 유지한다. 이 후속 결과는 base `75c36bf`의 당시 미commit 작업 트리에서 측정했다. 현재 반영 상태는 Git 이력과 인계 manifest를 따른다.
 
+main `ffc73ee` 이후 클라우드에서 실제 FileStore byte·replay 통합을 추가해 **70개 시험(skip 0)**을 통과했다. 기존 partial replay의 파일 교체 실패→미처리 메시지 손실을 재현했으며 production 수정은 적용하지 않았다. 이 수정 전 범위와 재현 결과는 [FileStore 기록](docs/filestore-contracts-status.md)을 따른다.
+
+사용자 승인 후 openTruncate의 app flag만 제거한 수정본은 새 clean build·CLI help와 **74개 시험(skip 0)**을 통과했다. 부분 처리 뒤 남은 2개가 보존되고 다음 replay에서 전달됨을 확인했다. add_newlines 재적용과 남은 crash/write-failure/unlink 위험을 포함한 최신 상태는 [truncate 수정 기록](docs/truncate-fix-status.md)을 따른다. 동일 v5 구현은 Ubuntu 26.04.1·GCC 15.2에서도 새 clean build·CLI help와 74개 시험(skip 0)을 통과했다. 후속 commit/push는 미실행이다.
+
 ## 문서
 
 - [설계 및 호환성 계약](docs/design.ko.md)
@@ -15,7 +19,9 @@
 - [빌드 경계 변경·검증·의존성 준비 상태](docs/build-status.md)
 - [API 이식·실제 C++ build·제한된 시험](docs/api-compat-status.md)
 - [Ubuntu 26.04 + Boost 1.83 재검증](docs/ubuntu-validation-20261004.md)
-- [최신 일반 spool·설정 계약·메모리 수정](docs/contracts-status.md)
+- [일반 spool·설정 계약·메모리 수정 이력](docs/contracts-status.md)
+- [FileStore 통합·수정 전 손실 경로](docs/filestore-contracts-status.md)
+- [최신 truncate 수정·부분 replay 검증](docs/truncate-fix-status.md)
 
 설계와 구현 문서는 사용자 지정 Library Markdown을 바탕으로 공개 upstream과 목표 Thrift의 정적 검토를 반영한 작업 문서다. 원본 파일명·버전·SHA256, 검토한 고정 소스와 미검증 범위는 출처 문서에 남겼다.
 
@@ -39,7 +45,7 @@ python3 -B test/verify_upstream_import.py
 python3 -B -m unittest discover -s test -p 'test_verify_upstream_import.py' -v
 ```
 
-첫 명령은 작업 트리 내용·Git 실행 권한·ignore 누락을 검사한다. 두 번째는 임시 checkout에서 변조·누락·symlink·ignore·Git object 실패와 실제 staging을 시험한다. 작업 트리의 stage/commit이나 네트워크 fetch는 하지 않는다. 현재 빌드 경계 변경과 원본 검증기의 회귀 시험은 아래 명령으로 실행한다. 실제 autotools 또는 명시한 dependency prefix가 없으면 해당 통합/생성 시험을 명시적으로 skip하며 성공으로 세지 않는다. 전체 최신 시험에 필요한 THRIFT_PREFIX·FB303_PREFIX·SCRIBE_BUILD·TOOLS_PREFIX와 실제 결과는 [계약 검증 기록](docs/contracts-status.md)을 따른다.
+첫 명령은 작업 트리 내용·Git 실행 권한·ignore 누락을 검사한다. 두 번째는 임시 checkout에서 변조·누락·symlink·ignore·Git object 실패와 실제 staging을 시험한다. 작업 트리의 stage/commit이나 네트워크 fetch는 하지 않는다. 현재 빌드 경계 변경과 원본 검증기의 회귀 시험은 아래 명령으로 실행한다. 실제 autotools 또는 명시한 dependency prefix가 없으면 해당 통합/생성 시험을 명시적으로 skip하며 성공으로 세지 않는다. 전체 최신 시험에 필요한 THRIFT_PREFIX·FB303_PREFIX·SCRIBE_BUILD·TOOLS_PREFIX와 실제 결과는 [truncate 수정 기록](docs/truncate-fix-status.md)을 따른다.
 
 ```sh
 python3 -B -m unittest discover -s test -p 'test_*.py' -v

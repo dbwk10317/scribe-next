@@ -83,7 +83,8 @@ bool StdFile::openWrite() {
 
 bool StdFile::openTruncate() {
   // open an existing file for write and truncate its contents
-  ios_base::openmode mode = fstream::out | fstream::app | fstream::trunc;
+  // scribe-next modification: app|trunc cannot open; overwrite for buffer replay.
+  ios_base::openmode mode = fstream::out | fstream::trunc;
   return open(mode);
 }
 
