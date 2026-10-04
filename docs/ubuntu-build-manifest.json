@@ -1,0 +1,323 @@
+{
+  "recorded_utc": "2026-10-04T10:28:03.232293+00:00",
+  "source_commit": "96a7fc1868639dcf4d479c0d94ab0886fb2776d3",
+  "source_files_unchanged": 124,
+  "environment": {
+    "os_release": "Ubuntu 26.04.1 LTS (resolute)",
+    "machine": "x86_64",
+    "kernel": "7.0.0-34-generic",
+    "g++": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+    "python": "3.14.4",
+    "system_packages": "libc6:amd64\t2.43-2ubuntu2.4\nlibevent-core-2.1-7t64:amd64\t2.1.12-stable-10ubuntu0.2\nlibgcc-s1:amd64\t16-20260322-1ubuntu1\nlibssl3t64:amd64\t3.5.5-1ubuntu3.5\nlibstdc++6:amd64\t16-20260322-1ubuntu1\nzlib1g-dev:amd64\t1:1.3.dfsg+really1.3.1-1ubuntu3.1"
+  },
+  "thrift_archive": {
+    "url": "https://dlcdn.apache.org/thrift/0.25.0/thrift-0.25.0.tar.gz",
+    "sha256": "66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214",
+    "size": 5068440,
+    "unchanged_source_files": 3112
+  },
+  "results": {
+    "thrift_cpp_tests": {
+      "total": 29,
+      "pass": 29,
+      "skip": 0,
+      "fail": 0,
+      "initial_run": "28 pass, UnitTests failed on 2 missing locale fixtures; preserved log",
+      "final_run": "workspace-only en_US/de_DE locales via existing localedef and process-local LOCPATH"
+    },
+    "project_tests": {
+      "total": 38,
+      "pass": 38,
+      "skip": 0
+    },
+    "fb303_cpp_build": "pass",
+    "scribe_clean_cpp_build": "pass",
+    "scribe_help_exit": 0,
+    "strict_import": {
+      "exit": 1,
+      "expected_content_mismatches": 15
+    },
+    "system_package_state_and_apt_sources": "unchanged"
+  },
+  "scribed": {
+    "size": 1043352,
+    "sha256": "109e00cd10593ec04ff3de68ada6a29af0162eaf931e155cee868567a684335c"
+  },
+  "scope": "Ubuntu 26.04 x86_64, GCC15 C++17, Boost1.83, Thrift/fb3030.25.0; public non-HDFS C++ lane; no daemon, installation, deployment, or Gate A-D completion",
+  "dependency_packages": [
+    {
+      "package": "autoconf",
+      "version": "2.72-3.1ubuntu2",
+      "architecture": "all",
+      "filename": "pool/main/a/autoconf/autoconf_2.72-3.1ubuntu2_all.deb",
+      "sha256": "9edd0db0fa94580ab013529d6842a8e89b8ed22ab337da5e95cbb43971978815"
+    },
+    {
+      "package": "automake",
+      "version": "1:1.18.1-3build1",
+      "architecture": "all",
+      "filename": "pool/main/a/automake/automake_1.18.1-3build1_all.deb",
+      "sha256": "1a443abf03a5af97f4493405e22eba52fd6935a8b0583ac32fb88b3727563e53"
+    },
+    {
+      "package": "autotools-dev",
+      "version": "20240727.1build1",
+      "architecture": "all",
+      "filename": "pool/main/a/autotools-dev/autotools-dev_20240727.1build1_all.deb",
+      "sha256": "434394dc6703f8e195c19764bd03aa55a0a9986749285fd7abe0a0e4ab086cfc"
+    },
+    {
+      "package": "flex",
+      "version": "2.6.4-8.2build2",
+      "architecture": "amd64",
+      "filename": "pool/main/f/flex/flex_2.6.4-8.2build2_amd64.deb",
+      "sha256": "622d3959e0424ca276a01946a44a30c327d4bd6963f96b070b94e9b80b541bb8"
+    },
+    {
+      "package": "libtool",
+      "version": "2.5.4-9",
+      "architecture": "all",
+      "filename": "pool/main/libt/libtool/libtool_2.5.4-9_all.deb",
+      "sha256": "5b3146cd9d380e4725fc5b5e54795ae1f72d165d93e68ce29076b69762661fd4"
+    },
+    {
+      "package": "libtool-bin",
+      "version": "2.5.4-9",
+      "architecture": "amd64",
+      "filename": "pool/main/libt/libtool/libtool-bin_2.5.4-9_amd64.deb",
+      "sha256": "054d2c873661fb877143a2c31e3f510555c01c5deaa0f03833744e8b10cd9ab9"
+    },
+    {
+      "package": "m4",
+      "version": "1.4.21-1",
+      "architecture": "amd64",
+      "filename": "pool/main/m/m4/m4_1.4.21-1_amd64.deb",
+      "sha256": "1890e37e38fd64bc10630e508f4a013a76bddbe05be2ed89e68df28463712b55"
+    },
+    {
+      "package": "libboost-atomic1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-atomic1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "f5d51205fabd088edd53d3e97c09abbf53a8d1bdb6d3908e10e38e57460988fe"
+    },
+    {
+      "package": "libboost-atomic1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-atomic1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "783fcdbea099154f79ed1bec3e6b371a7d2be609eae265704340cefbee2f20b2"
+    },
+    {
+      "package": "libboost-chrono1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-chrono1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "b2a4990354d3ad90ff8c89b1f460db53d093500cb651eee2ef41c06f487d53a5"
+    },
+    {
+      "package": "libboost-chrono1.83.0t64",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-chrono1.83.0t64_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "58914c32e14d8c4c5b8ea59cb8121e7c5d3fc912957207a021d28d5291bf8e26"
+    },
+    {
+      "package": "libboost-date-time1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-date-time1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "de8c478aada771bce57e6841d06fc8fed2f2c307972d0862f0091454ad6c6fc3"
+    },
+    {
+      "package": "libboost-date-time1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-date-time1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "fb9699cf39fede8dee2d08d38fcd1033580a09a8f61ea301ead008e2478e28b8"
+    },
+    {
+      "package": "libboost-filesystem1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-filesystem1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "d90d680bf8f297d0e066c351626832203c44e8d4670e58ee72753112b993d296"
+    },
+    {
+      "package": "libboost-filesystem1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-filesystem1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "368820021b3f5c3ac555a22943f9e133f50a64282a87e77f6cd7df7af0a3875f"
+    },
+    {
+      "package": "libboost-serialization1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-serialization1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "8a629aad17a77450a413f6ce3feaf255e78c0c3b903a8f35a23666480219565f"
+    },
+    {
+      "package": "libboost-serialization1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-serialization1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "fa27238d4a7d0ca1ce008fa020d60e2f736b68adbe3b8610bbf3f7816f55de97"
+    },
+    {
+      "package": "libboost-system1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-system1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "ff6f324b42e8c91d8e6d87c017819c8be9deae9d6d2e64b6eaffb2540d07b619"
+    },
+    {
+      "package": "libboost-system1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-system1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "bc81f832c4db7894a88aa6351180646be7ff47758327b409ba57fd4d385601f1"
+    },
+    {
+      "package": "libboost-test1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-test1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "05166efa3af0ebdd13f37561ff198e4c1e94a4240f7e667b08a606e8b1a3a98b"
+    },
+    {
+      "package": "libboost-test1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-test1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "9265c5ef5a29461c765ceffeb4f435c4158db23e421a2f3d4fe48c72e1b26bb3"
+    },
+    {
+      "package": "libboost-thread1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-thread1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "7c14139fd5c2486485a588b7c1bfc85efaf758852dddd27e31da91564eeb55a4"
+    },
+    {
+      "package": "libboost-thread1.83.0",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost-thread1.83.0_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "d772377947c80870372f9d54f07df5e25afeea2851fc3d11dc904e50869ea1ef"
+    },
+    {
+      "package": "libboost1.83-dev",
+      "version": "1.83.0-5ubuntu5",
+      "architecture": "amd64",
+      "filename": "pool/universe/b/boost1.83/libboost1.83-dev_1.83.0-5ubuntu5_amd64.deb",
+      "sha256": "c17abc5a40a074c3d959655191ebec1561fa25f14f4948f6788be49417d4b234"
+    },
+    {
+      "package": "bison",
+      "version": "2:3.8.2+dfsg-1ubuntu0.26.04.1",
+      "architecture": "amd64",
+      "filename": "pool/main/b/bison/bison_3.8.2+dfsg-1ubuntu0.26.04.1_amd64.deb",
+      "sha256": "df3c66f15d5736094da21d45506c81027091c5a28f7b8f358bbef616a261a530"
+    },
+    {
+      "package": "libssl-dev",
+      "version": "3.5.5-1ubuntu3.5",
+      "architecture": "amd64",
+      "filename": "pool/main/o/openssl/libssl-dev_3.5.5-1ubuntu3.5_amd64.deb",
+      "sha256": "e246828d9998f432380908e72a70c57463455428931553a5deec1fce882bd3e6"
+    },
+    {
+      "package": "libevent-2.1-7t64",
+      "version": "2.1.12-stable-10ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "pool/main/libe/libevent/libevent-2.1-7t64_2.1.12-stable-10ubuntu0.2_amd64.deb",
+      "sha256": "427917ba97310d8c6caa8c012e9a9b7e3bbdf643ce0c4150e53891ffd83b8822"
+    },
+    {
+      "package": "libevent-dev",
+      "version": "2.1.12-stable-10ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "pool/main/libe/libevent/libevent-dev_2.1.12-stable-10ubuntu0.2_amd64.deb",
+      "sha256": "95528390ab8b57d8d3bd68e66acd92115a89a35000d183034fe7a92010722873"
+    },
+    {
+      "package": "libevent-extra-2.1-7t64",
+      "version": "2.1.12-stable-10ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "pool/main/libe/libevent/libevent-extra-2.1-7t64_2.1.12-stable-10ubuntu0.2_amd64.deb",
+      "sha256": "a20c1772dacf449cb100ce3e79aa7203f9431aeeec8e3c472cfa8783d34ad52c"
+    },
+    {
+      "package": "libevent-openssl-2.1-7t64",
+      "version": "2.1.12-stable-10ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "pool/main/libe/libevent/libevent-openssl-2.1-7t64_2.1.12-stable-10ubuntu0.2_amd64.deb",
+      "sha256": "d6936b7e34362743da215ce1218a8fd993db8cbed8411a24e2488b2aee4a411d"
+    },
+    {
+      "package": "libevent-pthreads-2.1-7t64",
+      "version": "2.1.12-stable-10ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "pool/main/libe/libevent/libevent-pthreads-2.1-7t64_2.1.12-stable-10ubuntu0.2_amd64.deb",
+      "sha256": "a181c67e594c2c01524d00e39d922615d72feea59d810a34455f5c908b6253a9"
+    }
+  ],
+  "authenticated_releases": [
+    {
+      "file": "kr.archive.ubuntu.com_ubuntu_dists_resolute_InRelease",
+      "sha256": "45f95ce276cdba3e41870516a130e03c58b8b7a79e9546b0efe9e526d255740c",
+      "dates": {
+        "Date": "Thu, 23 Apr 2026 17:07:15 UTC"
+      },
+      "valid_until_present": false
+    },
+    {
+      "file": "kr.archive.ubuntu.com_ubuntu_dists_resolute-updates_InRelease",
+      "sha256": "b556a5abc904d4cf335072d00da17d21aa0fa3b2f616e859cd2f2aaa6d003f0f",
+      "dates": {
+        "Date": "Mon, 28 Sep 2026 15:33:36 UTC"
+      },
+      "valid_until_present": false
+    },
+    {
+      "file": "security.ubuntu.com_ubuntu_dists_resolute-security_InRelease",
+      "sha256": "ac69ece5f0df1f657ec9fc41f52c1061270add10987b235ddeda9d8a43c7bf80",
+      "dates": {
+        "Date": "Mon, 28 Sep 2026 21:57:19 UTC"
+      },
+      "valid_until_present": false
+    }
+  ],
+  "reused_system_runtime": {
+    "versions": {
+      "libssl3t64": "3.5.5-1ubuntu3.5",
+      "libevent-core-2.1-7t64": "2.1.12-stable-10ubuntu0.2"
+    },
+    "files": [
+      {
+        "workspace_link": "/workspace/scribe-next-api-validation-20261004-7SqsM3/tools/usr/lib/x86_64-linux-gnu/libssl.so.3",
+        "system_target": "/usr/lib/x86_64-linux-gnu/libssl.so.3",
+        "sha256": "a78c54c7203f51eb49c3d9acc5e935e5402a147f75abf3152b628a9753cfea70"
+      },
+      {
+        "workspace_link": "/workspace/scribe-next-api-validation-20261004-7SqsM3/tools/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+        "system_target": "/usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+        "sha256": "7cf7da0a671c553b7140d40ed0ee8f07d12d0fceedff87c930d1918d205b106f"
+      },
+      {
+        "workspace_link": "/workspace/scribe-next-api-validation-20261004-7SqsM3/tools/usr/lib/x86_64-linux-gnu/libevent_core-2.1.so.7.0.1",
+        "system_target": "/usr/lib/x86_64-linux-gnu/libevent_core-2.1.so.7.0.1",
+        "sha256": "1d94e18b68cf996809b1132be5897f249b07ce59edf63feb6e61e73de8f0f4fe"
+      }
+    ]
+  },
+  "evidence": {
+    "checkpoint_directory": "ubuntu-evidence/records",
+    "full_manifest": "ubuntu-build-manifest.json",
+    "full_manifest_sha256": "a2c34786e24bfcb1014b9748ce99799bb7eb3460e607d9e508dd07adbd6466e1",
+    "scripts": "ubuntu-evidence/*.sh and *.py; actual commands with isolated workspace paths",
+    "locale_fixture": "existing locales/libc-bin 2.43-2ubuntu2.4; localedef --no-archive; process-only LOCPATH",
+    "source_directory": "/workspace/scribe-next-api-validation-20261004-7SqsM3/source"
+  }
+}

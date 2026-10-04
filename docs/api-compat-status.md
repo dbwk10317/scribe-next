@@ -1,6 +1,6 @@
 # Thrift 0.25 API 이식과 실제 scribed 빌드
 
-2026-10-04 · base `00826b8f0ac9288944e7ae56844f926dd654f0bb` · 미commit·미push 작업 트리
+2026-10-04 · 아래 클라우드 측정은 base `00826b8f0ac9288944e7ae56844f926dd654f0bb`의 당시 미commit·미push 작업 트리 기준. 이후 동일 변경을 `96a7fc1868639dcf4d479c0d94ab0886fb2776d3`로 반영했으며 [Ubuntu 재검증](ubuntu-validation-20261004.md)을 완료했다.
 
 관련 문서: [README](../README.md) · [이전 의존성/빌드 단계](build-status.md) · [manifest](build-manifest.json) · [구현 계획](implementation.ko.md)
 

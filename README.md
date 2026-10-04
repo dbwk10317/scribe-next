@@ -2,7 +2,7 @@
 
 기존 Facebook Scribe의 외부 동작을 보존하면서 현대 Linux 환경으로 이식하는 C++ 프로젝트다. 프로젝트 이름은 `scribe-next`이며 실행 바이너리·서비스·CLI·설정 이름은 기존 `scribed` 계약을 유지한다.
 
-고정 upstream 도입 `00826b8` 이후 빌드 경계와 Thrift 0.25 API를 좁게 이식했다. 클라우드 Debian 13·GCC 14·C++17의 기본 비-HDFS C++ lane에서 **scribed clean compile/link와 CLI help 실행에 성공했다**. Thrift upstream C++ 시험 29개도 통과했다. 최신 프로젝트 시험과 변경 범위는 [API 이식 기록](docs/api-compat-status.md), 의존성 준비 이력은 [빌드 기록](docs/build-status.md)을 따른다. IDL·queue/store/spool 로직은 유지했으며 전체 platform matrix·old/new 행동 동등성·운영 승인을 완료한 상태는 아니다.
+고정 upstream 도입 `00826b8` 이후 빌드 경계와 Thrift 0.25 API를 좁게 이식했다. 클라우드 Debian 13·GCC 14·C++17의 기본 비-HDFS C++ lane에서 **scribed clean compile/link와 CLI help 실행에 성공했다**. Thrift upstream C++ 시험 29개도 통과했다. 동일 source commit `96a7fc1`은 Ubuntu 26.04·GCC 15·Boost 1.83에서도 clean build, 프로젝트 38개 및 Thrift 29개 시험을 skip 없이 통과했다. [Ubuntu 검증 기록](docs/ubuntu-validation-20261004.md)을 따른다. 프로젝트 시험과 코드 변경 범위는 [API 이식 기록](docs/api-compat-status.md), 의존성 준비 이력은 [빌드 기록](docs/build-status.md)을 따른다. IDL·queue/store/spool 로직은 유지했으며 전체 platform matrix·old/new 행동 동등성·운영 승인을 완료한 상태는 아니다.
 
 ## 문서
 
@@ -11,7 +11,8 @@
 - [개발 에이전트 지침](AGENTS.md)
 - [문서 출처·현재 결정·코드 도입 전략](docs/source-status.md)
 - [빌드 경계 변경·검증·의존성 준비 상태](docs/build-status.md)
-- [최신 API 이식·실제 C++ build·제한된 시험](docs/api-compat-status.md)
+- [API 이식·실제 C++ build·제한된 시험](docs/api-compat-status.md)
+- [Ubuntu 26.04 + Boost 1.83 재검증](docs/ubuntu-validation-20261004.md)
 
 설계와 구현 문서는 사용자 지정 Library Markdown을 바탕으로 공개 upstream과 목표 Thrift의 정적 검토를 반영한 작업 문서다. 원본 파일명·버전·SHA256, 검토한 고정 소스와 미검증 범위는 출처 문서에 남겼다.
 
@@ -19,7 +20,7 @@
 
 기준은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe)의 공개 SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. `scribe.thrift`와 `bucketupdater.thrift`, framed binary와 경로별 strict 설정, fb303, byte 보존, 메모리 큐 ACK, queue/batch/thread·종료·재시도, 10 store, 동적 목적지 갱신과 파일·설정·라우팅·spool 계약을 지킨다. durable ACK, exactly-once, 새 transport, 전면 재작성은 목표에 포함하지 않는다.
 
-Linux는 대상 OS다. C++17과 Thrift 0.25.0은 단일 클라우드 C++ lane의 빌드가 확인된 검증 후보이며 전체 운영 채택을 뜻하지 않는다. 회사 fork SHA와 패치, 실측 baseline, 실제 config/client/store 사용, Linux 배포판과 GCC/Clang·의존성 버전은 미확인이다. 회사 운영 동등성은 이 자료와 승인된 판정 기준 없이 선언하지 않는다.
+Linux는 대상 OS다. C++17과 Thrift 0.25.0은 클라우드 Debian 13 및 Ubuntu 26.04의 제한된 C++ lane에서 빌드가 확인된 검증 후보이며 전체 운영 채택을 뜻하지 않는다. 회사 fork SHA와 패치, 실측 baseline, 실제 config/client/store 사용, Linux 배포판과 GCC/Clang·의존성 버전은 미확인이다. 회사 운영 동등성은 이 자료와 승인된 판정 기준 없이 선언하지 않는다.
 
 ## 첫 개발 작업과 다음 단계
 
@@ -46,7 +47,7 @@ sh -n bootstrap.sh
 
 ## 소스와 배포 관례
 
-현재 구현은 승인된 클라우드 작업 사본에서 이어가며, 검증된 변경의 동기화와 승인된 작업 브랜치 commit·push는 Mac checkout에서 수행한다. GitHub 허브는 사용자 승인 범위에 따라 `dbwk10317/scribe-next` 비공개 저장소로 관리한다. 봉구서버의 Ubuntu 26.04.1에서 격리된 소스 도입 검사 105개 경로와 회귀 시험 18개가 통과했다. 상세 환경과 검증한 checkpoint는 [서버 검증 기록](docs/source-status.md#봉구서버의-격리-import-검증)을 따른다. 첫 checkpoint는 commit 전 작업 트리로 검증했으며, 검증된 도입 변경은 `codex/upstream-baseline`의 `00826b8f0ac9288944e7ae56844f926dd654f0bb`로 반영했다. 현재 build 경계의 추가 변경은 아직 commit/push하지 않았다. main merge·후속 push·서버 검증·배포는 각각 승인 범위와 검증 gate를 확인한 뒤 진행한다. Scribe 서비스 기동·배포는 수행하지 않았다.
+현재 구현은 승인된 클라우드 작업 사본에서 이어가며, 검증된 변경의 동기화와 승인된 작업 브랜치 commit·push는 Mac checkout에서 수행한다. GitHub 허브는 사용자 승인 범위에 따라 `dbwk10317/scribe-next` 비공개 저장소로 관리한다. 봉구서버의 Ubuntu 26.04.1에서 격리된 소스 도입 검사 105개 경로와 회귀 시험 18개가 통과했다. 상세 환경과 검증한 checkpoint는 [서버 검증 기록](docs/source-status.md#봉구서버의-격리-import-검증)을 따른다. 첫 checkpoint는 commit 전 작업 트리로 검증했으며, 검증된 도입 변경은 `codex/upstream-baseline`의 `00826b8f0ac9288944e7ae56844f926dd654f0bb`로 반영했다. 후속 build/API 변경은 같은 브랜치의 `96a7fc1868639dcf4d479c0d94ab0886fb2776d3`로 승인된 commit/push를 완료했고, [Ubuntu 격리 빌드 검증](docs/ubuntu-validation-20261004.md)도 수행했다. main merge·후속 push·서버 검증·배포는 각각 승인 범위와 검증 gate를 확인한 뒤 진행한다. Scribe 서비스 기동·배포는 수행하지 않았다.
 
 ## 라이선스와 출처
 
