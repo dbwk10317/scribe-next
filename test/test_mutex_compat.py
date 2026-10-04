@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compile and exercise the real POSIX mutex compatibility boundary.
 
+This instrumentation lane is Linux-only; Apple ld lacks GNU --wrap.
 No Thrift installation or Scribe process is needed. The fixture is compiled in
 a temporary directory, with and without NDEBUG; each behavioral case runs in its
 own bounded process. GNU linker's pthread wrappers observe contention without
@@ -10,6 +11,7 @@ replacing the real lock operations or relying on sleeps to observe a held lock.
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -20,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 class MutexCompatibilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if not sys.platform.startswith("linux"):
+            raise unittest.SkipTest("Linux GNU --wrap mutex fixture unrun on " + sys.platform)
         compiler = shutil.which("g++")
         if compiler is None:
             raise unittest.SkipTest("real mutex compatibility tests unrun; missing g++")

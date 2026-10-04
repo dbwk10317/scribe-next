@@ -1,4 +1,4 @@
-// Socket-free contract fixture for actual Scribe config, handler, and RPC APIs.
+// Contract fixture for actual Scribe config, handler, and RPC APIs.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #include "common.h"
 #include "scribe_server.h"
@@ -419,11 +419,15 @@ static void testRouting(const std::string& filename) {
 }
 
 #include "filestore_contracts.h"
+#include "loopback_rpc.h"
 
 int main(int argc, char** argv) {
   try {
     require(argc == 4, "usage: fixture mode config temporary-directory");
-    if (std::string(argv[1]) == "wire") {
+    if (std::string(argv[1]) == "loopback-server") {
+      runLoopbackServer(argv[2], argv[3]);
+      return 0;
+    } else if (std::string(argv[1]) == "wire") {
       testWire(argv[2], argv[3]);
     } else if (std::string(argv[1]) == "handler") {
       testHandler(argv[2]);

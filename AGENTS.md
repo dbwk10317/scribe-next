@@ -8,7 +8,7 @@
 
 ## 현재 상태와 근거
 
-- 고정 upstream 도입 뒤 제한된 빌드 진입부 수정을 진행 중이다. 의존성·통합 시험 이력은 [빌드 경계 기록](docs/build-status.md), scribed compile/link·API 시험 이력은 [API 이식 기록](docs/api-compat-status.md), 일반 spool·설정 계약과 최소 메모리 수정은 [계약 검증 이력](docs/contracts-status.md), 실제 FileStore 통합과 수정 전 손실 경로는 [FileStore 기록](docs/filestore-contracts-status.md), 승인된 최소 truncate 수정과 최신 74개 시험은 [수정 기록](docs/truncate-fix-status.md), 도입 이력은 [현재 상태](docs/source-status.md)를 따른다. import 검증기는 의도된 build 파일 수정도 실패로 표시하는 원본 보존 검사다. 원본 도입 commit의 검사와 현재 build 회귀 시험을 구분하며, 부분 build·의존성 시험과 단일 Linux compile/link 결과를 전체 matrix·runtime 호환성으로 확대하지 않는다.
+- 고정 upstream 도입 뒤 제한된 빌드 진입부 수정을 진행 중이다. 의존성·통합 시험 이력은 [빌드 경계 기록](docs/build-status.md), scribed compile/link·API 시험 이력은 [API 이식 기록](docs/api-compat-status.md), 일반 spool·설정 계약과 최소 메모리 수정은 [계약 검증 이력](docs/contracts-status.md), 실제 FileStore 통합과 수정 전 손실 경로는 [FileStore 기록](docs/filestore-contracts-status.md), 승인된 최소 truncate 수정과 74개 시험은 [수정 기록](docs/truncate-fix-status.md), 최신 test-only loopback TCP·worker 계약은 [loopback 기록](docs/loopback-rpc-status.md), 도입 이력은 [현재 상태](docs/source-status.md)를 따른다. import 검증기는 의도된 build 파일 수정도 실패로 표시하는 원본 보존 검사다. 원본 도입 commit의 검사와 현재 build 회귀 시험을 구분하며, 부분 build·의존성 시험과 단일 Linux compile/link 결과를 전체 matrix·runtime 호환성으로 확대하지 않는다.
 - 기준 upstream은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe), 공개 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 회사 fork·실제 config·실측 baseline·배포판·toolchain은 미확인이다.
 - 대상 OS는 Linux다. C++17과 Thrift 0.25.0은 제안 검증 후보다. target release의 실제 요구 표준과 API를 확인하기 전 확정하거나 빌드 성공을 주장하지 않는다.
 - 문서의 공개 소스 정적 검토 사실, 사용자 보존 요구, 구현 제안, 실제 실행·실패·미실행을 구분한다. 한 환경에서의 결과로 회사 운영 동등성이나 전체 platform 지원을 선언하지 않는다.
@@ -46,7 +46,7 @@ Gate C: 양방향 ordinary spool·thriftfile·relay, fault/retry와 종료 계�
 
 Gate D: 회사가 승인한 baseline·허용 차이에 따른 성능과 운영 승인. 그 뒤 배포·롤백 실행 권한을 확인한다.
 
-어느 gate도 현재 전체 통과하지 않았다. 클라우드 및 Ubuntu의 비-HDFS 기본 C++ lane은 scribed compile/link와 당시 프로젝트 55개 시험을 통과했고, 후속 cloud FileStore characterization은 70개, 승인된 truncate 수정본은 cloud·Ubuntu에서 새 clean build·74개 시험을 통과했으나 전체 platform/feature matrix와 runtime 동등성은 미검증이다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
+어느 gate도 현재 전체 통과하지 않았다. 클라우드 및 Ubuntu의 비-HDFS 기본 C++ lane은 scribed compile/link와 당시 프로젝트 55개 시험을 통과했고, 후속 cloud FileStore characterization은 70개, 승인된 truncate 수정본은 cloud·Ubuntu에서 새 clean build·74개 시험을 통과했으나 전체 platform/feature matrix와 runtime 동등성은 미검증이다. 후속 TCP fixture는 명시적 127.0.0.1 bind로 실제 handler/worker를 검증하며 cloud·Ubuntu에서 각 89개 시험을 통과했다. Ubuntu는 v8의 새 clean build·help, TCP 반복 50회와 listener/자식 회수도 통과했고 상위 작업이 검증한 요약으로 기록한다. production main/startServer 실행과 구분한다. GNU --wrap mutex lane의 non-Linux skip을 Linux 성공으로 세지 않는다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
 
 ## 저장소·배포·고지
 

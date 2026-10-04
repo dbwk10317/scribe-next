@@ -22,8 +22,8 @@
 | 공개 기준 | [facebookarchive/scribe](https://github.com/facebookarchive/scribe), SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2` |
 | 제안 후보 | C++17, Thrift 0.25.0; 요구 표준과 주요 API는 정적 확인, 실제 build·runtime 채택은 미확정 |
 | 미확인 | 회사 fork·patch·production config·client/store/HDFS 사용, 실측 baseline, 배포판·compiler·dependency matrix |
-| 저장소 상태 | main `ffc73ee` 이후 FileStore characterization 70개와 사용자 승인된 최소 truncate 수정. 최신 cloud·Ubuntu clean build·74개 시험/skip 0에서 미처리 2개 보존과 다음 replay 확인. [최신 수정 기록](truncate-fix-status.md), [수정 전 FileStore](filestore-contracts-status.md), 이전 [55개 계약](contracts-status.md) 참조 |
-| 검증 gate | A 기본 cloud·Ubuntu C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B/C는 제한된 API·config/routing·ordinary StdFile component와 실제 FileStore byte/replay characterization만 완료. 잘못된 truncate mode만 승인 수정; crash/write-failure/unlink 위험은 남음. 두 RPC old/new·10 store·동적 갱신·thriftfile/relay/fault/종료와 D 회사 성능·운영은 미완료 |
+| 저장소 상태 | main `24692d6`에서 production 변경 없이 test-only loopback TCP·실제 handler/worker/FileStore 및 플랫폼·cleanup 경계 시험 추가. v8은 cloud·Ubuntu 각 89개 시험, Ubuntu 새 clean build·help·TCP 반복 50회와 loopback/자식 회수 검증 통과. 새 서버 근거는 상위 작업 검증 요약이며 raw files 미수신. [최신 loopback 기록](loopback-rpc-status.md), 이전 [truncate 수정](truncate-fix-status.md)·[FileStore](filestore-contracts-status.md) 참조 |
+| 검증 gate | A 기본 cloud·Ubuntu C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B/C는 제한된 API·config/routing·ordinary StdFile component와 실제 FileStore byte/replay와 test-only loopback TCP 계약만 완료. production main/startServer와 전체 daemon 동등성은 미검증. 잘못된 truncate mode만 승인 수정; crash/write-failure/unlink 위험은 남음. 두 RPC old/new·10 store·동적 갱신·thriftfile/relay/fault/종료와 D 회사 성능·운영은 미완료 |
 | 작업 환경·원격·배포 | 클라우드에서 구현, 검증된 변경은 Mac에서 동기화해 승인된 `codex/upstream-baseline` 브랜치로 반영. GitHub `dbwk10317/scribe-next` 비공개 유지. 봉구서버 import 검증 통과. main 반영 상태는 Git 이력 참조. Scribe 서비스 기동·배포 미실행 |
 
 ## upstream 코드 도입 전략
@@ -108,7 +108,7 @@ git fetch https://github.com/facebookarchive/scribe.git \
 
 검토 기준일은 2026-10-04다. 공개 upstream `fcd294faffd1e88af1643a3a8c2359c41713f7c2`와 Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6` 전체 tree를 별도 checkout에서 확보했다. 주요 경계의 source 링크와 채택 방향은 [설계의 의존성 전략](design.ko.md#의존성-전략)과 [근거 목록](design.ko.md#근거와-적용한-원칙)에 둔다.
 
-두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [실제 재현·최소 수정·component 비교](contracts-status.md)를 완료했다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 후속 의존성·RPC library build와 초기 compile 실패는 [빌드 기록](build-status.md), 최신 성공과 제한된 시험은 [API 이식 기록](api-compat-status.md)에 구분했다. Scribe daemon 실행, PHP suite, 전체 old/new wire·spool differential, 전체 sanitizer/LeakSanitizer와 성능 시험은 미실행이다. 제한된 StdFile 양방향 비교·ASan/UBSan 및 Ubuntu reader LSan 성공은 [최신 계약 기록](contracts-status.md)의 범위로 한정한다. 이 서버 근거는 상위 작업이 확인한 요약 보고이며 raw log는 이번 클라우드 checkpoint에 포함하지 않았다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
+두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [실제 재현·최소 수정·component 비교](contracts-status.md)를 완료했다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 후속 의존성·RPC library build와 초기 compile 실패는 [빌드 기록](build-status.md), 최신 성공과 제한된 시험은 [API 이식 기록](api-compat-status.md)에 구분했다. Scribe daemon 실행, PHP suite, 전체 old/new wire·spool differential, 전체 sanitizer/LeakSanitizer와 성능 시험은 미실행이다. 제한된 StdFile 양방향 비교·ASan/UBSan 및 Ubuntu reader LSan 성공은 [최신 계약 기록](contracts-status.md)의 범위로 한정한다. 이전 단계의 raw logs는 checkpoint의 해당 evidence에 보존한다. 최신 v8 loopback 서버 결과는 [별도 기록](loopback-rpc-status.md)의 상위 작업 확인 요약이며 새 raw files는 수신하지 않았다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
 
 ## 라이선스 경계
 

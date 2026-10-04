@@ -4,6 +4,8 @@
 
 관련 문서: [README](../README.md) · [수정 manifest](truncate-fix-manifest.json) · [수정 전 70개 characterization](filestore-contracts-status.md)
 
+> 이 문서는 이전 truncate 수정·74개 검증 기록이다. main 반영 뒤 test-only TCP/worker 검증은 [최신 loopback 기록](loopback-rpc-status.md)을 따른다.
+
 ## 수정과 승인 범위
 
 기존 손실 경로를 재현해 설명한 뒤 사용자가 이 결함에 한해 원본의 loss/retry 결과가 달라지는 수정을 승인했다. production 변경은 `src/file.cpp:StdFile::openTruncate`에서 **`out | app | trunc` → `out | trunc`** 한 곳과 변경 설명 주석뿐이다. 새 저장 형식·BufferStore 상태 전이·ACK·큐·retry 정책·newline 정규화·원자적 파일 교체를 추가하지 않았다.

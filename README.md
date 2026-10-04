@@ -8,7 +8,9 @@
 
 main `ffc73ee` 이후 클라우드에서 실제 FileStore byte·replay 통합을 추가해 **70개 시험(skip 0)**을 통과했다. 기존 partial replay의 파일 교체 실패→미처리 메시지 손실을 재현했으며 production 수정은 적용하지 않았다. 이 수정 전 범위와 재현 결과는 [FileStore 기록](docs/filestore-contracts-status.md)을 따른다.
 
-사용자 승인 후 openTruncate의 app flag만 제거한 수정본은 새 clean build·CLI help와 **74개 시험(skip 0)**을 통과했다. 부분 처리 뒤 남은 2개가 보존되고 다음 replay에서 전달됨을 확인했다. add_newlines 재적용과 남은 crash/write-failure/unlink 위험을 포함한 최신 상태는 [truncate 수정 기록](docs/truncate-fix-status.md)을 따른다. 동일 v5 구현은 Ubuntu 26.04.1·GCC 15.2에서도 새 clean build·CLI help와 74개 시험(skip 0)을 통과했다. 후속 commit/push는 미실행이다.
+사용자 승인 후 openTruncate의 app flag만 제거한 수정본은 새 clean build·CLI help와 **74개 시험(skip 0)**을 통과했다. 부분 처리 뒤 남은 2개가 보존되고 다음 replay에서 전달됨을 확인했다. add_newlines 재적용과 남은 crash/write-failure/unlink 위험을 포함한 최신 상태는 [truncate 수정 기록](docs/truncate-fix-status.md)을 따른다. 동일 v5 구현은 Ubuntu 26.04.1·GCC 15.2에서도 새 clean build·CLI help와 74개 시험(skip 0)을 통과했다. 이 수정은 구현 commit `8baf6f3`과 [PR #1](https://github.com/dbwk10317/scribe-next/pull/1)을 거쳐 main `24692d6`에 반영됐다.
+
+main `24692d6` 이후 production 변경 없이 실제 loopback TCP·RPC·worker·파일 출력 시험과 플랫폼/정리 경계 시험을 추가했다. 클라우드 89개 시험에 이어 동일 v8은 Ubuntu 26.04.1에서도 새 clean build·help와 89개 시험(skip 0), TCP 반복 50회를 통과했다. kernel에서 관측한 listener 50개는 모두 127.0.0.1이며 소유 자식 55개가 모두 회수됐다. 새 서버 결과는 상위 작업이 확인한 요약이고 raw files는 이번 checkpoint에 포함하지 않았다. 검증한 v8 해시와 범위는 [loopback 기록](docs/loopback-rpc-status.md)을 따른다. 이 fixture는 127.0.0.1 전용이며 production main/startServer·전체 daemon 또는 회사 동등성 검증과 구분한다. 이 후속 loopback 변경은 아직 commit/push하지 않았다.
 
 ## 문서
 
@@ -21,7 +23,8 @@ main `ffc73ee` 이후 클라우드에서 실제 FileStore byte·replay 통합을
 - [Ubuntu 26.04 + Boost 1.83 재검증](docs/ubuntu-validation-20261004.md)
 - [일반 spool·설정 계약·메모리 수정 이력](docs/contracts-status.md)
 - [FileStore 통합·수정 전 손실 경로](docs/filestore-contracts-status.md)
-- [최신 truncate 수정·부분 replay 검증](docs/truncate-fix-status.md)
+- [truncate 수정·부분 replay 검증](docs/truncate-fix-status.md)
+- [최신 loopback TCP·worker 검증](docs/loopback-rpc-status.md)
 
 설계와 구현 문서는 사용자 지정 Library Markdown을 바탕으로 공개 upstream과 목표 Thrift의 정적 검토를 반영한 작업 문서다. 원본 파일명·버전·SHA256, 검토한 고정 소스와 미검증 범위는 출처 문서에 남겼다.
 
@@ -45,7 +48,7 @@ python3 -B test/verify_upstream_import.py
 python3 -B -m unittest discover -s test -p 'test_verify_upstream_import.py' -v
 ```
 
-첫 명령은 작업 트리 내용·Git 실행 권한·ignore 누락을 검사한다. 두 번째는 임시 checkout에서 변조·누락·symlink·ignore·Git object 실패와 실제 staging을 시험한다. 작업 트리의 stage/commit이나 네트워크 fetch는 하지 않는다. 현재 빌드 경계 변경과 원본 검증기의 회귀 시험은 아래 명령으로 실행한다. 실제 autotools 또는 명시한 dependency prefix가 없으면 해당 통합/생성 시험을 명시적으로 skip하며 성공으로 세지 않는다. 전체 최신 시험에 필요한 THRIFT_PREFIX·FB303_PREFIX·SCRIBE_BUILD·TOOLS_PREFIX와 실제 결과는 [truncate 수정 기록](docs/truncate-fix-status.md)을 따른다.
+첫 명령은 작업 트리 내용·Git 실행 권한·ignore 누락을 검사한다. 두 번째는 임시 checkout에서 변조·누락·symlink·ignore·Git object 실패와 실제 staging을 시험한다. 작업 트리의 stage/commit이나 네트워크 fetch는 하지 않는다. 현재 빌드 경계 변경과 원본 검증기의 회귀 시험은 아래 명령으로 실행한다. 실제 autotools 또는 명시한 dependency prefix가 없으면 해당 통합/생성 시험을 명시적으로 skip하며 성공으로 세지 않는다. 전체 최신 시험에 필요한 THRIFT_PREFIX·FB303_PREFIX·SCRIBE_BUILD·TOOLS_PREFIX와 실제 결과는 [loopback 기록](docs/loopback-rpc-status.md)을 따른다.
 
 ```sh
 python3 -B -m unittest discover -s test -p 'test_*.py' -v

@@ -71,7 +71,7 @@ autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, f
 
 ## 현대화 경계와 제안값
 
-C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 봉구서버의 Ubuntu 26.04.1에서 첫 소스 도입 검사 후 GCC 15.2·Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 clean build와 최신 계약 시험 55개를 통과했다. 이는 확인한 lane의 결과이며 전체 platform/feature matrix를 대신하지 않는다. 회사 Linux 배포판과 compiler 버전은 baseline 확보 단계에서 확정한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
+C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 봉구서버의 Ubuntu 26.04.1에서 첫 소스 도입 검사 후 GCC 15.2·Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 clean build와 당시 계약 시험 55개를 통과했다. 후속 v8의 Ubuntu clean build·help와 89개 test-only loopback 포함 시험 결과 및 근거 출처는 [최신 loopback 기록](loopback-rpc-status.md)을 따른다. 이는 확인한 lane의 결과이며 전체 platform/feature matrix를 대신하지 않는다. 회사 Linux 배포판과 compiler 버전은 baseline 확보 단계에서 확정한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
 
 shared_ptr 전환은 generated interface와 Thrift constructor boundary에서 시작한다. Boost와 std 포인터가 서로 같은 객체의 별도 control block을 만들지 않도록 소유권 연결부를 함께 수정한다. 내부 포인터의 일괄 치환, raw StoreQueue backlink의 소유권 변경, global handler 재설계는 하지 않는다. 새로운 thread API를 적용할 때 현재 concurrency wrapper에 필요한 부분만 맞추고 lock 순서와 scope는 유지한다. 파일 transport는 기존 구현의 API와 byte format을 비교한 뒤 호환에 필요한 변경만 선택한다.
 
