@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Opt-in real Scribe API/config contracts, without a daemon, sockets, or service.
+"""Opt-in real Scribe API/config/FileStore and test-only loopback TCP contracts.
 
 Set THRIFT_PREFIX, FB303_PREFIX, SCRIBE_BUILD, and TOOLS_PREFIX to a prepared
 Thrift 0.25.0/fb303 build and its compiler/Boost/libevent environment. SCRIBE_BUILD
 is a configured in-source build copy of the current checkout. Reused objects
 must have matching sources, generated code, and non-stale compiler dependencies.
-Only temporary fixture files are created; no dependency download/build occurs.
+Only temporary fixture files/owned loopback children are created; no dependency download occurs.
 
 This is a single-version golden and config/handler fixture, not old/new differential,
-socket-server coverage, full old/new file/spool compatibility, or a durability guarantee.
+unmodified scribed/main/startServer coverage, full old/new compatibility, or a durability guarantee.
 FileStore cases use real temporary files and controlled primary replay outcomes.
 """
 
@@ -16,10 +16,14 @@ import os
 from pathlib import Path
 import re
 import shlex
+import select
+import socket
 import struct
 import subprocess
 import tempfile
 import unittest
+
+import loopback_rpc as tcp
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -356,6 +360,159 @@ class ScribeApiIntegrationTests(unittest.TestCase):
         self.assertEqual((directory / "states-again.txt").read_text(),
                          "lost=0\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
         self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def loopback_process(self, threads=3, config=None):
+        directory = Path(tempfile.mkdtemp(prefix="loopback-", dir=self.temporary))
+        if config is None:
+            config = self.loopback_config(threads)
+        return tcp.LoopbackProcess(self.fixture, self.env, directory, config)
+
+    @staticmethod
+    def loopback_config(threads=3, filename="received", port=1463):
+        return (f"port={port}\nnum_thrift_server_threads={threads}\n"
+                "<store>\ncategory=accepted\ntype=file\n"
+                "file_path=@DIRECTORY@/data\n" + f"base_filename={filename}\n" +
+                "rotate_period=never\ncreate_symlink=no\nadd_newlines=0\n"
+                "target_write_size=1000000\nmax_write_interval=3600\n</store>\n")
+
+    def tcp_call(self, connection, name, sequence, fields=b"\0", *, strict=False):
+        connection.sendall(tcp.message(name, sequence, fields, strict=strict))
+        return tcp.receive_frame(connection)
+
+    def test_loopback_log_bytes_ack_fb303_counters_and_shutdown_file_output(self):
+        for threads in (1, 3):
+            with self.subTest(threads=threads):
+                server = self.loopback_process(threads)
+                payloads = (b"A\x00B\n\xff\xc3\xa9", b"tail\n")
+                entries = [(b"accepted", value) for value in payloads]
+                entries += [(b"unknown\x00\xff", b"discard"), (b"", b"blank")]
+                with server:
+                    connection = server.connect()
+                    for seq, name, result in ((1, b"getName", tcp.result_string(b"Scribe")),
+                                              (2, b"getVersion", tcp.result_string(b"2.2")),
+                                              (3, b"getStatus", tcp.result_i32(2)),
+                                              (4, b"getStatusDetails", tcp.result_string(b""))):
+                        self.assertEqual(self.tcp_call(connection, name, seq), tcp.reply(name, seq, result))
+                    self.assertEqual(self.tcp_call(connection, b"Log", 11, tcp.log_fields(entries)),
+                                     tcp.reply(b"Log", 11, tcp.result_i32(0)))
+                    self.assertEqual(self.tcp_call(connection, b"Log", 12, tcp.log_fields([])),
+                                     tcp.reply(b"Log", 12, tcp.result_i32(0)))
+                    self.assertEqual(self.tcp_call(connection, b"getCounter", 13,
+                                                  tcp.string_argument(b"accepted:received good")),
+                                     tcp.reply(b"getCounter", 13, tcp.result_i64(2)))
+                    counters = tcp.counter_map(self.tcp_call(connection, b"getCounters", 14),
+                                               b"getCounters", 14)
+                    self.assertEqual(counters, {
+                        b"accepted:received good": 2, b"scribe_overall:received good": 2,
+                        b"unknown\x00\xff:received bad": 1, b"scribe_overall:received bad": 1,
+                        b"scribe_overall:received blank category": 1})
+                # Only after the real healthy shutdown joins file workers.
+                self.assertEqual((server.directory / "data/received_00000").read_bytes(), b"".join(payloads))
+                self.assertEqual(server.process.returncode, 0)
+
+    def test_loopback_split_frame_is_reassembled_without_early_reply(self):
+        server = self.loopback_process()
+        with server:
+            connection = server.connect()
+            packet = tcp.message(b"Log", 21, tcp.log_fields([(b"accepted", b"split\x00\xff")]))
+            connection.sendall(packet[:3])
+            self.assertFalse(select.select([connection], [], [], 0.05)[0])
+            connection.sendall(packet[3:-1])
+            self.assertFalse(select.select([connection], [], [], 0.05)[0])
+            connection.sendall(packet[-1:])
+            self.assertEqual(tcp.receive_frame(connection), tcp.reply(b"Log", 21, tcp.result_i32(0)))
+        self.assertEqual((server.directory / "data/received_00000").read_bytes(), b"split\x00\xff")
+
+    def test_loopback_coalesced_requests_preserve_single_connection_sequence(self):
+        server = self.loopback_process()
+        with server:
+            connection = server.connect()
+            packets = b"".join(tcp.message(b"Log", seq, tcp.log_fields([(b"accepted", payload)]))
+                                for seq, payload in ((31, b"first"), (32, b"second")))
+            connection.sendall(packets)
+            for seq in (31, 32):
+                self.assertEqual(tcp.receive_frame(connection), tcp.reply(b"Log", seq, tcp.result_i32(0)))
+        self.assertEqual((server.directory / "data/received_00000").read_bytes(), b"firstsecond")
+
+    def test_loopback_versioned_request_accepts_and_reply_stays_non_versioned(self):
+        with self.loopback_process() as server:
+            connection = server.connect()
+            self.assertEqual(self.tcp_call(connection, b"getName", 41, strict=True),
+                             tcp.reply(b"getName", 41, tcp.result_string(b"Scribe")))
+
+    def test_loopback_unknown_method_returns_application_error_then_connection_works(self):
+        with self.loopback_process() as server:
+            connection = server.connect()
+            name = b"notAServiceMethod"
+            error, code = tcp.application_error(self.tcp_call(connection, name, 51), name, 51)
+            self.assertEqual(code, 1)  # TApplicationException.UNKNOWN_METHOD
+            self.assertIn(name, error)
+            self.assertEqual(self.tcp_call(connection, b"getName", 52),
+                             tcp.reply(b"getName", 52, tcp.result_string(b"Scribe")))
+
+    def test_loopback_incomplete_frame_disconnect_does_not_stop_next_client(self):
+        with self.loopback_process() as server:
+            incomplete = server.connect()
+            incomplete.sendall(struct.pack(">I", 32) + b"short")
+            incomplete.close()
+            healthy = server.connect()
+            self.assertEqual(self.tcp_call(healthy, b"getStatus", 61),
+                             tcp.reply(b"getStatus", 61, tcp.result_i32(2)))
+            self.assertIsNone(server.process.poll())
+
+    def test_loopback_oversized_header_closes_only_that_connection(self):
+        with self.loopback_process() as server:
+            malformed = server.connect()
+            # Four bytes only: above the verified Thrift0.25 frame limit, no
+            # large body/allocation/workload generated by this test.
+            malformed.sendall(struct.pack(">I", 0x7FFFFFFF))
+            malformed.settimeout(3)
+            try:
+                self.assertEqual(malformed.recv(1), b"")
+            except ConnectionResetError:
+                pass  # EOF or RST are equivalent connection-close observations.
+            healthy = server.connect()
+            self.assertEqual(self.tcp_call(healthy, b"getName", 71),
+                             tcp.reply(b"getName", 71, tcp.result_string(b"Scribe")))
+
+    def test_loopback_reinitialize_flushes_previous_store_and_uses_new_file(self):
+        server = self.loopback_process()
+        with server:
+            connection = server.connect()
+            self.assertEqual(self.tcp_call(connection, b"Log", 81,
+                                          tcp.log_fields([(b"accepted", b"before")])),
+                             tcp.reply(b"Log", 81, tcp.result_i32(0)))
+            server.config.write_text(self.loopback_config(filename="reloaded", port=2600).replace(
+                "@DIRECTORY@", str(server.directory)))
+            connection.sendall(tcp.message(b"reinitialize", 82, oneway=True))
+            self.assertEqual(self.tcp_call(connection, b"getStatus", 83),
+                             tcp.reply(b"getStatus", 83, tcp.result_i32(2)))
+            self.assertEqual(self.tcp_call(connection, b"Log", 84,
+                                          tcp.log_fields([(b"accepted", b"after")])),
+                             tcp.reply(b"Log", 84, tcp.result_i32(0)))
+        self.assertEqual((server.directory / "data/received_00000").read_bytes(), b"before")
+        self.assertEqual((server.directory / "data/reloaded_00000").read_bytes(), b"after")
+
+    def test_loopback_client_failure_terminates_and_reaps_only_owned_child(self):
+        server = self.loopback_process()
+        with self.assertRaisesRegex(RuntimeError, "controlled client failure"):
+            with server:
+                connection = server.connect()
+                self.assertEqual(self.tcp_call(connection, b"getName", 91),
+                                 tcp.reply(b"getName", 91, tcp.result_string(b"Scribe")))
+                raise RuntimeError("controlled client failure")
+        self.assertIsNotNone(server.process.returncode)
+        self.assertLess(server.process.returncode, 0)  # Owned child terminated on this failure path.
+        self.assertTrue(server.process.stdout.closed)
+        self.assertIsNone(server.stderr)
+
+    def test_loopback_invalid_config_exits_before_ready_and_is_reaped(self):
+        server = self.loopback_process(config=self.loopback_config(port=0))
+        with self.assertRaisesRegex(AssertionError, "initialization failed"):
+            server.start()
+        self.assertIsNotNone(server.process.poll())
+        self.assertTrue(server.process.stdout.closed)
+        self.assertIsNone(server.stderr)
 
     def test_framed_non_strict_binary_golden_and_payload_bytes(self):
         directory = self.run_fixture("wire")
