@@ -24,6 +24,7 @@ import tempfile
 import unittest
 
 import loopback_rpc as tcp
+from relay_contracts import RelayContracts
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,7 +67,7 @@ def check_fresh_object(build, name):
             raise AssertionError(f"stale build object {obj}; rebuild after changing {path}")
 
 
-class ScribeApiIntegrationTests(unittest.TestCase):
+class ScribeApiIntegrationTests(RelayContracts, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         names = ("THRIFT_PREFIX", "FB303_PREFIX", "SCRIBE_BUILD", "TOOLS_PREFIX")

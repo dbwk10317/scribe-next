@@ -135,6 +135,8 @@ def receive_frame(sock, timeout=3):
 
 
 class LoopbackProcess:
+    mode = "loopback-server"
+
     def __init__(self, executable, environment, directory, configuration):
         self.directory = Path(directory)
         self.config = self.directory / "scribe.conf"
@@ -154,7 +156,7 @@ class LoopbackProcess:
         try:
             self.stderr = self.stderr_path.open("wb")
             self.process = subprocess.Popen(
-                [str(self.executable), "loopback-server", str(self.config), str(self.directory)],
+                [str(self.executable), self.mode, str(self.config), str(self.directory)],
                 cwd=self.directory, env=self.environment, stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=self.stderr, bufsize=0,
             )

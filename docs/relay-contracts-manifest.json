@@ -1,0 +1,456 @@
+{
+  "recorded_utc": "2026-10-04T22:04:19.643148+00:00",
+  "base_commit": "32004a6a627723e081cedf7143323f3769cac220",
+  "base_branch": "main",
+  "working_tree_committed": false,
+  "production_changes": [],
+  "input_handoff": {
+    "library_file_id": "libfile_c728242ac9b08191a21827a7d1831d63",
+    "version": 10,
+    "file_id": "file_000000004cb481fbb9fce44cd2b580b2",
+    "filename": "scribe-next-main-20261004.tar.gz",
+    "size_bytes": 1234290,
+    "sha256": "3a4974f176412c98f78f6113b11a905c40a49972c9d794f9ab7562836737ba0f",
+    "source_files": 142,
+    "manifest_records": 485,
+    "bundle_refs": [
+      "32004a6a627723e081cedf7143323f3769cac220 refs/heads/main",
+      "cdf21648550c47e68626a90bab2ebf11a9c8cd9f refs/heads/codex/loopback-rpc-contracts",
+      "8baf6f32d5a3d887b4fc7a8a6975358451a270f5 refs/heads/codex/filestore-truncate-fix",
+      "ffc73ee268a8a3430e57464f460bdf3556c983bb refs/heads/codex/upstream-baseline",
+      "fcd294faffd1e88af1643a3a8c2359c41713f7c2 refs/remotes/upstream/baseline"
+    ],
+    "clean_source_modes_hash_bundle_fsck_verified": true
+  },
+  "environment": {
+    "os": "Debian GNU/Linux13 x86_64",
+    "compiler": "GCC14.2.0",
+    "python": "3.12.14",
+    "boost": "1.83.0",
+    "thrift_compiler_runtime": "0.25.0",
+    "fb303": "same verified0.25.0",
+    "new_dependencies_installed": false
+  },
+  "project_tests": {
+    "passed": 101,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 31.879,
+    "existing_tests": 89,
+    "new_relay_methods": 10,
+    "new_helper_negatives": 2,
+    "counts_by_module": {
+      "test_build_boundaries": 10,
+      "test_loopback_harness": 3,
+      "test_mutex_compat": 6,
+      "test_mutex_platform": 2,
+      "test_ordinary_spool": 12,
+      "test_relay_harness": 2,
+      "test_scribe_api_compat": 47,
+      "test_thrift_generation": 1,
+      "test_verify_upstream_import": 18
+    }
+  },
+  "focused_tests": {
+    "author_final": {
+      "passed": 10,
+      "skipped": 0,
+      "seconds": 5.48
+    },
+    "independent_review": {
+      "relay_passed": 10,
+      "relay_skipped": 0,
+      "relay_seconds": 5.9,
+      "helper_passed": 2,
+      "helper_seconds": 0.002,
+      "no_blocking_implementation_findings": true,
+      "prior_API_Python_functions_unchanged": 49
+    },
+    "initial_development_failure": "First focused run9pass/1fixture setup failure; missing global handler during pre-validation fixed in test-only code; original log retained"
+  },
+  "build": {
+    "new_full_scribed_build": false,
+    "source_generated_dependency_checked_production_objects_reused": true,
+    "new_cpp_fixture_compiled": true,
+    "existing_real_scribed_help_smoke_rerun": true,
+    "production_binary_sha256": "c8dca5d969c88e6051be2c96d88cc5c6d035d282a8334669b93becb49a7a00a6",
+    "scope": "cloud only; separate Ubuntu clean build in new_server_validation"
+  },
+  "contracts": [
+    "fixed-host pooled/unpooled exact binary/framed request and sent counter",
+    "non-versioned and versioned replies with non-versioned requests",
+    "TRY_LATER retains connection for explicit retry",
+    "response loss repeats3entries: peer6/sent3",
+    "controlled downstream prefix policy yields simulatedAABC",
+    "silent/truncated/oversized-header/application-exception close and healthy explicit reconnect",
+    "two pooled owners/repeatedopen/closeone/finalEOF/reopen",
+    "message-only4096/4097 dummy boundary and rejected dummy payload suppression",
+    "testdriver rejects external/unbounded/service/list/dynamic and inherited destinations",
+    "controlled peer failure exactchild/sockets cleanup",
+    "actual healthy two-loopback-handler/networkworker/FileStore chain"
+  ],
+  "fixture_safety": {
+    "bind": "127.0.0.1:0 only; retain bound socket and verify assigned address/port",
+    "Cxx_destination_guard": "127.0.0.1,validport,timeout500ms,no service/list/dynamic incl root inherited network keys",
+    "native_socket_timeout_ms": 500,
+    "relay_child_alarm_seconds": 20,
+    "scripted_peer_deadline_seconds": 20,
+    "scripted_peer_socket_pipe_phase_seconds_max": 3,
+    "worker_python_owner": "existing per-phase10sreadiness/3sRPCreceive/5schildwait-aftershutdown/2seachterminate-killwait",
+    "python_request_body_limit_bytes": 65536,
+    "large_reply_test": "4-byte header only; close+reconnect observed, allocation not instrumented",
+    "production_bind_changed": false,
+    "external_network_service_used": false
+  },
+  "static_legacy_evidence": {
+    "recorded_utc": "2026-10-04T21:32:19.367064+00:00",
+    "base_commit": "32004a6a627723e081cedf7143323f3769cac220",
+    "upstream": "fcd294faffd1e88af1643a3a8c2359c41713f7c2",
+    "symbol": "scribeConn::send",
+    "source": "src/conn_pool.cpp",
+    "same_method_text": true,
+    "bytes": 1813,
+    "sha256": "4463a5a66e6f7e06a55ed37471d5681a187798ee243d7d930a3e4628c45cb0bc",
+    "legacy_translation_unit_sha256": "560179774ecfe5e2622a39f9cdf2d32214e4d18d4f0d82a6f48b15c751a83be8",
+    "current_translation_unit_sha256": "1ee7b9504bf11cf39b922743ec669c90d3d2333784cfd3ba1ad0b74175190697",
+    "scope": "Static method-body identity only; no legacy Thrift binary/client/runtime execution"
+  },
+  "synthetic_capture": {
+    "scope": "Synthetic direct NetworkStore explicit retry observations. Prefix-side-effect ledger is a simulated downstream policy; not actual Scribe partial acceptance or full old-runtime differential.",
+    "test_methods": [
+      "test_relay_response_loss_then_retry_records_six_but_counts_three_sent",
+      "test_relay_simulated_downstream_prefix_then_retry_has_aabc_ledger"
+    ],
+    "run": 2,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "observations": [
+      {
+        "peer_index": 0,
+        "pooled": false,
+        "bound_address": [
+          "127.0.0.1",
+          35197
+        ],
+        "requests": [
+          {
+            "batch": "abc",
+            "path": "peer-0-request-0.bin",
+            "size_bytes": 88,
+            "sha256": "4583b0b3b67c466e5b311f9a85e0d2740b9b9030251b6c4fb8d5337764a67bbc",
+            "remote": [
+              "127.0.0.1",
+              49652
+            ],
+            "local": [
+              "127.0.0.1",
+              35197
+            ]
+          },
+          {
+            "batch": "abc",
+            "path": "peer-0-request-1.bin",
+            "size_bytes": 88,
+            "sha256": "4583b0b3b67c466e5b311f9a85e0d2740b9b9030251b6c4fb8d5337764a67bbc",
+            "remote": [
+              "127.0.0.1",
+              49666
+            ],
+            "local": [
+              "127.0.0.1",
+              35197
+            ]
+          }
+        ],
+        "states": [
+          "STATE SEND 0 0 0 0 0 3",
+          "STATE SEND 0 1 1 0 3 3"
+        ],
+        "accepted_connections": 2,
+        "child_exit": 0,
+        "child_reaped": true,
+        "stdin_closed": true,
+        "stdout_closed": true,
+        "sockets_closed": true
+      },
+      {
+        "peer_index": 1,
+        "pooled": true,
+        "bound_address": [
+          "127.0.0.1",
+          40455
+        ],
+        "requests": [
+          {
+            "batch": "abc",
+            "path": "peer-1-request-0.bin",
+            "size_bytes": 88,
+            "sha256": "4583b0b3b67c466e5b311f9a85e0d2740b9b9030251b6c4fb8d5337764a67bbc",
+            "remote": [
+              "127.0.0.1",
+              60302
+            ],
+            "local": [
+              "127.0.0.1",
+              40455
+            ]
+          },
+          {
+            "batch": "abc",
+            "path": "peer-1-request-1.bin",
+            "size_bytes": 88,
+            "sha256": "4583b0b3b67c466e5b311f9a85e0d2740b9b9030251b6c4fb8d5337764a67bbc",
+            "remote": [
+              "127.0.0.1",
+              60304
+            ],
+            "local": [
+              "127.0.0.1",
+              40455
+            ]
+          }
+        ],
+        "states": [
+          "STATE SEND 0 0 0 0 0 3",
+          "STATE SEND 0 1 1 0 3 3"
+        ],
+        "accepted_connections": 2,
+        "child_exit": 0,
+        "child_reaped": true,
+        "stdin_closed": true,
+        "stdout_closed": true,
+        "sockets_closed": true
+      },
+      {
+        "peer_index": 2,
+        "pooled": false,
+        "bound_address": [
+          "127.0.0.1",
+          38357
+        ],
+        "requests": [
+          {
+            "batch": "abc",
+            "path": "peer-2-request-0.bin",
+            "size_bytes": 88,
+            "sha256": "4583b0b3b67c466e5b311f9a85e0d2740b9b9030251b6c4fb8d5337764a67bbc",
+            "remote": [
+              "127.0.0.1",
+              40610
+            ],
+            "local": [
+              "127.0.0.1",
+              38357
+            ]
+          },
+          {
+            "batch": "abc",
+            "path": "peer-2-request-1.bin",
+            "size_bytes": 88,
+            "sha256": "4583b0b3b67c466e5b311f9a85e0d2740b9b9030251b6c4fb8d5337764a67bbc",
+            "remote": [
+              "127.0.0.1",
+              40610
+            ],
+            "local": [
+              "127.0.0.1",
+              38357
+            ]
+          }
+        ],
+        "states": [
+          "STATE SEND 0 0 1 0 0 3",
+          "STATE SEND 0 1 1 0 3 3"
+        ],
+        "accepted_connections": 1,
+        "child_exit": 0,
+        "child_reaped": true,
+        "stdin_closed": true,
+        "stdout_closed": true,
+        "sockets_closed": true
+      }
+    ]
+  },
+  "limits": [
+    "explicit direct retries, not actual failed-worker scheduler/backoff/drain",
+    "AABC prefix ledger is simulated downstream application, not actualScribe STOPPING partialacceptance",
+    "pooled fatal recovery onlysingleowner; sharedownerfault/concurrentrace untested",
+    "fixedhost only; service/list/dynamic mapping/failover untested",
+    "production main/startServer listener startup unrun",
+    "full oldRuntime/company/10store/thriftfile/performance/durability/wholeprocesssanitizer untested",
+    "ACK not durable; sent not unique downstream commit count",
+    "new101suite not run on Mac; Ubuntu tested v11 result separately recorded",
+    "priorThrift29 not rerun/countedin101",
+    "fullGatesA-D incomplete; push/merge/deploy pendingseparateauthority"
+  ],
+  "previous_evidence": {
+    "loopback_implementation_commit": "cdf21648550c47e68626a90bab2ebf11a9c8cd9f",
+    "merged_pr": "https://github.com/dbwk10317/scribe-next/pull/2",
+    "Ubuntu_v8_raw_records_received_in_v10": true,
+    "raw_manifest_records_verified": 28,
+    "project_tests89": {
+      "passed": 89,
+      "skipped": 0,
+      "seconds": 20.857,
+      "clean_build_seconds": 5.972,
+      "help_exit": 0
+    },
+    "observed_listeners": 50,
+    "reaped_children": 55,
+    "Mac_previous_suite": {
+      "passed_methods": 31,
+      "unittest_reported_run": 32,
+      "errors": 0,
+      "skips": 5
+    },
+    "reported_CI": "zero workflows/checks/statuses; notpass; historicalmergeevidence"
+  },
+  "source_hashes": {
+    "src/conn_pool.cpp": "1ee7b9504bf11cf39b922743ec669c90d3d2333784cfd3ba1ad0b74175190697",
+    "src/conn_pool.h": "5c1b52e9dd898a415d82b1df79589a4026b6dacf931b08b2ea508ed308e2ba7e",
+    "src/store.cpp": "1d235654f09915e50e9c7887864e14aea6582d03e81c2db06838024a5b492181",
+    "src/store_queue.cpp": "447bcbb19f80cad5f327c068da744e7e3047c6e2a4565ba277caf708f7bed700",
+    "src/env_default.cpp": "264e6815cd75408c8624a0da45a2969b7b1755086d9c3907df9285ef24d682c9",
+    "src/scribe_server.cpp": "4de06a8af6e48ab414109ebe5fd28f1a8e9a6d95134ce91da3f85945bac94c46",
+    "src/file.cpp": "8090e835bde4bfcd0b3bf9c5a1dedcc294572eab4fb6148c8c45cc66252b8012",
+    "if/scribe.thrift": "611aec3f696c33bfd3d31c8bf096e4be5a4eab9972a1374dcfaff3421d6b0b5b",
+    "if/bucketupdater.thrift": "58e79912e109947ea46151b5a0e5be9ab184904a4d54cb724ad4b9c241e9fff2"
+  },
+  "test_hashes": {
+    "test/cpp/relay_contracts.h": "35be5da616bb42b360c3894109b127ef5e675463134abaa6908141904fca0b6d",
+    "test/cpp/scribe_api_compat.cpp": "24342393bb87b7ba5441f85809e9e06935a7f0cc6ecfa2a134944dab8a85d17e",
+    "test/relay_peer.py": "bb59292ee05bd7734236a42ba4444f4e9c90669f26678458ea03be2d6377ba19",
+    "test/relay_contracts.py": "4a063db4b0823aba5963ffeb72f5d8b6e78cb8e667993ecaf5e7a59d892f927c",
+    "test/test_relay_harness.py": "84612d4694495bc1d67fe76a777aa026dfde3e44f851aa5ea66c4ea9f6576568",
+    "test/loopback_rpc.py": "fc4996d4bcf466a891bf034b7827180e0468024493088d20c66553529bdf6a7f",
+    "test/test_scribe_api_compat.py": "10064d8e5991cad4778375a5bb8a5f57e8d420056270db866e1f25643a64de85"
+  },
+  "commands": {
+    "environment": "source existing approved toolchain-env.sh; set THRIFT_PREFIX FB303_PREFIX TOOLS_PREFIX SCRIBE_BUILD to source-matching build",
+    "focused": "python3 -B -m unittest discover -s test -p test_scribe_api_compat.py -k relay -v",
+    "helpers": "python3 -B -m unittest discover -s test -p 'test_*relay*.py' -v",
+    "full": "python3 -B -m unittest discover -s test -p 'test_*.py' -v"
+  },
+  "log_records": [
+    {
+      "file": "relay-example.log",
+      "size_bytes": 578,
+      "sha256": "11a4a8616b3244437d7c441bb4bcfb31fd6cbb3c9c97732749128993b7835da2"
+    },
+    {
+      "file": "relay-focused-final.log",
+      "size_bytes": 1991,
+      "sha256": "c9144bdf734a2acb52fd034706cbbdd1d8de1348d0ecdeead9df3b75a1e7e539"
+    },
+    {
+      "file": "relay-focused-first.log",
+      "size_bytes": 3396,
+      "sha256": "7fcf0e583aa4f7d8dbf4f220564c01cae2cea09d47859e4f909943f94ffe31c4"
+    },
+    {
+      "file": "relay-focused-second.log",
+      "size_bytes": 1991,
+      "sha256": "151fe80dccf100b68923b22520bb1fd8a7c687f0ebe4b855599f713aab734ced"
+    },
+    {
+      "file": "relay-full-tests.log",
+      "size_bytes": 17389,
+      "sha256": "1031863e286b7cecef15ed8f2ebe11f7f20c4744b1eaa9c8d49148424600d2c4"
+    },
+    {
+      "file": "relay-helper-tests.log",
+      "size_bytes": 426,
+      "sha256": "b9816b1c001efbd4d165688b5dbe33c544e7a6297432e77e36e6c8fca79c72ff"
+    },
+    {
+      "file": "strict-import.log",
+      "size_bytes": 731,
+      "sha256": "dbedf9eeb035d923e5ffffcbc8dc9ad2c7f8bc3fbe2d7818ae80dda5c5e867a9"
+    }
+  ],
+  "new_server_validation": {
+    "provenance": "Parent-verified Mac executor server report; new raw files not received or inspected in this cloud workspace",
+    "reported_date": "2026-10-04",
+    "raw_files_in_current_checkpoint": false,
+    "tested_checkpoint": {
+      "library_file_id": "libfile_c728242ac9b08191a21827a7d1831d63",
+      "version": 11,
+      "file_id": "file_0000000052a481fd92d86ffdfcd0d1bc",
+      "filename": "scribe-next-relay-contracts-20261004.tar.gz",
+      "size_bytes": 1266714,
+      "sha256": "48b76642c1e586ffcdb6f83028b1aee27a6144550398f37655df109783d7fd48",
+      "source_files": 148
+    },
+    "environment": {
+      "os": "Ubuntu26.04.1",
+      "compiler": "GCC15.2",
+      "boost": "1.83",
+      "thrift_compiler_runtime": "0.25.0",
+      "fb303": "0.25.0"
+    },
+    "build": {
+      "clean_build_passed": true,
+      "duration_seconds": 5.98,
+      "scribed_help_exit": 0
+    },
+    "project_tests": {
+      "passed": 101,
+      "failed": 0,
+      "skipped": 0,
+      "duration_seconds": 21.889
+    },
+    "relay_repeat": {
+      "unique_tests": 10,
+      "repetitions": 5,
+      "invocations_passed": 50,
+      "not_added_to_unique_suite_count": true
+    },
+    "kernel_process_observations": {
+      "listeners_observed": 115,
+      "all_listener_addresses": "127.0.0.1",
+      "owned_children_reaped": 165,
+      "sockets_and_pipes_closed": true,
+      "remaining_test_pids": 0,
+      "remaining_test_listeners": 0
+    },
+    "reported_contracts": [
+      "response loss peer6/sent3",
+      "simulated downstream prefix AABC",
+      "pool lifetime",
+      "dummy4096/4097",
+      "healthy two-worker file bytes"
+    ],
+    "invariance_reported": [
+      "148 source/doc files",
+      "prior checkpoints",
+      "dpkg/APT state",
+      "boot ID"
+    ],
+    "mac_main": {
+      "head": "32004a6a627723e081cedf7143323f3769cac220",
+      "clean": true,
+      "new_suite_executed_on_mac": false
+    },
+    "reported_evidence": {
+      "mac_records_directory": "/tmp/scribe-next-relay-Fyzo9c/ubuntu-results/records",
+      "file_names": [
+        "ubuntu-relay-results.json",
+        "project-101-tests.log",
+        "relay-runtime-observations.json"
+      ],
+      "tar_size_bytes": 45173,
+      "tar_sha256": "b9b8f647bcde1ad8da1da2a1a70813a28c94460650afc90aad5383c6fe3dfe59",
+      "request_frames_in_reported_tar": 43,
+      "tar_hash_verified_locally": false
+    },
+    "limits": [
+      "test-only loopback, production main/startServer listener startup unrun",
+      "failed worker scheduler/drain and concurrent pool races untested",
+      "prefix ledger is downstream simulation",
+      "old runtime/company equivalence, performance and durability untested"
+    ],
+    "followup_checkpoint": "Documentation/evidence only; implementation/test bytes and modes compared with tested v11; updated archive not rerun on server"
+  }
+}

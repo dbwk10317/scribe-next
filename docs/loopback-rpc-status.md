@@ -1,5 +1,7 @@
 # Loopback TCP RPC·worker·파일 출력 검증
 
+이 문서는 v8 시험·v9 요약 기록 당시의 범위를 보존한다. 이후 PR #2로 main `32004a6`에 반영됐고 v10 인계에서 당시 Ubuntu raw records를 수신·검증했다. 아래 미commit/raw 미수신 표현은 그 기록 시점의 상태다. 최신 test-only 후속 작업은 [relay 기록](relay-contracts-status.md)을 따른다.
+
 2026-10-04 · base/main `24692d6c310588a9bd5d33ef3d203a5313dea6c5` · 후속 클라우드 작업 트리, 미commit·미push
 
 관련 문서: [README](../README.md) · [manifest](loopback-rpc-manifest.json) · [이전 truncate 수정](truncate-fix-status.md)
