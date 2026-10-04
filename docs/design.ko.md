@@ -8,7 +8,7 @@
 
 scribe-next는 기존 Scribe의 구조와 외부 동작을 유지하면서 최신 Thrift 및 현대 Linux 환경에서 빌드할 수 있도록 이식하는 프로젝트다. 프로젝트 이름은 scribe-next로 정하되 기존 바이너리, 서비스, IDL namespace, 설정 key와 설치 경로의 이름은 호환성 검증 없이 바꾸지 않는다. 먼저 빌드와 의존성 경계만 복구하고, 동작 비교가 통과한 뒤 오래된 C++ 표현을 작은 변경으로 정리한다. 처리 구조, 저장 형식, 전달 보장, 성능 정책을 새로 설계하지 않는다.
 
-이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree의 도입 검증을 수행했다. 원본 C++·IDL·기존 build/test 파일의 내용은 변경하지 않았으며 Scribe 빌드, 실행, 성능 측정은 수행하지 않았다. 현재 결과는 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다.
+이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. IDL·queue/store/spool 로직과 기존 시험 소스는 유지한다. 최신 제한 시험·남은 차이는 [API 이식 기록](api-compat-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 운영 daemon 기동·성능 측정·old/new 동등성 검증은 수행하지 않았다.
 
 ## 범위와 비목표
 
@@ -30,7 +30,7 @@ Rust나 Go 재작성, 비동기 런타임 교체, thread pool 재설계, lock-fr
 
 `Log(1: list<LogEntry> messages)`를 유지한다. LogEntry의 field 1은 category 문자열, field 2는 message 문자열이며 enum 값은 OK=0, TRY_LATER=1이다. namespace, field ID, requiredness, method 이름, fb303 상속과 예외 표현을 임의 변경하지 않는다. 문자열은 기존 byte sequence를 보존하며 UTF-8 정규화나 newline 보정을 하지 않는다.
 
-네트워크는 framed binary를 유지한다. `env_default.cpp`의 서버 factory와 `dynamic_bucket_updater.cpp`의 mapping client는 strictRead=false/strictWrite=false를 명시한다. 반면 `conn_pool.cpp`의 relay client는 `TBinaryProtocol` 생성자 기본값에 의존하므로 기존 runtime의 값과 wire fixture를 먼저 확인한다. 이 경로들을 일괄 false/false로 바꾸지 않고 경로별 기존 값을 목표 runtime에 명시한다. old client → new server, new client → old server 및 old/new relay 조합을 모두 검증한다. serializer wire 비교와 request/response 의미 비교는 함께 수행한다.
+네트워크는 framed binary를 유지한다. `env_default.cpp`의 서버 factory와 `dynamic_bucket_updater.cpp`의 mapping client는 strictRead=false/strictWrite=false를 명시한다. `conn_pool.cpp`의 relay client도 `setStrict(false, false)`를 명시하므로 그대로 유지한다. relay가 기본값에 의존한다던 이전 정적 검토는 고정 source 대조로 정정했다. old client → new server, new client → old server 및 old/new relay 조합을 모두 검증한다. serializer wire 비교와 request/response 의미 비교는 함께 수행한다.
 
 OK는 메모리 큐 수락 경로의 응답이며 영속 저장 완료가 아니다. 빈 category 및 route를 찾지 못한 category를 버려도 OK가 될 수 있다. 한 store의 큐가 제한을 초과하면 해당 요청과 무관한 category도 TRY_LATER가 될 수 있다. 종료 중 동적 category 생성 경로에서 일부 메시지가 이미 큐에 들어간 뒤 TRY_LATER가 반환될 가능성과 재시도 중복을 보존한다. 성공을 원자적 durable transaction으로 설명하지 않는다.
 
@@ -56,14 +56,14 @@ CLI의 -p, -c, positional config 경로, port 설정의 우선순위, 프로세�
 
 Thrift 0.25.0을 첫 검증 후보로 제안한다. 2026년 10월 4일 확인한 공식 다운로드 페이지는 이를 2026년 9월 30일 발표된 최신 안정판으로 표시한다. compiler와 C++ runtime은 동일 버전으로 고정하고 해시, 옵션, 생성 결과를 기록한다. upstream 최신 브랜치를 빌드 입력으로 사용하지 않는다.
 
-Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6`에서 아래 경계를 정적으로 확인했다. 이는 compile·link 또는 runtime 호환성의 증거가 아니다.
+Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6`에서 아래 경계를 정적으로 확인했다. 이 정적 검토 자체는 compile·link 또는 runtime 호환성의 증거가 아니다. 후속 실제 dependency/부분 build 결과와 미통과 범위는 [빌드 기록](build-status.md)을 따른다.
 
 | 경계 | 확인한 상태와 이식 방향 |
 | --- | --- |
-| C++ 표준·생성 옵션 | 최소 C++11, CMake 기본값 11, `cpp:pure_enums` 지원. C++17 후보와 요구 표준은 충돌하지 않지만 실제 빌드는 별도 검증 |
+| C++ 표준·생성 옵션 | 최소 C++11, CMake 기본값 11, `cpp:pure_enums` 지원. C++17 후보와 요구 표준은 충돌하지 않음. 후속 dependency/RPC library build는 통과, 기본 비-HDFS C++ lane의 scribed compile/link 통과, 전체 matrix 미완료 |
 | 파일 transport | `TFileTransport`·`TSimpleFileTransport`가 빌드 목록에 있고 `setChunkSize`·`setFlushMaxUs`·`setEventBufferSize`도 존재. 재구현보다 기존 API와 bytes 비교 우선 |
 | fb303 | IDL과 C++ `FacebookBase`가 존재하며 `setServer()`는 Boost shared_ptr 사용. 현대 Thrift의 std shared_ptr 경계와 소유권을 함께 검토 |
-| 서버·동시성 | `TNonblockingServer`는 port 대신 서버 transport 객체를 받음. 기존 `PosixThreadFactory`·`ReadWriteMutex` 사용부는 환경 wrapper 안에서 이식 필요 |
+| 서버·동시성 | `TNonblockingServer`는 port 대신 서버 transport 객체를 받음. `ThreadFactory`와 좁은 POSIX read/write wrapper로 이식. stack·limit·운영 동등성은 추가 검증 필요 |
 
 fb303의 source 존재만으로 header/library 설치·운영 method 호환성을 선언하지 않는다. 기존 구현의 빌드 경계부터 검증하고 필요한 부분만 수정한다.
 

@@ -1,3 +1,4 @@
+// scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,10 +54,10 @@ class scribeConn {
   std::string connectionString();
 
  protected:
-  boost::shared_ptr<apache::thrift::transport::TSocket> socket;
-  boost::shared_ptr<apache::thrift::transport::TFramedTransport> framedTransport;
-  boost::shared_ptr<apache::thrift::protocol::TBinaryProtocol> protocol;
-  boost::shared_ptr<scribe::thrift::scribeClient> resendClient;
+  std::shared_ptr<apache::thrift::transport::TSocket> socket;
+  std::shared_ptr<apache::thrift::transport::TFramedTransport> framedTransport;
+  std::shared_ptr<apache::thrift::protocol::TBinaryProtocol> protocol;
+  std::shared_ptr<scribe::thrift::scribeClient> resendClient;
 
   unsigned refCount;
 

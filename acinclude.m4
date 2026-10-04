@@ -1,6 +1,6 @@
 AC_DEFUN([FB_INITIALIZE],
 [
-AM_INIT_AUTOMAKE([ foreign 1.9.5 no-define ])
+# scribe-next modification: Automake initialization is owned by configure.ac.
 if test "x$1" = "xlocalinstall"; then
 wdir=`pwd`
 # To use $wdir undef quote.
@@ -9,6 +9,9 @@ wdir=`pwd`
 AC_PREFIX_DEFAULT([`pwd`/install])
 echo
 fi
+# scribe-next modification: distinguish caller flags from compiler-added defaults.
+fb_user_cflags_set=${CFLAGS+set}
+fb_user_cxxflags_set=${CXXFLAGS+set}
 AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_RANLIB(RANLIB, ranlib)
@@ -76,11 +79,16 @@ AC_ARG_ENABLE([opt],
 )
 if test "$ENABLED_OPT" = "yes"
 then
-     CFLAGS="-Wall -O3"
-     CXXFLAGS="-Wall -O3"
+     fb_default_flags="-Wall -O3"
 else
-     CFLAGS="-Wall -g"
-     CXXFLAGS="-Wall -g"
+     fb_default_flags="-Wall -g"
+fi
+# scribe-next modification: retain explicit caller flags, including empty values.
+if test "$fb_user_cflags_set" != set; then
+     CFLAGS="$fb_default_flags"
+fi
+if test "$fb_user_cxxflags_set" != set; then
+     CXXFLAGS="$fb_default_flags"
 fi
 AC_MSG_RESULT($ENABLED_OPT)
 AM_CONDITIONAL([OPT], [test "$ENABLED_OPT" = yes])

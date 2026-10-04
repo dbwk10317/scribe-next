@@ -1,0 +1,607 @@
+{
+  "recorded_utc": "2026-10-04T09:54:25.966419+00:00",
+  "base_commit": "00826b8f0ac9288944e7ae56844f926dd654f0bb",
+  "working_tree_committed": false,
+  "environment": {
+    "os": "Debian GNU/Linux 13 (trixie)",
+    "architecture": "x86_64",
+    "gcc": "14.2.0",
+    "python": "3.12.14",
+    "git": "2.52.0",
+    "make": "4.4.1",
+    "autoconf": "2.72",
+    "automake": "1.17",
+    "libtool": "2.5.4",
+    "m4": "1.4.19",
+    "bison": "3.8.2",
+    "flex": "2.6.4",
+    "openssl": "3.5.7",
+    "zlib": "1.3.1"
+  },
+  "dependency_installation": {
+    "mode": "workspace payload extraction, authenticated Debian metadata and package SHA256; no system install or maintainer scripts",
+    "source_list": "deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg check-valid-until=no] https://snapshot.debian.org/archive/debian/20260925T181338Z/ trixie main\ndeb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg check-valid-until=no] https://snapshot.debian.org/archive/debian/20260925T181338Z/ trixie-updates main\ndeb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20260925T181338Z/ trixie-security main\n",
+    "packages": [
+      {
+        "package": "autoconf",
+        "version": "2.72-3.1",
+        "architecture": "all",
+        "file": "autoconf_2.72-3.1_all.deb",
+        "sha256": "0de76b647b0afb6c7934999aaefeb463656c147672464a367df1019969e77af3",
+        "repository_path": "pool/main/a/autoconf/autoconf_2.72-3.1_all.deb"
+      },
+      {
+        "package": "automake",
+        "version": "1:1.17-4",
+        "architecture": "all",
+        "file": "automake_1%3a1.17-4_all.deb",
+        "sha256": "8d4b172d4ff8070789c54b48a95585b53e4c65faeb07a2ae52da16cb364df635",
+        "repository_path": "pool/main/a/automake-1.17/automake_1.17-4_all.deb"
+      },
+      {
+        "package": "autotools-dev",
+        "version": "20240727.1",
+        "architecture": "all",
+        "file": "autotools-dev_20240727.1_all.deb",
+        "sha256": "d07d476c1fcd713ed04695f25ac290c3ae2317e6fd974ad6b2168e3be1c795c3",
+        "repository_path": "pool/main/a/autotools-dev/autotools-dev_20240727.1_all.deb"
+      },
+      {
+        "package": "bison",
+        "version": "2:3.8.2+dfsg-1+b2",
+        "architecture": "amd64",
+        "file": "bison_2%3a3.8.2+dfsg-1+b2_amd64.deb",
+        "sha256": "ce6eb1f7aad18850e32d223a68f54bcbe756d74f138c8ec5460ad9d220f4d335",
+        "repository_path": "pool/main/b/bison/bison_3.8.2+dfsg-1+b2_amd64.deb"
+      },
+      {
+        "package": "flex",
+        "version": "2.6.4-8.2+b4",
+        "architecture": "amd64",
+        "file": "flex_2.6.4-8.2+b4_amd64.deb",
+        "sha256": "75f963765232c356d0a2fb70e780dfa9de2425aca036ec60eefb7fc98a2c905b",
+        "repository_path": "pool/main/f/flex/flex_2.6.4-8.2+b4_amd64.deb"
+      },
+      {
+        "package": "libboost-atomic1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-atomic1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "d10e48cc19a8d693a87f03030854d37fc4809baab059ebb2e8b2ed4a99cb805c",
+        "repository_path": "pool/main/b/boost1.83/libboost-atomic1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-atomic1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-atomic1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "2b612ebd5a7d9bfcd395af58c05b1b55e9e83f4b93db182fb269dd8478d27e54",
+        "repository_path": "pool/main/b/boost1.83/libboost-atomic1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-chrono-dev",
+        "version": "1.83.0.2+b2",
+        "architecture": "amd64",
+        "file": "libboost-chrono-dev_1.83.0.2+b2_amd64.deb",
+        "sha256": "94d7d028e5713f50f18c477ba915daf14377e5da8429a67a2a81fbccf6e2be0c",
+        "repository_path": "pool/main/b/boost-defaults/libboost-chrono-dev_1.83.0.2+b2_amd64.deb"
+      },
+      {
+        "package": "libboost-chrono1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-chrono1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "4b9729862d76f52c395983d4ec29066e411bf12bca172a2cbb2e3827b2f8e82d",
+        "repository_path": "pool/main/b/boost1.83/libboost-chrono1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-chrono1.83.0t64",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-chrono1.83.0t64_1.83.0-4.2_amd64.deb",
+        "sha256": "59ffe41ccadbaba0701ab17e77830022d7a0c9b7f5bf3f8d685c3f5dcb86bfc5",
+        "repository_path": "pool/main/b/boost1.83/libboost-chrono1.83.0t64_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-date-time1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-date-time1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "37a186258ebd043d33b8cc5f1f7b4e2b6107ee1b6631e9084ec37dd46bed83c8",
+        "repository_path": "pool/main/b/boost1.83/libboost-date-time1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-date-time1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-date-time1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "5e13c1cf49e2f7e5fafdaf6687c6d6783ccd7e1ffb30e3171a0f0ed80083ba7e",
+        "repository_path": "pool/main/b/boost1.83/libboost-date-time1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-filesystem-dev",
+        "version": "1.83.0.2+b2",
+        "architecture": "amd64",
+        "file": "libboost-filesystem-dev_1.83.0.2+b2_amd64.deb",
+        "sha256": "1ebc1e2635c487670f08298ee28b0077efd9783ae8f0c1c23b78bfe198a6fd3f",
+        "repository_path": "pool/main/b/boost-defaults/libboost-filesystem-dev_1.83.0.2+b2_amd64.deb"
+      },
+      {
+        "package": "libboost-filesystem1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-filesystem1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "9a50fa4c8da94cef192a9139a9d26961689f8bc901ea4fdd5e5a912581f4a135",
+        "repository_path": "pool/main/b/boost1.83/libboost-filesystem1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-filesystem1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-filesystem1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "6b587623a4fd1824613e7ee02ba35b84cd9534b520b7f3d08d15f9ed85f28cf3",
+        "repository_path": "pool/main/b/boost1.83/libboost-filesystem1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-serialization1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-serialization1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "c1c71dfd14710e86eab7cd49d6be4722595d1bf4b48b4934e0136742a374c964",
+        "repository_path": "pool/main/b/boost1.83/libboost-serialization1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-serialization1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-serialization1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "5c0f28f2464e72c16c01440db47122e23ae0b4147e11e0e6d3b4ced86190324c",
+        "repository_path": "pool/main/b/boost1.83/libboost-serialization1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-system-dev",
+        "version": "1.83.0.2+b2",
+        "architecture": "amd64",
+        "file": "libboost-system-dev_1.83.0.2+b2_amd64.deb",
+        "sha256": "e3d51e24880e1d48c0808210cfd5ce6fc6415ba870c5f11cf7388bcd36dd8416",
+        "repository_path": "pool/main/b/boost-defaults/libboost-system-dev_1.83.0.2+b2_amd64.deb"
+      },
+      {
+        "package": "libboost-system1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-system1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "ac60c2e1bdee779633fad66212b638bf77ddf1e99d650d06bd65ac55577e9839",
+        "repository_path": "pool/main/b/boost1.83/libboost-system1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-system1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-system1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "a453edc44ae53303495d6e123b3ea659431849dd52b075459518cfffc49ff179",
+        "repository_path": "pool/main/b/boost1.83/libboost-system1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-test-dev",
+        "version": "1.83.0.2+b2",
+        "architecture": "amd64",
+        "file": "libboost-test-dev_1.83.0.2+b2_amd64.deb",
+        "sha256": "adb2871c971219e6f744c21abd086b661baaa9ac382f6a02b605b6d13ef65bfb",
+        "repository_path": "pool/main/b/boost-defaults/libboost-test-dev_1.83.0.2+b2_amd64.deb"
+      },
+      {
+        "package": "libboost-test1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-test1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "7df27b3fde528c51acbc74c7874cce6ef52f82c0320c085a1f1f321e76b144d3",
+        "repository_path": "pool/main/b/boost1.83/libboost-test1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-test1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-test1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "26e093572904a5ac681d8e201822245c6ab24376d6df30b33543d8630b7806ab",
+        "repository_path": "pool/main/b/boost1.83/libboost-test1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-thread-dev",
+        "version": "1.83.0.2+b2",
+        "architecture": "amd64",
+        "file": "libboost-thread-dev_1.83.0.2+b2_amd64.deb",
+        "sha256": "0a0566e2e55b483dba92cbd131b95b3a0a51672b2ffeb8282b21db60e557f4dc",
+        "repository_path": "pool/main/b/boost-defaults/libboost-thread-dev_1.83.0.2+b2_amd64.deb"
+      },
+      {
+        "package": "libboost-thread1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-thread1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "839f2580bbe2032248736057075ac6c636964f49cbece146ad2145f3b53ba0cb",
+        "repository_path": "pool/main/b/boost1.83/libboost-thread1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost-thread1.83.0",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost-thread1.83.0_1.83.0-4.2_amd64.deb",
+        "sha256": "00d3ec4fa47bb2bab1afa3ef5cd354e1afd47eacf08bb7db6c4092218008ebbb",
+        "repository_path": "pool/main/b/boost1.83/libboost-thread1.83.0_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libboost1.83-dev",
+        "version": "1.83.0-4.2",
+        "architecture": "amd64",
+        "file": "libboost1.83-dev_1.83.0-4.2_amd64.deb",
+        "sha256": "1f11fc6fb2ffe9378a0f0ebc8f2fd9223fb958b4a40bb9381c67a8857d947ca3",
+        "repository_path": "pool/main/b/boost1.83/libboost1.83-dev_1.83.0-4.2_amd64.deb"
+      },
+      {
+        "package": "libevent-2.1-7t64",
+        "version": "2.1.13-stable-1~deb13u1",
+        "architecture": "amd64",
+        "file": "libevent-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb",
+        "sha256": "9a2a9a6c4ceaafe280f8f39ffa217bb50719c5e79feb75f412755c4036a76ca0",
+        "repository_path": "pool/updates/main/libe/libevent/libevent-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb"
+      },
+      {
+        "package": "libevent-core-2.1-7t64",
+        "version": "2.1.13-stable-1~deb13u1",
+        "architecture": "amd64",
+        "file": "libevent-core-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb",
+        "sha256": "faa7d20cc8fa05ac3b0497065fa60bc920eacd3711ff039649d43a7aa34421ce",
+        "repository_path": "pool/updates/main/libe/libevent/libevent-core-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb"
+      },
+      {
+        "package": "libevent-dev",
+        "version": "2.1.13-stable-1~deb13u1",
+        "architecture": "amd64",
+        "file": "libevent-dev_2.1.13-stable-1~deb13u1_amd64.deb",
+        "sha256": "1e7cffffd7488be7874510533ca929adf381d46e64cbb59f0a60df10608268f3",
+        "repository_path": "pool/updates/main/libe/libevent/libevent-dev_2.1.13-stable-1~deb13u1_amd64.deb"
+      },
+      {
+        "package": "libevent-extra-2.1-7t64",
+        "version": "2.1.13-stable-1~deb13u1",
+        "architecture": "amd64",
+        "file": "libevent-extra-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb",
+        "sha256": "57ed9e9c63bd9f77633210d4abca21384439cac103cd1d430356f05ea3ec3278",
+        "repository_path": "pool/updates/main/libe/libevent/libevent-extra-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb"
+      },
+      {
+        "package": "libevent-openssl-2.1-7t64",
+        "version": "2.1.13-stable-1~deb13u1",
+        "architecture": "amd64",
+        "file": "libevent-openssl-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb",
+        "sha256": "4e641a6c93c9159c69162c1366499c39b0f4b7e9cd18bb64abfa0d8f06e57c3a",
+        "repository_path": "pool/updates/main/libe/libevent/libevent-openssl-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb"
+      },
+      {
+        "package": "libevent-pthreads-2.1-7t64",
+        "version": "2.1.13-stable-1~deb13u1",
+        "architecture": "amd64",
+        "file": "libevent-pthreads-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb",
+        "sha256": "58967d9d98cd88484d665ae963b4657a8a55b7c04b1c054faef6062d09c44771",
+        "repository_path": "pool/updates/main/libe/libevent/libevent-pthreads-2.1-7t64_2.1.13-stable-1~deb13u1_amd64.deb"
+      },
+      {
+        "package": "libtool",
+        "version": "2.5.4-4",
+        "architecture": "all",
+        "file": "libtool_2.5.4-4_all.deb",
+        "sha256": "be5361a8c1fce2758c3e19608bf97393d5f3afdb7e926aeb83e2818355bd885f",
+        "repository_path": "pool/main/libt/libtool/libtool_2.5.4-4_all.deb"
+      },
+      {
+        "package": "m4",
+        "version": "1.4.19-8",
+        "architecture": "amd64",
+        "file": "m4_1.4.19-8_amd64.deb",
+        "sha256": "221b3e224708c1da2a1a88b6824380593579b2254ae7d914afa14cbd5d343334",
+        "repository_path": "pool/main/m/m4/m4_1.4.19-8_amd64.deb"
+      }
+    ]
+  },
+  "thrift": {
+    "release": "0.25.0",
+    "archive_url": "https://dlcdn.apache.org/thrift/0.25.0/thrift-0.25.0.tar.gz",
+    "sha256": "66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214",
+    "size_bytes": 5068440,
+    "source_patches": [],
+    "prefix": "workspace only",
+    "configure_selection": [
+      "--with-cpp",
+      "--with-libevent=${TOOLS}",
+      "--with-zlib",
+      "--without-qt5",
+      "--without-c_glib",
+      "--without-java",
+      "--without-kotlin",
+      "--without-erlang",
+      "--without-nodejs",
+      "--without-nodets",
+      "--without-lua",
+      "--without-python",
+      "--without-py3",
+      "--without-perl",
+      "--without-php",
+      "--without-php_extension",
+      "--without-dart",
+      "--without-ruby",
+      "--without-go",
+      "--without-rs",
+      "--without-cl",
+      "--without-haxe",
+      "--without-netstd",
+      "--without-d",
+      "--disable-tutorial",
+      "--enable-tests"
+    ],
+    "configure_additional_options": [
+      "--prefix=${THRIFT_PREFIX}",
+      "--libdir=${THRIFT_PREFIX}/lib",
+      "--with-boost=${TOOLS}",
+      "--with-boost-libdir=${TOOLS}/lib/x86_64-linux-gnu"
+    ],
+    "cxx": "g++ -std=c++11",
+    "cxxflags": "-O2 -std=c++17",
+    "effective_cxx_standard": "C++17 (last -std flag in actual compile commands)",
+    "cppflags_final": "-I${TOOLS}/include -I${THRIFT_BUILD}/lib/cpp/src -I${THRIFT_BUILD}",
+    "ldflags": "-L${TOOLS}/lib/x86_64-linux-gnu -Wl,-rpath,${TOOLS}/lib/x86_64-linux-gnu",
+    "cpp_unit_tests": {
+      "passed": 29,
+      "failed_final": 0,
+      "first_run_failed": 4,
+      "first_run_cause": "missing official test/keys fixture in VPATH build",
+      "rerun_fix": "build/test/keys points to unchanged official source/test/keys"
+    },
+    "fuzz_campaign": "not run",
+    "original_source_file_hash_check": {
+      "files_compared": 3112,
+      "all_match_release_archive": true
+    }
+  },
+  "fb303": {
+    "source": "contrib/fb303 from the same verified release",
+    "source_patches": [],
+    "configuration": [
+      "--with-cpp",
+      "--without-java",
+      "--without-php",
+      "--without-python",
+      "--with-thriftpath=${THRIFT_PREFIX}",
+      "--with-boost=${TOOLS}"
+    ],
+    "make_cxxflags": "-O2 -std=c++17",
+    "static_library_members": [
+      "FacebookService.o",
+      "fb303_types.o",
+      "FacebookBase.o",
+      "ServiceTracker.o"
+    ],
+    "headers_and_idl_installed": true,
+    "operational_api_compatibility": "selected methods exercised by memory-only Scribe fixture; full old/new operational API and lifecycle unverified"
+  },
+  "scribe": {
+    "intentional_upstream_build_changes": [
+      "acinclude.m4",
+      "bootstrap.sh",
+      "configure.ac",
+      "src/Makefile.am"
+    ],
+    "project_tests": {
+      "passed": 38,
+      "skipped": 0,
+      "breakdown": {
+        "import_verifier": 18,
+        "build_boundaries": 10,
+        "thrift_generation": 1,
+        "posix_mutex": 6,
+        "scribe_memory_api_and_help": 3
+      },
+      "environment": "prepared Autotools; explicit THRIFT_PREFIX, FB303_PREFIX, SCRIBE_BUILD, TOOLS_PREFIX",
+      "mutex_fixture_runs": 12
+    },
+    "static_rpc_libraries_built": [
+      "libscribe.a",
+      "libdynamicbucketupdater.a"
+    ],
+    "shared_rpc_libraries": "not built; source lists checked against actual generator output",
+    "generated_client_smoke": {
+      "linked": true,
+      "in_memory_bytes": 96,
+      "daemon_or_network_used": false,
+      "wire_compatibility": "not asserted"
+    },
+    "full_cpp_build": {
+      "exit_code": 0,
+      "clean_build": true,
+      "binary": "scribed",
+      "size_bytes": 992808,
+      "sha256": "54415714f92c7f9ea0bbc42889570792e9e7da9f0fb8c2515f23a7eae9d328f2",
+      "lane": "Debian13 x86_64 GCC14.2 C++17; public env_default; HDFS off; static RPC/shared Thrift runtime",
+      "link_reached": true,
+      "help_execution": {
+        "exit_code": 0,
+        "warning": "original setrlimit fd-limit request failed in unprivileged process; no service started"
+      },
+      "daemon_execution": false
+    },
+    "gate_A": "single default C++ lane passed; full approved platform/feature matrix incomplete",
+    "gates_B_C_D": "limited single-version API smoke only; full gates unpassed",
+    "observed_warnings": [
+      "PACKAGE_* macro redefinitions from Scribe build definitions and Thrift config.h",
+      "deprecated std::strstream header"
+    ],
+    "cpp_api_edits": true,
+    "idl_edits": false,
+    "intentional_upstream_cpp_changes": [
+      "src/conf.cpp",
+      "src/conn_pool.cpp",
+      "src/conn_pool.h",
+      "src/dynamic_bucket_updater.cpp",
+      "src/env_default.cpp",
+      "src/env_default.h",
+      "src/file.cpp",
+      "src/scribe_server.cpp",
+      "src/scribe_server.h",
+      "src/store.cpp",
+      "src/store_queue.cpp"
+    ],
+    "new_compatibility_header": "src/compat_mutex.h",
+    "algorithm_preservation_check": {
+      "boost_qualification_only": [
+        "src/store.cpp",
+        "src/store_queue.cpp",
+        "src/file.cpp"
+      ],
+      "exact_baseline_bytes": [
+        "if/scribe.thrift",
+        "if/bucketupdater.thrift",
+        "src/store.h",
+        "src/store_queue.h",
+        "src/file.h"
+      ]
+    },
+    "prior_full_cpp_failure": {
+      "exit_code": 2,
+      "first_error": "src/env_default.h:26: thrift/concurrency/PosixThreadFactory.h: No such file or directory",
+      "link_or_runtime_reached": false
+    },
+    "api_smoke": {
+      "mode": "memory-only generated client/processor and actual scribeHandler; temporary null-store config",
+      "binary_golden": "independently assembled non-versioned framed Log request/OK response, NUL and non-UTF8 payload",
+      "checks": [
+        "actual handler byte equality",
+        "empty/mixed batch OK",
+        "unknown/blank category counters",
+        "getName/getVersion/getStatus/getStatusDetails/getCounter/getCounters",
+        "oneway reinitialize/no reply",
+        "null-worker drain/stopStores",
+        "STOPPING TRY_LATER"
+      ],
+      "not_tested": [
+        "network/server lifecycle",
+        "old/new differential",
+        "file/spool output",
+        "all fb303 methods"
+      ]
+    },
+    "runtime_compatibility_risks": {
+      "unmodified_thrift_defaults": {
+        "max_frame_bytes": 16384000,
+        "max_message_bytes": 104857600,
+        "recursion_depth": 64
+      },
+      "thread_factory": "detached=true/requested worker count preserved; old1MiB stack/policy controls absent, operational resource equivalence unverified",
+      "legacy_baseline": "Scribe only states Thrift>=0.5.0; exact company old binary/runtime unconfirmed"
+    }
+  },
+  "generated_cpp_manifest": [
+    {
+      "file": "BucketStoreMapping.cpp",
+      "sha256": "4e79ab89e22d2efcf74522876498d4059030f773acde9f127eac4e4916a9079f",
+      "size_bytes": 15519
+    },
+    {
+      "file": "BucketStoreMapping.h",
+      "sha256": "81836474409ecd068a3d57a8014f00f1fc9051e4845d5c65e09045cd4e1c6085",
+      "size_bytes": 10484
+    },
+    {
+      "file": "BucketStoreMapping_server.skeleton.cpp",
+      "sha256": "da48d19fbb69a0c6fc4af8593c292264ac7c94fd764e0e5c2812a8772cc38465",
+      "size_bytes": 1472
+    },
+    {
+      "file": "FacebookService.cpp",
+      "sha256": "2a112fe704da962e40bc7db52d08810bf1d96013d2d387bc841a6a5b78f354c8",
+      "size_bytes": 131229
+    },
+    {
+      "file": "FacebookService.h",
+      "sha256": "bb3f7d7023832e3f75c500f045c55f489fb372906b3370f044f21148aaecbe97",
+      "size_bytes": 50939
+    },
+    {
+      "file": "FacebookService_server.skeleton.cpp",
+      "sha256": "aeb796d05197ff6ed78dd2ee9656589e5fb226cef665b83a13a0632710e567d7",
+      "size_bytes": 3800
+    },
+    {
+      "file": "bucketupdater_types.cpp",
+      "sha256": "9e13c12f7f776ef17c628d9f2f92276d1f9dca16dfb02fed6c22d2656b4e1ce9",
+      "size_bytes": 6985
+    },
+    {
+      "file": "bucketupdater_types.h",
+      "sha256": "8ccc2dc89eea61f7f9c709ab87f67c17cd89e4028a104b4f850d061d4c7ab18a",
+      "size_bytes": 2919
+    },
+    {
+      "file": "fb303_types.cpp",
+      "sha256": "0b59ad8a4616dbb05d3cd9679ab766cd153676b19419b9d92030bf0ccd9ec481",
+      "size_bytes": 1265
+    },
+    {
+      "file": "fb303_types.h",
+      "sha256": "205fc99fe2622bd88b3437889759640f39e5ebf788c685401541b74988a51799",
+      "size_bytes": 773
+    },
+    {
+      "file": "scribe.cpp",
+      "sha256": "09103f31dd200e0f9a94b7c38a132c1ccaf7e196d06558ae8d1bded291730b10",
+      "size_bytes": 13007
+    },
+    {
+      "file": "scribe.h",
+      "sha256": "4781687de047958c59abe69a3efbb2a0764edd4b52bd111bffdc98d0fd71894d",
+      "size_bytes": 8495
+    },
+    {
+      "file": "scribe_server.skeleton.cpp",
+      "sha256": "895bf2080f8aeb8db19c89e58972cc56c11bf08b1c0f8167236fa50bcf377529",
+      "size_bytes": 1352
+    },
+    {
+      "file": "scribe_types.cpp",
+      "sha256": "4d97305e019c1e2819d7fae3c39956bd2955e397fefb1b6af48a990660cc46bb",
+      "size_bytes": 4224
+    },
+    {
+      "file": "scribe_types.h",
+      "sha256": "b1083b3eb0d8bc3b2e17593d1afd451baf72b3660abfd2621bd4bf16bfe3d95e",
+      "size_bytes": 1773
+    }
+  ],
+  "log_bundle": "checkpoint build-records directory; initial failures and successful reruns retained",
+  "command_template_note": "Executed command forms with workspace prefixes replaced by variables; expanded output and initial failures are retained in checkpoint build-records.",
+  "path_variables": {
+    "TOOLS": "workspace extracted Debian usr directory",
+    "THRIFT_SOURCE": "verified thrift-0.25.0 release source",
+    "THRIFT_BUILD": "separate Thrift build directory",
+    "THRIFT_PREFIX": "workspace install prefix for compiler/C++ runtime",
+    "FB303_BUILD": "separate copy of the same release contrib/fb303",
+    "FB303_PREFIX": "workspace fb303 prefix",
+    "SCRIBE_BUILD": "separate copy of the modified Scribe checkout",
+    "SCRIBE_PREFIX": "workspace diagnostic prefix; Scribe installation was not run",
+    "TOOLS_PREFIX": "same extracted Debian usr directory as TOOLS"
+  },
+  "command_templates": {
+    "thrift_configure": "CFLAGS=\"-O2\" CXXFLAGS=\"-O2 -std=c++17\" CPPFLAGS=\"-I${TOOLS}/include\" LDFLAGS=\"-L${TOOLS}/lib/x86_64-linux-gnu -Wl,-rpath,${TOOLS}/lib/x86_64-linux-gnu\" ${THRIFT_SOURCE}/configure --prefix=${THRIFT_PREFIX} --libdir=${THRIFT_PREFIX}/lib --with-boost=${TOOLS} --with-boost-libdir=${TOOLS}/lib/x86_64-linux-gnu --with-cpp --with-libevent=${TOOLS} --with-zlib --without-qt5 --without-c_glib --without-java --without-kotlin --without-erlang --without-nodejs --without-nodets --without-lua --without-python --without-py3 --without-perl --without-php --without-php_extension --without-dart --without-ruby --without-go --without-rs --without-cl --without-haxe --without-netstd --without-d --disable-tutorial --enable-tests",
+    "thrift_compiler": "make -C ${THRIFT_BUILD}/compiler/cpp -j2 && make -C ${THRIFT_BUILD}/compiler/cpp install",
+    "thrift_cpp": "make -C ${THRIFT_BUILD}/lib/cpp -j2 CPPFLAGS=\"-I${TOOLS}/include -I${THRIFT_BUILD}/lib/cpp/src -I${THRIFT_BUILD}\" && make -C ${THRIFT_BUILD}/lib/cpp install CPPFLAGS=\"-I${TOOLS}/include -I${THRIFT_BUILD}/lib/cpp/src -I${THRIFT_BUILD}\"",
+    "thrift_test_fixture": "ln -s ${THRIFT_SOURCE}/test/keys ${THRIFT_BUILD}/test/keys (only when the build-side path is absent)",
+    "thrift_cpp_check": "make -C ${THRIFT_BUILD}/lib/cpp check CPPFLAGS=\"-I${TOOLS}/include -I${THRIFT_BUILD}/lib/cpp/src -I${THRIFT_BUILD}\"",
+    "fb303_configure": "cd ${FB303_BUILD}; autoreconf --force --verbose --install -I aclocal; ./configure --prefix=${FB303_PREFIX} --with-thriftpath=${THRIFT_PREFIX} --with-boost=${TOOLS} --with-cpp --without-java --without-php --without-python CPPFLAGS=\"-I${TOOLS}/include -I${THRIFT_PREFIX}/include\" CXXFLAGS=\"-O2 -std=c++17\"",
+    "fb303_build": "make -C ${FB303_BUILD}/cpp -j2 CXXFLAGS=\"-O2 -std=c++17\" && make -C ${FB303_BUILD}/cpp install CXXFLAGS=\"-O2 -std=c++17\"",
+    "scribe_configure": "cd ${SCRIBE_BUILD}; CPPFLAGS=\"-I${TOOLS}/include\" CXXFLAGS=\"-O2 -std=c++17\" LDFLAGS=\"-L${TOOLS}/lib/x86_64-linux-gnu -L${THRIFT_PREFIX}/lib -L${FB303_PREFIX}/lib -Wl,-rpath,${TOOLS}/lib/x86_64-linux-gnu -Wl,-rpath,${THRIFT_PREFIX}/lib\" ./bootstrap.sh --prefix=${SCRIBE_PREFIX} --with-thriftpath=${THRIFT_PREFIX} --with-fb303path=${FB303_PREFIX} --with-boost=${TOOLS} --with-boost-system=boost_system --with-boost-filesystem=boost_filesystem",
+    "scribe_rpc_libraries": "make -C ${SCRIBE_BUILD}/src thriftstyle && make -C ${SCRIBE_BUILD}/src -j2 libscribe.a libdynamicbucketupdater.a",
+    "scribe_full_cpp": "make -C ${SCRIBE_BUILD}/src clean && make -C ${SCRIBE_BUILD}/src -j2 (exit 0)",
+    "project_tests": "THRIFT_PREFIX=${THRIFT_PREFIX} FB303_PREFIX=${FB303_PREFIX} SCRIBE_BUILD=${SCRIBE_BUILD} TOOLS_PREFIX=${TOOLS} python3 -B -m unittest discover -s test -p \"test_*.py\" -v",
+    "generated_client_smoke": "g++ -O2 -std=c++17 -I${THRIFT_PREFIX}/include -I${FB303_PREFIX}/include/thrift/fb303 -I${SCRIBE_BUILD}/src/gen-cpp generated_client_smoke.cpp ${SCRIBE_BUILD}/src/libscribe.a ${SCRIBE_BUILD}/src/libdynamicbucketupdater.a ${FB303_PREFIX}/lib/libfb303.a -L${THRIFT_PREFIX}/lib -lthrift -lpthread -Wl,-rpath,${THRIFT_PREFIX}/lib -o generated_client_smoke && ./generated_client_smoke",
+    "scribe_help": "${SCRIBE_BUILD}/src/scribed --help (exit 0; existing setrlimit warning recorded)"
+  }
+}

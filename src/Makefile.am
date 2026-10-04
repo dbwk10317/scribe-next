@@ -72,7 +72,7 @@ AM_CPPFLAGS += -I$(hadoop_home)/include
 AM_CPPFLAGS += $(BOOST_CPPFLAGS)
 AM_CPPFLAGS += $(FB_CPPFLAGS) $(DEBUG_CPPFLAGS)
 
-AM_LDFLAGS = $(BOOST_LDFLAGS) $(BOOST_SYSTEM_LIB) $(BOOST_FILESYSTEM_LIB)
+AM_LDFLAGS = $(BOOST_LDFLAGS)
 
 # Section 3 #############################################################################
 # GENERATE BUILD RULES
@@ -81,10 +81,11 @@ AM_LDFLAGS = $(BOOST_LDFLAGS) $(BOOST_SYSTEM_LIB) $(BOOST_FILESYSTEM_LIB)
 # foo_CXXFLAGS foo_CPPFLAGS foo_LDFLAGS foo_LDADD
 
 # Static -- multiple libraries can be defined
+# scribe-next modification: these IDLs have no constants; modern Thrift emits no *_constants.cpp.
 if STATIC
 lib_LIBRARIES = libscribe.a libdynamicbucketupdater.a
-libscribe_a_SOURCES = gen-cpp/scribe.cpp gen-cpp/scribe_types.cpp gen-cpp/scribe_constants.cpp
-libdynamicbucketupdater_a_SOURCES = gen-cpp/BucketStoreMapping.cpp gen-cpp/bucketupdater_constants.cpp gen-cpp/bucketupdater_types.cpp 
+libscribe_a_SOURCES = gen-cpp/scribe.cpp gen-cpp/scribe_types.cpp
+libdynamicbucketupdater_a_SOURCES = gen-cpp/BucketStoreMapping.cpp gen-cpp/bucketupdater_types.cpp
 INTERNAL_LIBS = libscribe.a libdynamicbucketupdater.a
 endif
 
@@ -93,7 +94,7 @@ if SHARED
 shareddir = $(prefix)/lib
 shared_PROGRAMS = libscribe.so libdynamicbucketupdater.so
 libscribe_so_SOURCES = gen-cpp/scribe.cpp gen-cpp/scribe_types.cpp
-libdynamicbucketupdater_so_SOURCES = gen-cpp/BucketStoreMapping.cpp gen-cpp/bucketupdater_constants.cpp gen-cpp/bucketupdater_types.cpp 
+libdynamicbucketupdater_so_SOURCES = gen-cpp/BucketStoreMapping.cpp gen-cpp/bucketupdater_types.cpp
 libscribe_so_CXXFLAGS = $(SHARED_CXXFLAGS)
 libdynamicbucketupdater_so_CXXFLAGS = $(SHARED_CXXFLAGS)
 libscribe_so_LDFLAGS = $(SHARED_LDFLAGS)
@@ -107,7 +108,9 @@ scribed_SOURCES = store.cpp store_queue.cpp conf.cpp file.cpp conn_pool.cpp scri
 if USE_SCRIBE_HDFS
   scribed_SOURCES += HdfsFile.cpp
 endif
-scribed_LDADD = $(EXTERNAL_LIBS) $(INTERNAL_LIBS)
+# scribe-next modification: keep library dependencies after their consumers for --as-needed.
+scribed_LDADD = $(INTERNAL_LIBS) $(EXTERNAL_LIBS) $(BOOST_FILESYSTEM_LIB) $(BOOST_SYSTEM_LIB)
+noinst_HEADERS = compat_mutex.h
 
 if SHARED
 scribed_DEPENDENCIES = libscribe.so libdynamicbucketupdater.so

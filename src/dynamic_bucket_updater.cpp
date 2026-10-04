@@ -1,3 +1,4 @@
+// scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 #include <strstream>
 #include <iostream>
 #include "dynamic_bucket_updater.h"
@@ -11,7 +12,7 @@ using namespace facebook;
 using namespace facebook::fb303;
 using namespace scribe::thrift;
 using boost::shared_ptr;
-extern shared_ptr<scribeHandler> g_Handler;
+extern std::shared_ptr<scribeHandler> g_Handler;
 
 DynamicBucketUpdater* DynamicBucketUpdater::instance_ = NULL;
 Mutex DynamicBucketUpdater::instanceLock_;
@@ -341,7 +342,7 @@ bool DynamicBucketUpdater::updateInternal(
     catMap_.erase(catIter);
   }
 
-  shared_ptr<TSocket> socket = shared_ptr<TSocket>(
+  std::shared_ptr<TSocket> socket = std::shared_ptr<TSocket>(
                                 new TSocket(remoteHost, remotePort));
 
   if (!socket) {
@@ -362,10 +363,10 @@ bool DynamicBucketUpdater::updateInternal(
   socket->setRecvTimeout(recvTimeout);
   socket->setSendTimeout(sendTimeout);
 
-  shared_ptr<TFramedTransport> framedTransport = shared_ptr<TFramedTransport>(
+  std::shared_ptr<TFramedTransport> framedTransport = std::shared_ptr<TFramedTransport>(
                 new TFramedTransport(socket));
   framedTransport->open();
-  shared_ptr<TBinaryProtocol> protocol = shared_ptr<TBinaryProtocol>(
+  std::shared_ptr<TBinaryProtocol> protocol = std::shared_ptr<TBinaryProtocol>(
                                       new TBinaryProtocol(framedTransport));
 
   // no strict version checking

@@ -8,7 +8,7 @@
 
 ## 현재 상태와 근거
 
-- 고정 upstream 소스·기존 autotools·PHP 시험을 원래 경로로 가져온 첫 도입 상태다. `test/verify_upstream_import.py`와 실패 사례 시험은 실행했지만 현대 Linux 이식, Scribe build·runtime 검증과 새 계약 harness·CI는 아직 없다. 실제 결과는 [현재 상태](docs/source-status.md)를 따른다. 도입 검증을 동작 호환성으로 확대하지 않는다.
+- 고정 upstream 도입 뒤 제한된 빌드 진입부 수정을 진행 중이다. 의존성·통합 시험 이력은 [빌드 경계 기록](docs/build-status.md), 최신 scribed compile/link와 제한된 API 시험은 [API 이식 기록](docs/api-compat-status.md), 도입 이력은 [현재 상태](docs/source-status.md)를 따른다. import 검증기는 의도된 build 파일 수정도 실패로 표시하는 원본 보존 검사다. 원본 도입 commit의 검사와 현재 build 회귀 시험을 구분하며, 부분 build·의존성 시험과 단일 Linux compile/link 결과를 전체 matrix·runtime 호환성으로 확대하지 않는다.
 - 기준 upstream은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe), 공개 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 회사 fork·실제 config·실측 baseline·배포판·toolchain은 미확인이다.
 - 대상 OS는 Linux다. C++17과 Thrift 0.25.0은 제안 검증 후보다. target release의 실제 요구 표준과 API를 확인하기 전 확정하거나 빌드 성공을 주장하지 않는다.
 - 문서의 공개 소스 정적 검토 사실, 사용자 보존 요구, 구현 제안, 실제 실행·실패·미실행을 구분한다. 한 환경에서의 결과로 회사 운영 동등성이나 전체 platform 지원을 선언하지 않는다.
@@ -27,7 +27,7 @@ karpathy-guidelines와 ponytail의 핵심 원칙을 이 저장소에 적용한�
 
 ## 반드시 보존할 계약
 
-- **IDL·wire·운영 API:** 기존 `if/scribe.thrift`와 `if/bucketupdater.thrift`의 method, field ID, enum, requiredness, namespace, 예외 표현과 fb303 상속·method/counter/status/details를 유지한다. framed binary를 보존한다. 서버와 bucket mapping client의 명시적 strictRead=false/strictWrite=false, 기본값에 의존하는 relay client의 기존 runtime 설정을 구분해 고정한다. 모든 client를 일괄 false/false로 바꾸지 않는다. old/new client·server, 양방향 relay와 bucket mapping 호출을 비교한다.
+- **IDL·wire·운영 API:** 기존 `if/scribe.thrift`와 `if/bucketupdater.thrift`의 method, field ID, enum, requiredness, namespace, 예외 표현과 fb303 상속·method/counter/status/details를 유지한다. framed binary를 보존한다. 서버·bucket mapping·relay client 세 경로의 기존 명시적 strictRead=false/strictWrite=false를 유지한다. relay가 기본값에 의존한다던 이전 기록은 고정 source의 setStrict(false, false) 확인으로 정정했다. old/new client·server, 양방향 relay와 bucket mapping 호출을 비교한다.
 - **bytes·ACK:** category/message의 byte sequence를 보존한다. UTF-8 정규화, newline 보정과 payload 변환을 하지 않는다. OK는 기존 메모리 큐 수락 의미이며 영속 기록 완료가 아니다. 빈/미정의 category discard, queue limit의 TRY_LATER, 부분 수락 후 재시도 중복 등 원본 결과를 숨기지 않는다.
 - **queue·batch·thread:** message bytes 기준 큐 크기, `target_write_size=16384`, `max_write_interval=1초`, worker 수, lock 순서·scope, wakeup, command·실패 batch 우선순위, must_succeed, retry, flush_streaming, shutdown 의미를 유지한다. 새로운 thread/time API는 build에 필요한 경계만 다룬다.
 - **10 store:** file, buffer, network, bucket, thriftfile, null, multi, category, multifile, thriftmultifile과 해당 설정 이름을 유지한다. 미사용 store도 upstream 지원·검증 대상에서 조용히 제외하지 않는다.
@@ -46,7 +46,7 @@ Gate C: 양방향 ordinary spool·thriftfile·relay, fault/retry와 종료 계�
 
 Gate D: 회사가 승인한 baseline·허용 차이에 따른 성능과 운영 승인. 그 뒤 배포·롤백 실행 권한을 확인한다.
 
-어느 gate도 현재 통과하지 않았다. 의존성 build 성공을 Scribe build 성공 또는 runtime 호환성으로 확대하지 않는다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
+어느 gate도 현재 전체 통과하지 않았다. 클라우드의 비-HDFS 기본 C++ lane은 scribed compile/link를 통과했으나 전체 platform/feature matrix와 runtime 동등성은 미검증이다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
 
 ## 저장소·배포·고지
 

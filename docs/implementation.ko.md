@@ -6,7 +6,7 @@
 
 ## 개요
 
-설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 아래 작업은 단계별 구현 계획이며 현재는 승인된 첫 upstream 도입만 수행했다. 도입 검증과 실패 사례 시험 결과는 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)에 분리해 기록한다. 원본 C++·IDL·기존 build/test 파일을 수정하거나 의존성 설치, Scribe 빌드 및 배포를 수행하지 않았다. 회사 baseline이 없으므로 production 동등성 판정도 하지 않았다.
+설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 첫 upstream 도입과 제한된 빌드·Thrift API 경계를 수행했다. 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04), 의존성·초기 실패는 [빌드 기록](build-status.md), scribed clean compile/link 성공과 최신 제한 시험은 [API 이식 기록](api-compat-status.md)을 따른다. IDL·queue/store/spool 알고리즘과 기존 시험 소스는 그대로다. 운영 daemon 기동·배포·회사 baseline 동등성 판정은 수행하지 않았다.
 
 기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux이며 배포판과 toolchain은 미확정이다. 봉구서버의 Ubuntu 26.04.1에서 소스 도입 검증을 통과했다. build toolchain·의존성과 회사 승인 matrix는 후속 단계에서 확인한다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
 
@@ -38,7 +38,7 @@ old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 �
 
 먼저 공식 Thrift 0.25.0 release와 checksum을 고정하고, 목표 Linux에서 compiler와 필요한 C++ runtime을 빌드·검증한다. 이 의존성 build가 통과한 뒤 Scribe build를 연결한다. compiler/runtime 버전을 일치시키고 prefix와 include/link 경로를 명시한다. libthriftnb와 libevent 포함 여부, pthread linkage, fb303 header/library, HDFS feature off/on을 각각 확인한다. compiler flag는 C++17 후보로 고정하고 target Thrift의 요구 표준과 충돌하면 문서의 결정을 갱신한다. compiler warning은 기록하되 모든 경고를 한번에 수정하지 않는다.
 
-두 IDL의 field와 method를 변경하지 않고 목표 compiler로 다시 생성한다. v0.25.0 소스에서 `cpp:pure_enums` 지원과 최소 C++11 요구를 확인했지만 실제 생성 결과와 C++17 build는 아직 미검증이다. 기존 generator option과 generated signature를 비교하며 generated files를 손으로 고치지 않는다. old language client가 의존하는 설치·패키지 위치도 보존한다.
+두 IDL의 field와 method를 변경하지 않고 목표 compiler로 다시 생성한다. v0.25.0의 `cpp:pure_enums`로 두 IDL을 실제 생성했고, Thrift/fb303 및 두 RPC 정적 library의 C++17 build·링크 smoke를 통과했다. 이후 기본 비-HDFS C++ lane의 scribed clean compile/link도 통과했으며 old/new wire·runtime 동등성은 미검증이다. 기존 generator option과 generated signature를 비교하며 generated files를 손으로 고치지 않는다. old language client가 의존하는 설치·패키지 위치도 보존한다.
 
 완료 조건은 청결한 격리 환경에서 목표 Thrift의 compiler/runtime 빌드와 필요한 library 탐지가 성공하고, build manifest에 compiler, dependency hash, flags와 generated diff가 남는 것이다. 이때 Scribe를 최초 compile해 API·링크 오류를 분류한다. Scribe 전체 compile/link 통과는 작업 3과 4의 경계 수정 후 Gate A에서 판정한다. 의존성 build 성공만으로 wire·runtime 호환성을 선언하지 않는다.
 
@@ -46,9 +46,9 @@ old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 �
 
 대상은 `src/common.h`, `src/env_default.h/.cpp`, `src/scribe_server.cpp`, `src/conn_pool.cpp`, `src/dynamic_bucket_updater.h/.cpp`, `src/network_dynamic_config.h/.cpp`, generated interface를 사용하는 `src/store.cpp` 및 각 모듈의 관련 header다. 고정 SHA의 include graph를 따라 수정 범위를 좁히고 선언과 구현을 함께 검토한다.
 
-목표 release의 TProcessor, protocol factory, socket/server transport, TNonblockingServer, ThreadManager와 thread factory constructor를 대조한다. port를 직접 받던 서버 생성부를 목표 server transport 객체 경계에 맞춘다. Boost shared_ptr에서 std::shared_ptr로 바뀐 boundary와 Boost를 사용하는 fb303 `setServer()`의 소유권을 함께 이식하고 중복 control block을 만들지 않는다. framed binary와 서버·mapping client의 명시적 strict=false/false를 보존한다. relay client는 생성자 기본값에 의존하므로 old runtime과 wire fixture로 경로별 strict 값을 확인한 뒤 명시한다. 목표 release의 frame/message limit, timeout과 예외 default도 목록화한다.
+목표 release의 TProcessor, protocol factory, socket/server transport, TNonblockingServer, ThreadManager와 thread factory constructor를 대조한다. port를 직접 받던 서버 생성부를 목표 server transport 객체 경계에 맞춘다. Boost shared_ptr에서 std::shared_ptr로 바뀐 boundary와 Boost를 사용하는 fb303 `setServer()`의 소유권을 함께 이식하고 중복 control block을 만들지 않는다. framed binary와 서버·mapping client의 명시적 strict=false/false를 보존한다. relay client도 원본의 `setStrict(false, false)`를 그대로 유지한다. 기본값 의존이라는 이전 기록은 실제 source와 달라 정정했다. 목표 release의 frame/message limit, timeout과 예외 default도 목록화한다.
 
-fb303 IDL과 C++ source 존재는 확인했으며 build·설치·운영 호환성은 별도 확인 항목이다. 현재 FacebookBase 사용, status/details/counters, reinitialize/shutdown 및 기타 상속 method를 mapping한다. 기존 라이브러리가 목표 runtime에서 동작하면 유지한다. 기존 `PosixThreadFactory`·`ReadWriteMutex` 사용부는 현재 concurrency wrapper 안에서 필요한 부분만 대체하고 lock 순서·scope를 비교한다. worker queue의 pthread 동작은 그대로 둔다.
+fb303는 동일 0.25.0 release로 실제 build·workspace 설치를 통과했다. 운영 method·lifecycle과 기존 client 대비 호환성은 아직 별도 확인 항목이다. 현재 FacebookBase 사용, status/details/counters, reinitialize/shutdown 및 기타 상속 method를 mapping한다. 기존 라이브러리가 목표 runtime에서 동작하면 유지한다. 기존 `PosixThreadFactory`·`ReadWriteMutex` 사용부는 현재 concurrency wrapper 안에서 필요한 부분만 대체하고 lock 순서·scope를 비교한다. worker queue의 pthread 동작은 그대로 둔다.
 
 완료 조건은 old/new client와 relay 네 방향 테스트, bucket mapping 양방향 호출·갱신, fb303 전체 method 비교 및 server lifecycle 비교 통과다. server 종류를 blocking으로 바꾸거나 fb303를 없애는 방법으로 컴파일 오류를 회피하지 않는다.
 
@@ -114,7 +114,7 @@ Performance test는 승인된 normal/burst/outage workload를 동일 장비에�
 
 ## 제안 검증 명령
 
-아래는 도입된 source의 후속 빌드 복구 단계에서 격리 checkout에 맞춰 조정할 미실행 예시다. 소스 도입 검증의 실제 명령과 결과는 [현재 상태](source-status.md#첫-소스-도입-검증-2026-10-04)에 별도로 기록한다. `bootstrap.sh`가 autoreconf 뒤 configure를 호출하므로 configure 인자를 함께 전달한다. 실제 toolchain에서 요구 도구·옵션을 확인하며 dependency 설치 및 실제 service 실행 권한은 별도다.
+아래는 전체 빌드 복구·행동 검증을 위해 격리 checkout에 맞춰 조정할 예시이며 전체 성공 recipe가 아니다. 이미 수행한 dependency/부분 build와 실패한 전체 compile은 [빌드 기록](build-status.md)을 따른다. 소스 도입 검증의 실제 명령과 결과는 [현재 상태](source-status.md#첫-소스-도입-검증-2026-10-04)에 별도로 기록한다. `bootstrap.sh`가 autoreconf 뒤 configure를 호출하므로 configure 인자를 함께 전달한다. 실제 toolchain에서 요구 도구·옵션을 확인하며 dependency 설치 및 실제 service 실행 권한은 별도다.
 
 ```sh
 git rev-parse HEAD
@@ -141,7 +141,7 @@ Gate A는 platform/feature matrix의 compile·link 성공이다. Gate B는 두 I
 
 ## 근거 상태와 남은 확인
 
-고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Scribe·의존성 build, PHP suite, sanitizer, old/new·성능 시험은 미실행이다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
+고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Thrift/fb303·Scribe RPC library build와 초기 전체 compile 실패는 [빌드 기록](build-status.md), 후속 성공과 현재 범위는 [API 이식 기록](api-compat-status.md)에 남겼다. Scribe 운영 daemon, PHP suite, sanitizer, old/new·성능 시험은 미실행이다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
 
 설계 문서의 링크를 evidence entrypoint로 사용한다. 구현 시 각 계약에 source path·symbol·line, fixture ID, old 결과, new 결과, 검증 command, timestamp와 reviewer를 연결한다. upstream 사실, 요청에서 제공된 보존 조건, 구현 제안 및 회사 확인이 필요한 항목을 ledger에서 구분한다. 실패와 미실행도 보존한다.
 

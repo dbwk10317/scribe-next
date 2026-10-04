@@ -1,3 +1,4 @@
+// scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +24,13 @@
 #include "thrift/protocol/TBinaryProtocol.h"
 #include "thrift/server/TNonblockingServer.h"
 #include "thrift/concurrency/ThreadManager.h"
-#include "thrift/concurrency/PosixThreadFactory.h"
+#include "thrift/concurrency/ThreadFactory.h"
 #include "thrift/concurrency/Mutex.h"
 #include "thrift/transport/TSocket.h"
 #include "thrift/transport/TSocketPool.h"
 #include "thrift/transport/TServerSocket.h"
+#include "thrift/transport/TNonblockingServerSocket.h"
+#include "compat_mutex.h"
 #include "thrift/transport/TTransportUtils.h"
 #include "thrift/transport/THttpClient.h"
 #include "thrift/transport/TFileTransport.h"
@@ -88,7 +91,6 @@ namespace network_config {
  */
 
 namespace concurrency {
-  using apache::thrift::concurrency::ReadWriteMutex;
 
   // returns a new instance of read/write mutex.
   // you can choose different implementations based on your needs.

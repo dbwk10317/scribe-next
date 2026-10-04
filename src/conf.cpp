@@ -1,3 +1,4 @@
+// scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +28,7 @@
 using namespace boost;
 using namespace std;
 
-extern shared_ptr<scribeHandler> g_Handler;
+extern std::shared_ptr<scribeHandler> g_Handler;
 
 StoreConf::StoreConf() {
 }

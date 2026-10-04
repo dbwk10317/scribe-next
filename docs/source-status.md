@@ -22,8 +22,8 @@
 | 공개 기준 | [facebookarchive/scribe](https://github.com/facebookarchive/scribe), SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2` |
 | 제안 후보 | C++17, Thrift 0.25.0; 요구 표준과 주요 API는 정적 확인, 실제 build·runtime 채택은 미확정 |
 | 미확인 | 회사 fork·patch·production config·client/store/HDFS 사용, 실측 baseline, 배포판·compiler·dependency matrix |
-| 저장소 상태 | 고정 upstream 105개 경로와 기존 autotools·PHP 시험 도입. import 검증기와 18개 회귀 시험 통과. 현대 Linux 이식·새 행동 harness·CI는 미구현 |
-| 검증 gate | A compile/link, B 두 RPC/API/config/10 store/동적 목적지 갱신, C spool/relay/fault/종료, D 회사 성능·운영: 모두 미실행·미통과 |
+| 저장소 상태 | 원본 도입 commit `00826b8` 완료. 빌드 경계·Thrift API 수정 후 단일 클라우드 기본 C++ lane의 scribed clean compile/link 성공. [API 이식 기록](api-compat-status.md)과 이전 [빌드 기록](build-status.md) 참조 |
+| 검증 gate | A 기본 cloud C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B 두 RPC/API/config/10 store/동적 목적지 갱신, C spool/relay/fault/종료, D 회사 성능·운영은 미실행·미통과 |
 | 작업 환경·원격·배포 | 클라우드에서 구현, 검증된 변경은 Mac에서 동기화해 승인된 `codex/upstream-baseline` 브랜치로 반영. GitHub `dbwk10317/scribe-next` 비공개 유지. 봉구서버 import 검증 통과. main merge·Scribe 서비스 기동·배포 미실행 |
 
 ## upstream 코드 도입 전략
@@ -108,8 +108,8 @@ git fetch https://github.com/facebookarchive/scribe.git \
 
 검토 기준일은 2026-10-04다. 공개 upstream `fcd294faffd1e88af1643a3a8c2359c41713f7c2`와 Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6` 전체 tree를 별도 checkout에서 확보했다. 주요 경계의 source 링크와 채택 방향은 [설계의 의존성 전략](design.ko.md#의존성-전략)과 [근거 목록](design.ko.md#근거와-적용한-원칙)에 둔다.
 
-두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [별도 재현·수정 계획](implementation.ko.md#원본-메모리-결함의-별도-검증)이며 실행 재현은 하지 않았다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 의존성/Scribe build, PHP suite, wire·spool differential, sanitizer와 성능 시험은 미실행이다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
+두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [별도 재현·수정 계획](implementation.ko.md#원본-메모리-결함의-별도-검증)이며 실행 재현은 하지 않았다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 후속 의존성·RPC library build와 초기 compile 실패는 [빌드 기록](build-status.md), 최신 성공과 제한된 시험은 [API 이식 기록](api-compat-status.md)에 구분했다. Scribe daemon 실행, PHP suite, wire·spool differential, sanitizer와 성능 시험은 미실행이다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
 
 ## 라이선스 경계
 
-공개 기준 SHA의 [upstream LICENSE](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)는 Apache License 2.0이다. 현재 저장소에 원본 `LICENSE`와 파일별 copyright·attribution을 포함했다. 고정 전체 tree에 `NOTICE`는 없음을 확인했다. 원본 104개 파일은 bytes와 Git mode가 동일하고 `.gitignore`만 원본 bytes 뒤에 명시된 프로젝트 규칙을 추가했다. 향후 변경·배포 시 고지를 유지하며 변경 파일에 변경 사실을 표시한다. 의존성 고지도 검토한다. 이 기록은 개인·회사 저작권의 새 주장이나 회사 fork 공개 권한을 부여하지 않는다.
+공개 기준 SHA의 [upstream LICENSE](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)는 Apache License 2.0이다. 현재 저장소에 원본 `LICENSE`와 파일별 copyright·attribution을 포함했다. 고정 전체 tree에 `NOTICE`는 없음을 확인했다. 원본 도입 commit에서는 104개 파일의 bytes와 Git mode가 동일하고 `.gitignore`만 원본 bytes 뒤에 명시된 프로젝트 규칙을 추가했다. 후속 네 build 파일 변경은 [빌드 기록](build-status.md)에 별도로 남겼으며 이후 C++ API 경계의 변경은 [API 이식 기록](api-compat-status.md)에 남긴다. IDL과 기존 시험 소스는 동일하며 queue/store/spool 로직은 유지한다. 향후 변경·배포 시 고지를 유지하며 변경 파일에 변경 사실을 표시한다. 의존성 고지도 검토한다. 이 기록은 개인·회사 저작권의 새 주장이나 회사 fork 공개 권한을 부여하지 않는다.

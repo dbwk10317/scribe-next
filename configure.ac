@@ -10,7 +10,8 @@
 AC_PREREQ(2.52)
 AC_INIT([scribe], [1.5.0])
 AC_CONFIG_MACRO_DIR([aclocal])
-AM_INIT_AUTOMAKE([foreign -Wall])
+# scribe-next modification: initialize once, retaining both original option sets.
+AM_INIT_AUTOMAKE([foreign -Wall 1.9.5 no-define])
 # To install locally
 FB_INITIALIZE([localinstall])
 AC_PREFIX_DEFAULT([/usr/local])
