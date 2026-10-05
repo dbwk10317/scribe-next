@@ -153,3 +153,11 @@ retry-zero 회귀](review-fixes-status.md), [ThriftFile raw-copy](thriftfile-con
 retry·파일 의미를 새 정책으로 바꾸지 않는다. 유한 RPC256MiB 후보와 그보다 큰
 retained spool 재전송 경계는 별도 제한으로 남는다. 이 경계와 optional 미검증을
 사용자에게 숨기지 않으며 회사 baseline을 필수 gate로 되살리지 않는다.
+
+
+현재 기능 보존의 후속 확인 묶음은 [fb303 option/counter와 unknown-method](daemon-differential.md#fb303-optioncounter와-unknown-method-회복-묶음)이다.
+option state/void/string-map/i64와 application exception 뒤 연결 재사용, 원본의
+rate-disable 정상 config를 확인했다. 서버 전체180개 시험/skip0과 actual case1회에서
+old/new 요청15·응답14·수신2·raw9바이트/상대 link·정상 종료/회수가 일치했다.
+malformed frame·시간 의존 rate denial·전체 config 거절이나 profiler API까지
+완료했다고 확대하지 않는다. 상세 성능 비교 보류 결정은 유지한다.

@@ -103,19 +103,20 @@ class Cursor(object):
         return struct.unpack(fmt, self.take(struct.calcsize(fmt)))[0]
     def string(self):
         return self.take(self.number('>i'))
-    def value(self, kind):
+    def value(self, kind, map_value_kind=None):
         if kind == 8: return self.number('>i')
         if kind == 10: return self.number('>q')
         if kind == 11: return hexbytes(self.string())
         if kind == 13:
             key_kind, val_kind, count = self.number('>B'), self.number('>B'), self.number('>i')
-            if (key_kind,val_kind) != (11,10) or not 0 <= count <= 10000:
+            if key_kind!=11 or val_kind not in (10,11) or (map_value_kind is not None and val_kind!=map_value_kind) or not 0 <= count <= 10000:
                 raise ValueError('unexpected/unbounded map')
             result = {}
             for unused in range(count):
-                key = self.string().decode('ascii')
+                raw_key=self.string()
+                key=raw_key.decode('ascii') if val_kind==10 else hexbytes(raw_key)
                 if key in result: raise ValueError('duplicate counter')
-                result[key] = self.number('>q')
+                result[key] = self.number('>q') if val_kind==10 else hexbytes(self.string())
             return result
         raise ValueError('unexpected result field type %d' % kind)
 
@@ -124,15 +125,28 @@ def parse_reply(body, name, seq):
     if (c.string(),c.number('>B'),c.number('>i')) != (name,2,seq):
         raise ValueError('reply header mismatch')
     kind = c.number('>B')
-    expected_kind = {b'getName':11,b'getVersion':11,b'getStatus':8,b'getStatusDetails':11,b'getCounters':13,b'Log':8}[name]
+    expected_kind = {b'getName':11,b'getVersion':11,b'getStatus':8,b'getStatusDetails':11,b'getCounters':13,b'getCounter':10,b'getOption':11,b'getOptions':13,b'setOption':0,b'Log':8}[name]
     if kind != expected_kind: raise ValueError('unexpected method result type')
     if kind == 0: value = None
     else:
         if c.number('>h') != 0: raise ValueError('missing success field')
-        value = c.value(kind)
+        value = c.value(kind,11 if name==b'getOptions' else 10)
         if c.number('>B') != 0: raise ValueError('unexpected extra result')
     if c.offset != len(body): raise ValueError('trailing reply bytes')
     return value
+
+def parse_application_exception(body,name,seq):
+    c=Cursor(body)
+    if (c.string(),c.number('>B'),c.number('>i'))!=(name,3,seq):raise ValueError('exception header mismatch')
+    fields={}
+    while True:
+        kind=c.number('>B')
+        if kind==0:break
+        field=c.number('>h')
+        if field in fields or (field,kind) not in ((1,11),(2,8)):raise ValueError('unexpected exception field')
+        fields[field]=c.value(kind)
+    if set(fields)!=set((1,2)) or c.offset!=len(body):raise ValueError('incomplete/trailing exception')
+    return {'message_hex':fields[1],'type':fields[2]}
 
 def recv_exact(conn, size):
     data = b''
@@ -142,11 +156,13 @@ def recv_exact(conn, size):
         data += part
     return data
 
-def call(conn, name, seq, fields, directory, records, oneway=False):
+def call(conn, name, seq, fields, directory, records, oneway=False, exception=False):
+    if oneway and exception:raise ValueError('oneway call cannot expect exception reply')
     request = framed(name,seq,fields,oneway)
     filename = '%02d-%s' % (seq,name.decode('ascii'))
     with open(os.path.join(directory,filename+'.request.bin'),'wb') as f: f.write(request)
     item = {'method':name.decode('ascii'),'sequence':seq,'request_hex':hexbytes(request),'oneway':oneway}
+    if exception:item['exception']=True
     records.append(item)
     conn.sendall(request)
     if oneway: return None
@@ -155,7 +171,7 @@ def call(conn, name, seq, fields, directory, records, oneway=False):
     body = recv_exact(conn,size)
     with open(os.path.join(directory,filename+'.reply.bin'),'wb') as f: f.write(prefix+body)
     item['reply_hex'] = hexbytes(prefix+body)
-    item['value'] = parse_reply(body,name,seq)
+    item['value'] = parse_application_exception(body,name,seq) if exception else parse_reply(body,name,seq)
     return item['value']
 
 def network_check():
@@ -467,7 +483,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores','performance'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores','performance','fb303'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -505,6 +521,11 @@ def main():
         old=daemon_spool_case.run_lane(sys.modules[__name__],'old')
         new=daemon_spool_case.run_lane(sys.modules[__name__],'modern')
         result=daemon_spool_case.compare_lanes(sys.modules[__name__],old,new)
+    elif CASE=='fb303':
+        import daemon_fb303_case,daemon_spool_case
+        old=daemon_fb303_case.run_lane(sys.modules[__name__],daemon_spool_case,'old')
+        new=daemon_fb303_case.run_lane(sys.modules[__name__],daemon_spool_case,'modern')
+        result=daemon_fb303_case.compare_lanes(sys.modules[__name__],old,new)
     elif CASE=='performance':
         import daemon_performance_case,daemon_spool_case
         result=daemon_performance_case.run_comparison(sys.modules[__name__],daemon_spool_case)
