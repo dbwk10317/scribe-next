@@ -52,6 +52,46 @@ python tools/daemon_differential.py --run-isolated-daemons \
   --targets /prepared/targets.json --output /prepared/new-comparison-output
 ```
 
+## null/multi/category의 작은 추가 case
+
+같은 guard와 실제 old/modern argv를 사용해 `--case stores`를 선택한다. 기본
+`--case file`은 앞선 검증 입력/출력을 유지한다. stores case는 하나의 daemon
+config/batch로 세 정상 경로를 함께 대조하며 production 코드를 바꾸지 않는다.
+
+- null category discard: 동일 payload3개를 수락하고 ignored3, 파일 없음
+- multi category fanout: report_success=all, 두 file child에 각각 동일9bytes를
+  기록하고 null child의 ignored3도 확인
+- categories=cat* + type=category: new_thread_per_category=no로 실제 CategoryStore를
+  사용한다. model FileStore를 catA/catB로 clone해 각각5/4bytes에 분리한다
+- 전체 정상9개, blank/unknown 각1개. received good9, ignored6, bad1, blank1을
+  per-category/overall counters와 함께 확인
+
+예상 상대 파일은 left/left_00000, right/right_00000,
+category/catA/catA_00000, category/catB/catB_00000이며 각 current symlink도 대조한다.
+manifest의 directory enumeration 순서만 정렬하고 payload/파일명/라우팅은
+정규화하지 않는다. Worker-side ignored counters 때문에 양쪽에 같은2초 settle
+구간을 둔 뒤 counter8을 읽는다. 추가 poll RPC는 보내지 않으며9개 공통 요청을
+그대로 비교한다. 느린 환경에서 아직 미처리면 expected delta 불일치로 실패하고
+raw 기록을 확인한다; timeout을 성공으로 바꾸거나 store 동작을 수정하지 않는다.
+
+이 case의 offline2개는 source 호출 경로를 읽어 정한 예상 routing/bytes/counters와
+비교기의 누락 branch/case 거부를 확인하는 **synthetic expectations**다. 앞선 실제
+file wire fixture17개와 구분하며 실제 stores old/new 성공으로 세지 않는다.
+후속 서버에서 기존 compiled production bytes/hash를 확인하고 전체162개 시험
+failure/error/skip0 및 actual stores 비교1회를 통과했다. 공통 요청9/비교 응답7,
+received9/ignored6, 네 파일 bytes/네 symlink와 양쪽 shutdown exit0이 일치했다.
+첫 RPC 전 owned child socket inode 검사, runtime30개 hash와 private loader/help,
+실제 networknone/uid65534/resource 제한 및 운영30개 container ID 보존도 확인했다.
+고정2초 settle을 변경하지 않았고 새 clean build는 수행하지 않았다.
+전체 suite는 기존160+새2=162, focused는 기존7+새2=9다.
+
+기존 승인된 empty-only queue drain 수정은 별도 예외로 유지한다. Null/multi는
+nonempty 마지막 payload와 함께 전송하고 category도 마지막 정상 payload를
+nonempty로 두어 이 정상 case를 empty-only scheduler 대조로 확대하지 않는다.
+free/truncate, bucket/network 설정·copy, ThriftFileStore copy와 oversized/empty
+보존 정책도 별도 이력이다. 이번 정상 세 store case는 그 결함 경로를 새로
+수정하거나 fault/retry·부분 fan-out·전체 clone 동등성까지 검증하지 않는다.
+
 real/effective uid65534와 /sys/class/net의 lo-only, 새 checkout 밖 output, 사전 포트 비점유를
 검사한다. 두 lane은 별도 output에서 순서대로 실행한다. client는127.0.0.1만
 연결한다. 첫 RPC 전에 /proc의 established socket inode가 소유한 child PID의
@@ -79,8 +119,7 @@ networknone 컨테이너에서 한 번 실행했다. 두 lane 모두 첫 RPC 전
 shutdown exit0 비교가 통과했다. old/new runtime30개(바이너리 포함)의 hash와 loader/help를 확인했으며 운영30개 container ID도 유지됐다.
 새 clean build는 수행하지 않았고, old/new runtime/ABI 차이는 유지했다.
 
-다음 coverage는 null/multi/category의 구성·fan-out·clone routing, 그다음 file
-rotation·재시작/reinitialize, 이어서 spool/relay의 장애·재시도 순으로 우선순위를
-잡는다. 이번 PR에는 새 store workload를 추가하지 않는다. 전체10 store, bucket
+다음 coverage는 file rotation·재시작/reinitialize, 이어서 spool/relay의 장애·재시도
+순으로 우선순위를 잡는다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
 mapping, 모든 fb303 method, old/new 양방향 spool 및 성능 완료로 확대하지 않는다.
 기존 승인된 bug-fix 차이는 명시하며 oversized/empty 처리 보존 결정도 유지한다.

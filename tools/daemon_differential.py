@@ -9,11 +9,37 @@ import argparse, binascii, errno, hashlib, json, os, signal, socket, stat, struc
 ROOT = None
 PORT = 14630
 TARGETS = None
+CASE = 'file'
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'daemon_differential.conf.template')
 MAX_REPLY = 262144
 PAYLOADS = [b'A\x00B\n\xff', b'', b'tail']
 METHODS = ['getName','getVersion','getStatus','getStatusDetails','getCounters','Log','Log','getCounters','shutdown']
 EXPECTED_DELTA = {'fixture:received good':3,'scribe_overall:received good':3,'unknown:received bad':1,'scribe_overall:received bad':1,'scribe_overall:received blank category':1}
+
+def case_data(case):
+    if case == 'file':
+        return ([(b'fixture',p) for p in PAYLOADS]+[(b'',b'blank-discard'),(b'unknown',b'unknown-discard')],
+                EXPECTED_DELTA, {'fixture_00000':b''.join(PAYLOADS)})
+    if case != 'stores': raise ValueError('unknown comparison case')
+    entries=[(b'discard',p) for p in PAYLOADS]+[(b'fanout',p) for p in PAYLOADS]
+    entries += [(b'catA',b''),(b'catB',PAYLOADS[2]),(b'catA',PAYLOADS[0]),
+                (b'',b'blank-discard'),(b'unknown',b'unknown-discard')]
+    delta={'discard:received good':3,'fanout:received good':3,'catA:received good':2,
+           'catB:received good':1,'scribe_overall:received good':9,
+           'discard:ignored':3,'fanout:ignored':3,'scribe_overall:ignored':6,
+           'unknown:received bad':1,'scribe_overall:received bad':1,
+           'scribe_overall:received blank category':1}
+    files={'left/left_00000':b''.join(PAYLOADS),'right/right_00000':b''.join(PAYLOADS),
+           'category/catA/catA_00000':PAYLOADS[0],'category/catB/catB_00000':PAYLOADS[2]}
+    return entries,delta,files
+
+def expected_outputs(case):
+    files=[];links=[]
+    for path,data in sorted(case_data(case)[2].items()):
+        files.append({'path':path,'bytes':len(data),'hex':hexbytes(data),'sha256':hashlib.sha256(data).hexdigest()})
+        parent,name=os.path.split(path)
+        links.append({'path':os.path.join(parent,name.rsplit('_',1)[0]+'_current'),'target':name})
+    return files,links
 
 def hexbytes(data):
     return binascii.hexlify(data).decode('ascii')
@@ -172,7 +198,8 @@ def run_lane(lane):
     network_check()
     directory = os.path.join(ROOT,'evidence',lane); output = os.path.join(ROOT,lane+'-output')
     os.makedirs(directory); os.makedirs(output)
-    with open(TEMPLATE) as f:
+    template=TEMPLATE if CASE=='file' else os.path.join(os.path.dirname(TEMPLATE),'daemon_stores.conf.template')
+    with open(template) as f:
         config=f.read().replace('@SEPARATE_TEMP_OUTPUT@',output).replace('@PORT@',str(PORT))
     config_path=os.path.join(ROOT,lane+'.conf')
     with open(config_path,'w') as f: f.write(config)
@@ -181,7 +208,7 @@ def run_lane(lane):
     env.pop('LD_LIBRARY_PATH',None)
     env.update(TARGETS[lane].get('environment',{}))
     command=TARGETS[lane]['command'] + ['-c',config_path]
-    result={'lane':lane,'command':command,'uid':os.getuid(),'interfaces':os.listdir('/sys/class/net'),'records':[]}
+    result={'lane':lane,'case':CASE,'command':command,'uid':os.getuid(),'interfaces':os.listdir('/sys/class/net'),'records':[]}
     save_json(os.path.join(directory,'start.json'),result)
     process=None;conn=None
     with open(os.path.join(directory,'daemon.stdout'),'wb') as stdout, open(os.path.join(directory,'daemon.stderr'),'wb') as stderr:
@@ -206,13 +233,15 @@ def run_lane(lane):
                 call(conn,name,seq,b'\0',directory,records)
             if records[2]['value'] != 2: raise ValueError('fb303 not ALIVE')
             if call(conn,b'Log',6,log_fields([]),directory,records) != 0: raise ValueError('empty Log not OK')
-            entries=[(b'fixture',p) for p in PAYLOADS]+[(b'',b'blank-discard'),(b'unknown',b'unknown-discard')]
+            entries,expected_delta,unused=case_data(CASE)
             if call(conn,b'Log',7,log_fields(entries),directory,records) != 0: raise ValueError('batch not OK')
+            # Same bounded pause on both lanes; NullStore ignored counters are worker-side.
+            if CASE=='stores': time.sleep(2)
             after=call(conn,b'getCounters',8,b'\0',directory,records)
             before=records[4]['value']
             delta={key:after.get(key,0)-before.get(key,0) for key in set(before)|set(after)}
             delta={key:value for key,value in delta.items() if value}
-            if delta != EXPECTED_DELTA: raise ValueError('counter delta differs: %r' % delta)
+            if delta != expected_delta: raise ValueError('counter delta differs: %r' % delta)
             result['counter_delta']=delta
             call(conn,b'shutdown',9,b'\0',directory,records,oneway=True)
             conn.close();conn=None
@@ -223,14 +252,17 @@ def run_lane(lane):
             if process.returncode != 0: raise ValueError('shutdown exit not zero')
             files=[];links=[]
             for path,dirs,names in os.walk(output):
+                dirs.sort()
                 for name in sorted(names):
                     full=os.path.join(path,name);relative=os.path.relpath(full,output)
                     if os.path.islink(full): links.append({'path':relative,'target':os.readlink(full)})
                     elif os.path.isfile(full):
                         with open(full,'rb') as f: data=f.read()
                         files.append({'path':relative,'bytes':len(data),'hex':hexbytes(data),'sha256':hashlib.sha256(data).hexdigest()})
+            files.sort(key=lambda item:item['path']);links.sort(key=lambda item:item['path'])
             result['files']=files;result['symlinks']=links
-            if len(files)!=1 or files[0]['hex']!=hexbytes(b''.join(PAYLOADS)):
+            expected_files,expected_links=expected_outputs(CASE)
+            if files!=expected_files or links!=expected_links:
                 raise ValueError('file bytes differ from accepted payloads')
             port_free()
             result['status']='passed'
@@ -248,7 +280,7 @@ def run_lane(lane):
                 save_json(os.path.join(directory,'result.json'),result)
     return result
 
-def compare_lanes(old,new):
+def compare_lanes(old,new,case='file'):
     for lane in (old,new):
         if lane.get('status') != 'passed' or len(lane.get('records',[])) != 9:
             raise ValueError('incomplete or failed lane')
@@ -256,13 +288,14 @@ def compare_lanes(old,new):
             raise ValueError('unexpected RPC sequence')
         if [r['sequence'] for r in lane['records']] != list(range(1,10)):
             raise ValueError('unexpected sequence IDs')
-        if lane['counter_delta'] != EXPECTED_DELTA:
+        if lane.get('case','file') != case: raise ValueError('comparison case mismatch')
+        if lane['counter_delta'] != case_data(case)[1]:
             raise ValueError('unexpected counter delta')
         for record in lane['records']:
             seq=record['sequence'];name=record['method'].encode('ascii')
             fields=b'\0'
             if seq == 6: fields=log_fields([])
-            if seq == 7: fields=log_fields([(b'fixture',p) for p in PAYLOADS]+[(b'',b'blank-discard'),(b'unknown',b'unknown-discard')])
+            if seq == 7: fields=log_fields(case_data(case)[0])
             if record.get('oneway') != (seq==9) or record['request_hex'] != hexbytes(framed(name,seq,fields,seq==9)):
                 raise ValueError('unexpected first-batch request')
             if seq != 9:
@@ -273,10 +306,10 @@ def compare_lanes(old,new):
                     raise ValueError('recorded reply/value mismatch')
             elif 'reply_hex' in record:
                 raise ValueError('oneway shutdown must not record a response')
-        expected_data=b''.join(PAYLOADS)
-        if lane['files'] != [{'path':'fixture_00000','bytes':len(expected_data),'hex':hexbytes(expected_data),'sha256':hashlib.sha256(expected_data).hexdigest()}]:
+        expected_files,expected_links=expected_outputs(case)
+        if lane['files'] != expected_files:
             raise ValueError('unexpected first-batch output file')
-        if lane['symlinks'] != [{'path':'fixture_current','target':'fixture_00000'}]:
+        if lane['symlinks'] != expected_links:
             raise ValueError('unexpected first-batch symlink')
     checks={}
     for a,b in zip(old['records'],new['records']):
@@ -288,21 +321,23 @@ def compare_lanes(old,new):
     checks['symlinks']=old['symlinks']==new['symlinks']
     checks['exit']=old['exit']==new['exit']==0
     checks['versions']=old['records'][1]['value']==new['records'][1]['value']==hexbytes(b'2.2')
-    result={'status':'passed' if all(checks.values()) else 'failed','checks':checks,'old_version_hex':old['records'][1]['value'],'modern_version_hex':new['records'][1]['value'],'python':sys.version,'scope':'bounded synthetic production daemon differential; distinct old/new userlands/ABIs'}
+    result={'status':'passed' if all(checks.values()) else 'failed','case':case,'checks':checks,'old_version_hex':old['records'][1]['value'],'modern_version_hex':new['records'][1]['value'],'python':sys.version,'scope':'bounded synthetic production daemon differential; distinct old/new userlands/ABIs'}
     return result
 
 def main():
-    global ROOT, PORT, TARGETS
+    global ROOT, PORT, TARGETS, CASE
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-isolated-daemons',action='store_true',help='explicitly opt in to launching the two supplied targets')
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
+    parser.add_argument('--case',choices=('file','stores'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
     if not 1024 <= args.port <= 65535: parser.error('use an unprivileged TCP port')
     PORT=args.port
+    CASE=args.case
     ROOT=os.path.abspath(args.output)
     source=os.path.realpath(os.path.join(os.path.dirname(__file__),'..'))
     if os.path.lexists(ROOT) or os.path.realpath(ROOT).startswith(source+os.sep) or os.path.realpath(ROOT)==source:
@@ -327,7 +362,7 @@ def main():
     port_free()
     os.makedirs(ROOT);os.makedirs(os.path.join(ROOT,'evidence'))
     old=run_lane('old');new=run_lane('modern')
-    result=compare_lanes(old,new)
+    result=compare_lanes(old,new,CASE)
     save_json(ROOT+'/evidence/comparison.json',result)
     if result['status']!='passed': raise ValueError('old/new comparison differed')
     print(json.dumps(result,sort_keys=True))

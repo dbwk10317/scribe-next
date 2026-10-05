@@ -143,6 +143,41 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
                 client.connection_owner(42,conn)
         conn.sendall.assert_not_called()
 
+    def test_three_store_case_has_explicit_routing_bytes_and_ignore_counts(self):
+        entries,delta,unused=client.case_data('stores')
+        self.assertEqual([c for c,p in entries],
+                         [b'discard']*3+[b'fanout']*3+[b'catA',b'catB',b'catA',b'',b'unknown'])
+        self.assertEqual(delta['scribe_overall:received good'],9)
+        self.assertEqual((delta['discard:ignored'],delta['fanout:ignored'],delta['scribe_overall:ignored']),
+                         (3,3,6))
+        files,links=client.expected_outputs('stores')
+        self.assertEqual({f['path']:f['hex'] for f in files},
+                         {'left/left_00000':'4100420aff7461696c','right/right_00000':'4100420aff7461696c',
+                          'category/catA/catA_00000':'4100420aff','category/catB/catB_00000':'7461696c'})
+        self.assertEqual(len(links),4)
+        fields=client.log_fields(entries)
+        self.assertEqual(struct.unpack('>i',fields[4:8])[0],11)
+
+    def test_synthetic_store_report_checks_all_fanout_outputs_and_case_identity(self):
+        # Synthetic expectations only: first real store-case execution belongs to the server.
+        report=self.report();report['case']='stores'
+        entries,delta,unused=client.case_data('stores')
+        report['counter_delta']=delta
+        report['files'],report['symlinks']=client.expected_outputs('stores')
+        report['records'][6]['request_hex']=client.hexbytes(client.framed(b'Log',7,client.log_fields(entries)))
+        fields=b'\x0d\x00\x00\x0b\x0a'+struct.pack('>i',len(delta))
+        for key,value in sorted(delta.items()):
+            fields+=client.string(key.encode())+struct.pack('>q',value)
+        fields+=b'\0'
+        body=client.string(b'getCounters')+b'\x02'+struct.pack('>i',8)+fields
+        report['records'][7].update(reply_hex=client.hexbytes(struct.pack('>I',len(body))+body),value=delta)
+        self.assertEqual(client.compare_lanes(report,copy.deepcopy(report),'stores')['status'],'passed')
+        with self.assertRaisesRegex(ValueError,'case mismatch'):
+            client.compare_lanes(report,copy.deepcopy(report),'file')
+        broken=copy.deepcopy(report);broken['files'].pop()
+        with self.assertRaisesRegex(ValueError,'output file'):
+            client.compare_lanes(broken,copy.deepcopy(broken),'stores')
+
 
 if __name__ == "__main__":
     unittest.main()
