@@ -16,6 +16,7 @@ main `32004a6` 이후 실제 NetworkStore/ConnPool의 loopback relay bytes·OK/T
 
 ## 문서
 
+- [전체 autotools build·staged install·Python 생성물 패키징](docs/python-packaging-status.md)
 - [ThriftFileStore bytes·copy 수정·재열기와 보존 동작](docs/thriftfile-contracts-status.md)
 - [ThriftFileStore copy 수정과 chunk/empty 보존 결정](docs/thriftfile-fix-options.md)
 - [독립 리뷰 수정·유한 wire 한도·최종 검증](docs/review-fixes-status.md)
