@@ -114,7 +114,7 @@ case가 서버에서 확인됐다. 공개 fcd294f+명시 build-only patch/Thrift
 | thriftfile | raw/framed·chunk/empty/oversized·copy/reopen component 계약 | PASS: 직접 raw10/framed25, chunk padding, 정상 종료 뒤 bytes/link |
 | multifile | 보존된 CategoryStore→FileStore alias | PASS: 두 실제 category raw10/1 bytes·별도 path/link |
 | thriftmultifile | 보존된 CategoryStore→ThriftFileStore alias | PASS: framed 두 category25/5 bytes·별도 path/link |
-| optional HDFS | configure --enable-hdfs 및 HdfsFile.cpp/libhdfs/libjvm 경로 보존 | 미검증: build/link/runtime 및 HDFS endpoint 없음 |
+| optional HDFS | configure --enable-hdfs 및 HdfsFile.cpp/libhdfs/libjvm 경로 보존 | cloud·서버 enable compile/link·DESTDIR/help·bounded local JNI PASS; distributed HDFS 미검증 |
 | shared RPC | 원본 --disable-static 선택 보존 | cloud·서버 clean compile/link·183 tests·DESTDIR·stage-loader help PASS; actual old/new shared daemon은 미검증 |
 | 다른 platform | 기존 선택 기능·source 보존 | 미검증: 현재 확인 lane은 Linux x86_64 |
 
@@ -207,7 +207,7 @@ daemon 기동·benchmark는 하지 않았다. shared daemon의 actual old/new �
 3. 지원할 shared/platform·설치 loader 경계와 재현/롤백 문서 확인
 
 HDFS source와 configure --enable-hdfs/--with-hadooppath, HdfsFile.cpp/libhdfs/libjvm
-경로는 보존됐다. cloud에는 Java21 JRE/libjvm이 있으나 Hadoop hdfs.h/libhdfs/client jars가
+경로는 보존됐다. 당시 cloud에는 Java21 JRE/libjvm이 있으나 Hadoop hdfs.h/libhdfs/client jars가
 없어 아직 build·runtime 증거가 없다. javac/JNI development headers도 없으며
 native client를 source-build할지 prebuilt를 사용할지 선택한 뒤 필요성을 판단한다.
 원본 hdfsDelete의2-argument 호출 등 C API signature를 선택한 공식 header와 먼저
@@ -216,3 +216,16 @@ native client를 source-build할지 prebuilt를 사용할지 선택한 뒤 필�
 대상을 정한 뒤 필요한 취득·실행 권한을 별도로 확인한다. 지금 추가 설치나 service
 기동을 하지 않고 회사 자료를 gate로 삼거나 optional 기능을 삭제하지 않는다.
 상세 성능 비교·추가 benchmark/tuning 보류도 유지한다.
+
+## Optional HDFS client port
+
+The subsequent [HDFS compatibility record](hdfs-compatibility.md) preserves the
+historical recursive delete API across two/three-argument libhdfs. The official
+Hadoop3.5/JDK21 local JNI lane is a bounded client/build check; distributed HDFS
+and historical binary equivalence remain separate original-feature gates.
+
+The same port subsequently passed server default clean eight-step validation with
+185 tests/skip0, separate HDFS-enabled full compile/link, staged install/help0 and
+the bounded local JNI fixture. Official JRE/Hadoop were verified and privately
+extracted; distributed HDFS remains unverified. The original ignored delete return
+and closed-handle truncate append are preserved, and no cluster or service started.

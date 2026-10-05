@@ -9,6 +9,7 @@
 #include "common.h"
 #include "file.h"
 #include "HdfsFile.h"
+#include "compat_hdfs.h"
 
 using namespace std;
 
@@ -144,7 +145,7 @@ unsigned long HdfsFile::fileSize() {
 
 void HdfsFile::deleteFile() {
   if (fileSys) {
-    hdfsDelete(fileSys, filename.c_str());
+    scribe::hdfsDeleteCompat(&hdfsDelete, fileSys, filename.c_str());
   }
   LOG_OPER("[hdfs] deleteFile %s", filename.c_str());
 }
