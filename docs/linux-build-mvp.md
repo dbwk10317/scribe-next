@@ -1,6 +1,10 @@
 # 제한 Linux build MVP와 재사용 검증
 
-2026-10-05 · main `621dfd1655b5233ff9cff931fb38c33f67c49613` 이후
+2026-10-05 · 단계별 검증 이력, 최초 base `621dfd1`
+
+현재 사용법과 완료 경계는 [README](../README.md)와
+[첫 현대화 closeout](first-modern-version.md)을 따른다. 아래 초기 scope/시험 수와
+당시 미검증 문장은 이력이며, 후속 실제 HDFS/mapping/shared 결과로 현재 상태를 갱신했다.
 
 ## 현재 목표와 완료 경계
 
@@ -119,16 +123,17 @@ case가 서버에서 확인됐다. 공개 fcd294f+명시 build-only patch/Thrift
 | 다른 platform | 기존 선택 기능·source 보존 | 미검증: 현재 확인 lane은 Linux x86_64 |
 
 응답 유실·TRY_LATER·fault/retry component 근거와 실제 daemon case를 구분한다.
-actual 응답 유실/부분 replay, mapping/TTL 변경, HDFS, 전체 store option matrix와
-넓은 workload 성능 비교는 아직 완료하지 않았다. 기존 승인된 free/truncate·bucket
+이 표의 당시 결과는 actual 응답 유실/부분 replay, mapping/TTL 변경, HDFS, 전체
+option matrix와 넓은 workload 비교를 포함하지 않았다. 후속 PR21 mapping과 modern
+HDFS 정상 결과는 아래와 현재 README에 따로 반영됐다. 기존 승인된 free/truncate·bucket
 OOB/copy·network 설정·ThriftFile raw-copy 수정은 old 버그를 재현해 같음을
 요구하지 않는 명시 예외다. oversized/empty Thrift 정책과256MiB 초과 retained
 spool 재시도 경계도 그대로 남는다. ACK를 durable/exactly-once 보장으로 확대하지 않는다.
 
 
-## v0.1 검증 경계와 다음 우선순위
+## 초기 후보의 검증 경계와 당시 다음 우선순위
 
-v0.1은 공개 fcd294f 기반의 **Linux x86_64·비-HDFS/static 후보**다. release/tag나
+초기 후보는 공개 fcd294f 기반의 **Linux x86_64·비-HDFS/static 범위**였다. release/tag나
 서비스 배포를 이 문서로 수행하지 않는다. 확인된 build/staged install/help,
 기존 framed binary/fb303,10종 limited 정상 daemon case와 ordinary spool/relay,
 크기 회전·reinitialize·process 재개는 근거가 있다. 전체 option/fault/platform
@@ -197,9 +202,11 @@ matching source와 같고 production build 규칙·기본 static 선택은 바�
 daemon 기동·benchmark는 하지 않았다. shared daemon의 actual old/new 전체 대조는
 아직 별도 결과가 필요하다.
 
-현재 v0.1의 비-HDFS/static 제한 후보와 이 추가 shared 검증을 구분한다.
-‘원본 기능 전체를 보존한 현대 build 완료’라고 말하려면 최소한 아래 남은 범위를
-명시적으로 닫아야 한다. 단순히 시험 수를 늘리는 것으로 대체하지 않는다.
+초기 비-HDFS/static 후보와 후속 shared·modern HDFS 검증을 구분한다.
+version/tag는 아직 지정하지 않았으며 현재 지원 표는 README를 따른다.
+당시 남은 다음 확인 범위는 후속 HDFS 및 PR21 mapping/config 기록으로 제한된
+정상 경로가 닫혔다. 전체 기능 동등성 선언은 여전히 하지 않는다. 아래 목록은
+당시 계획이며 현재 미완료 필수 테스트 목록이 아니다.
 
 1. 선택한 HDFS header/native API compile/link와 실제 저장·읽기/파일 동작
 2. 실제 dynamic mapping/TTL·대표 config 거절 및 backpressure/error·부분 replay
@@ -220,9 +227,9 @@ native client를 source-build할지 prebuilt를 사용할지 선택한 뒤 필�
 ## Optional HDFS client port
 
 The subsequent [HDFS compatibility record](hdfs-compatibility.md) preserves the
-historical recursive delete API across two/three-argument libhdfs. The official
-Hadoop3.5/JDK21 local JNI lane is a bounded client/build check; distributed HDFS
-and historical binary equivalence remain separate original-feature gates.
+historical recursive delete API across two/three-argument libhdfs. At that stage,
+official Hadoop3.5/JDK21 local JNI was a bounded client/build check. The later
+single-DN distributed result is recorded below; historical binary equivalence remains open.
 
 The same port subsequently passed server default clean eight-step validation with
 185 tests/skip0, separate HDFS-enabled full compile/link, staged install/help0 and
@@ -240,7 +247,7 @@ record the seeded-directory precondition, first hostname failure and successful
 localhost retry. This is source-defined modern validation, not historical binary
 equivalence, a distributed fault/permissions matrix or a performance claim.
 
-The [first modern-version boundary](first-modern-version.md) separates the
-remaining real dynamic-mapping/config closeout from optional deeper matrices.
+The [first modern-version boundary](first-modern-version.md) records the closed
+named dynamic-mapping/config scope separately from optional deeper matrices.
 The modern single-DN HDFS case is now recorded PASS; historical HDFS binary
 comparison, delete/fault/permission/replication coverage remain declared limits.
