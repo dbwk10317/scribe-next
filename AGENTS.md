@@ -8,6 +8,7 @@
 
 ## 현재 상태와 근거
 
+- 최신 사용자 목표는 공개 upstream `fcd294f`의 기능 보존이다. 회사 fork/config/성능 자료는 현재 범위 밖이며 요청하거나 완료 조건으로 삼지 않는다. 제한 build MVP와 재사용 검증, 공개 원본 old/new 다음 우선순위는 [현재 범위](docs/linux-build-mvp.md)를 따른다. 과거 회사 gate를 현재 지시로 되살리지 않는다.
 - 고정 upstream 도입 뒤 제한된 빌드 진입부 수정을 진행 중이다. 의존성·통합 시험 이력은 [빌드 경계 기록](docs/build-status.md), scribed compile/link·API 시험 이력은 [API 이식 기록](docs/api-compat-status.md), 일반 spool·설정 계약과 최소 메모리 수정은 [계약 검증 이력](docs/contracts-status.md), 실제 FileStore 통합과 수정 전 손실 경로는 [FileStore 기록](docs/filestore-contracts-status.md), 승인된 최소 truncate 수정과 74개 시험은 [수정 기록](docs/truncate-fix-status.md), test-only loopback TCP·worker 계약은 [loopback 기록](docs/loopback-rpc-status.md), 최신 NetworkStore/ConnPool·명시적 재시도 계약은 [relay 기록](docs/relay-contracts-status.md), 도입 이력은 [현재 상태](docs/source-status.md)를 따른다. import 검증기는 의도된 build 파일 수정도 실패로 표시하는 원본 보존 검사다. 원본 도입 commit의 검사와 현재 build 회귀 시험을 구분하며, 부분 build·의존성 시험과 단일 Linux compile/link 결과를 전체 matrix·runtime 호환성으로 확대하지 않는다.
 - 기준 upstream은 [facebookarchive/scribe](https://github.com/facebookarchive/scribe), 공개 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 회사 fork·실제 config·실측 baseline·배포판·toolchain은 미확인이다.
 - 대상 OS는 Linux다. C++17과 Thrift 0.25.0은 제안 검증 후보다. target release의 실제 요구 표준과 API를 확인하기 전 확정하거나 빌드 성공을 주장하지 않는다.
