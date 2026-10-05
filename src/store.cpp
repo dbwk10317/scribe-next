@@ -1,6 +1,7 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
 // scribe-next modification: preserve store-copy policy and close the correct pooled destination.
+// scribe-next modification: defer copied dynamic destination lookup to worker open/check.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1758,6 +1759,7 @@ NetworkStore::NetworkStore(StoreQueue* storeq,
     ignoreNetworkError(false),
     configmod(NULL),
     opened(false),
+    resolveOnOpen(false),
     lastServiceCheck(0) {
   // we can't open the connection until we get configured
 
@@ -1840,6 +1842,9 @@ void NetworkStore::configure(pStoreConf configuration, pStoreConf parent) {
 
 void NetworkStore::periodicCheck() {
   if (configmod) {
+    // A check before the first open also satisfies the clone's initial lookup,
+    // including failure: retain its static fallback without a duplicate lookup.
+    resolveOnOpen = false;
     // get the network updater type
     string host;
     uint32_t port;
@@ -1883,6 +1888,9 @@ bool NetworkStore::open() {
      * it can lead to bad reference counting on g_connpool connections
      */
     return (true);
+  }
+  if (resolveOnOpen) {
+    periodicCheck();
   }
   bool success = true;
   if (serviceBased) {
@@ -1998,13 +2006,13 @@ boost::shared_ptr<Store> NetworkStore::copy(const std::string &category) {
   store->configmod = configmod;
   store->storeConf = storeConf;
   if (configmod) {
-    // Resolve the new category, falling back to the configured static endpoint
-    // rather than inheriting another category's resolved destination.
+    // Category creation copies under the handler lock. Keep the static fallback
+    // here, then resolve the new category in the worker before its first open.
     store->remoteHost.clear();
     store->remotePort = 0;
     storeConf->getString("remote_host", store->remoteHost);
     storeConf->getUnsigned("remote_port", store->remotePort);
-    store->periodicCheck();
+    store->resolveOnOpen = true;
   }
 
   return copied;

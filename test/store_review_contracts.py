@@ -39,6 +39,21 @@ class StoreReviewPeer(relay.RelayPeer):
 
 
 class StoreReviewContracts:
+    def test_review_dynamic_copy_resolves_once_before_open_and_retains_periodic_refresh(self):
+        self.run_fixture("review-dynamic-copy-initial-resolution")
+
+    def test_review_dynamic_category_copy_does_not_hold_handler_lock_during_resolution(self):
+        text = ("port=1463\nnew_thread_per_category=yes\n"
+                "<store>\ncategory=accepted\ntype=null\n</store>\n"
+                "<store>\ncategory=default\ntype=bucket\nnum_buckets=3\n"
+                "bucket_type=key_modulo\nmust_succeed=no\n")
+        for index in range(4):
+            text += (f"<bucket{index}>\ntype=network\n"
+                     "remote_host=127.0.0.1\nremote_port=0\n"
+                     "dynamic_config_type=thrift_bucket\n"
+                     f"</bucket{index}>\n")
+        self.run_fixture("review-dynamic-copy-locking", text + "</store>\n")
+
     def store_review_peer(self, kind, pooled=True):
         directory = Path(tempfile.mkdtemp(prefix="store-review-", dir=self.temporary))
         return StoreReviewPeer(self.fixture, self.env, directory, kind, pooled)
