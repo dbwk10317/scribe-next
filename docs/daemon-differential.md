@@ -119,8 +119,7 @@ networknone 컨테이너에서 한 번 실행했다. 두 lane 모두 첫 RPC 전
 shutdown exit0 비교가 통과했다. old/new runtime30개(바이너리 포함)의 hash와 loader/help를 확인했으며 운영30개 container ID도 유지됐다.
 새 clean build는 수행하지 않았고, old/new runtime/ABI 차이는 유지했다.
 
-다음 coverage는 일반 프로세스 restart와 spool/relay의 장애·재시도 순으로
-우선순위를 잡는다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
+다음 coverage는 spool/relay의 장애·재시도 순으로 우선순위를 잡는다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
 mapping, 모든 fb303 method, old/new 양방향 spool 및 성능 완료로 확대하지 않는다.
 기존 승인된 bug-fix 차이는 명시하며 oversized/empty 처리 보존 결정도 유지한다.
 
@@ -150,3 +149,32 @@ socket inode 검사, runtime30개 hash/private loader/help, 실제 networknone/u
 compiled production을 재사용했고 새 clean build는 수행하지 않았다. Focused offline
 시험은 기존9+새2=11이며 실제 daemon 실행 횟수와 구분한다.
 승인된 empty-only/truncate/copy 예외와 oversized/empty 정책은 유지한다.
+
+
+## 실제 process crash/restart case
+
+--case restart는 각 lane의 첫 child가 binary5/tail4를 기록하여 파일5/4바이트와
+current→00001 준비를 확인한 후, 소유권을 검증한 독립 session에만 SIGKILL을
+보낸다. 그 child의 exit -9, process-group 회수와 listener 해제를 확인한 뒤
+같은 lane 전용 output에 새 child를 실행한다. 첫 종료는 shutdown RPC가 아니다.
+첫 stage의 요청8개/비교 응답7개와 수신 good2를 기록한다.
+
+새 process는 기록 전 같은5/4바이트 파일을 그대로 재열고 fresh getCounters가
+빈 map인 것을 확인한다. Z 한 바이트를 보내 기존00001에 append한 뒤
+최종5/5/0바이트/current→00002와 새 process 수신 good1, shutdown exit0을
+대조한다. 두 번째 stage는 요청9개/비교 응답7개이며 각 새 연결마다 owned child
+socket 검증을 다시 수행한다. 실패한 첫 stage 뒤에는 다음 child를 시작하지 않는다.
+
+이는 관찰된 사용자 공간 flush 이후 process 실패에서 ordinary FileStore를
+재개하는 제한된 계약이다. fsync/power-loss durability, 미처리 queue 유실 복구,
+파일 손상 복구나 spool/relay 재시도는 포함하지 않는다. approved bug-fix 차이와
+ThriftFileStore oversized/empty 보존 결정도 유지한다. Cloud 검증은 synthetic
+phase evidence와 fake 실패 orchestration이다. 후속 서버에서 전체166개 시험
+failure/error/skip0과 실제 restart case1회를 통과했다. 양쪽 첫 stage의 요청8/비교
+응답7·good2·파일5/4와 SIGKILL exit-9/reap/port 회수를 확인했다. 새 child의
+빈 초기 counter와 기존 파일5/4, 요청9/비교 응답7·append 뒤5/5/0 및 current00002,
+good1/shutdown exit0도 일치했다. 각 connection의 owned socket 검사, runtime30개
+hash/private loader/help와 실제 networknone/uid65534/resource 제한을 유지했으며
+운영30개 container ID는 그대로였다. C++/header/IDL38개(production24/fixture14)는
+기존 matching build와 동일했고 새 clean build는 하지 않았다. Focused offline
+13개는 실제 실행 횟수와 구분한다. production source/새 dependency 변경은 없다.
