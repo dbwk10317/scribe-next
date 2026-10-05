@@ -147,9 +147,10 @@ def network_check():
     if sorted(os.listdir('/sys/class/net')) != ['lo']:
         raise ValueError('network isolation changed')
 
-def port_free():
+def port_free(port=None):
+    port=PORT if port is None else port
     try:
-        check = socket.create_connection(('127.0.0.1',PORT),timeout=0.3)
+        check = socket.create_connection(('127.0.0.1',port),timeout=0.3)
     except socket.error as error:
         if error.errno == errno.ECONNREFUSED: return
         raise
@@ -182,6 +183,20 @@ def connection_owner(pid,conn):
                         if fields[9] in inodes: return fields[9]
         if time.time()>=deadline: raise ValueError('cannot verify connected socket ownership; no RPC sent')
         time.sleep(0.01)
+
+def connect_owned(process,port,timeout=10):
+    deadline=time.time()+timeout
+    while True:
+        if process.poll() is not None: raise ValueError('daemon exited before readiness')
+        try:
+            conn=socket.create_connection(('127.0.0.1',port),timeout=0.3);break
+        except socket.error:
+            if time.time()>=deadline: raise ValueError('readiness timeout')
+            time.sleep(0.05)
+    conn.settimeout(3)
+    if conn.getpeername()!=('127.0.0.1',port):
+        conn.close();raise ValueError('wrong peer')
+    return conn
 
 def group_exists(pgid):
     try: os.killpg(pgid,0)
@@ -272,16 +287,7 @@ def run_lane(lane,restart_stage=None):
             with open(os.devnull,'rb') as stdin:
                 process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,preexec_fn=os.setsid)
             result['pid']=process.pid
-            deadline=time.time()+10
-            while True:
-                if process.poll() is not None: raise ValueError('daemon exited before readiness')
-                try:
-                    conn=socket.create_connection(('127.0.0.1',PORT),timeout=0.3);break
-                except socket.error:
-                    if time.time() >= deadline: raise ValueError('readiness timeout')
-                    time.sleep(0.05)
-            conn.settimeout(3)
-            if conn.getpeername() != ('127.0.0.1',PORT): raise ValueError('wrong peer')
+            conn=connect_owned(process,PORT)
             result['owned_connection_inode']=connection_owner(process.pid,conn)
             records=result['records']
             for seq,name in enumerate([b'getName',b'getVersion',b'getStatus',b'getStatusDetails',b'getCounters'],1):
@@ -436,7 +442,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -465,9 +471,18 @@ def main():
             if not isinstance(key,(str,type(u''))) or not isinstance(value,(str,type(u''))) or not key or '=' in key or '\0' in key+value:
                 parser.error('environment requires valid string key/value entries')
     port_free()
+    if CASE=='spool':
+        if PORT==65535: parser.error('spool case requires two unprivileged ports')
+        port_free(PORT+1)
     os.makedirs(ROOT);os.makedirs(os.path.join(ROOT,'evidence'))
-    old=run_lane('old');new=run_lane('modern')
-    result=compare_lanes(old,new,CASE)
+    if CASE=='spool':
+        import daemon_spool_case
+        old=daemon_spool_case.run_lane(sys.modules[__name__],'old')
+        new=daemon_spool_case.run_lane(sys.modules[__name__],'modern')
+        result=daemon_spool_case.compare_lanes(sys.modules[__name__],old,new)
+    else:
+        old=run_lane('old');new=run_lane('modern')
+        result=compare_lanes(old,new,CASE)
     save_json(ROOT+'/evidence/comparison.json',result)
     if result['status']!='passed': raise ValueError('old/new comparison differed')
     print(json.dumps(result,sort_keys=True))
