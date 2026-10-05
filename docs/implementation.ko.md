@@ -155,13 +155,13 @@ make check
 
 ## 완료와 배포 gate
 
-Gate A는 platform/feature matrix의 compile·link 성공이다. Gate B는 두 IDL, wire, fb303, 설정, 10 store와 동적 목적지 갱신 differential 통과다. Gate C는 양방향 spool·relay, fault와 종료 결과가 승인된 계약에 맞는 것이다. Gate D는 회사 baseline 기반 성능과 운영 기준 승인이며 그 뒤 canary 배포·롤백 실행 권한을 받는다. 원본 메모리 결함의 재현·수정 검증은 별도 변경으로 연결하고 미검증 상태를 숨기지 않는다. 어느 gate도 현재 통과하지 않았다.
+Gate A는 platform/feature matrix의 compile·link 성공이다. Gate B는 두 IDL, wire, fb303, 설정, 10 store와 동적 목적지 갱신 differential 통과다. Gate C는 양방향 spool·relay, fault와 종료 결과가 승인된 계약에 맞는 것이다. Gate D는 공개 원본 baseline·명시 예외에 따른 성능과 운영 검증이며 그 뒤 canary 배포·롤백 실행 권한을 받는다. 원본 메모리 결함의 재현·수정 검증은 별도 변경으로 연결하고 미검증 상태를 숨기지 않는다. 전체 gate를 완료한 것은 아니며 확인한 제한 build/store lane은 [현재 지원 현황](linux-build-mvp.md#공개-원본-store와-optional-지원-현황)을 따른다.
 
 배포 runbook에는 old artifact 해시, 신규 artifact 해시, dependency manifest, spool writer 소유자, canary route, traffic 중지 절차, rollback threshold 및 담당자를 채운다. 역호환 spool 검증 실패, 새로운 loss/duplicate 양상, 운영 API 차이 또는 승인 성능 기준 초과 시 rollout을 멈춘다. 구현 PR은 목적별로 build, API, file transport, 제한된 refactor 순으로 나누고 각 PR에 실제 수행한 검증만 쓴다.
 
 ## 근거 상태와 남은 확인
 
-고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Thrift/fb303·Scribe RPC library build와 초기 전체 compile 실패는 [빌드 기록](build-status.md), 후속 성공과 현재 범위는 [API 이식 기록](api-compat-status.md)에 남겼다. 제한된 StdFile component ASan/UBSan·양방향 frame 비교와 config/routing 55개 시험의 cloud·Ubuntu 결과 및 Ubuntu reader LSan 성공은 [최신 기록](contracts-status.md)에 추가했다. Scribe 운영 daemon, PHP suite, 전체 sanitizer/LeakSanitizer, full old/new·성능 시험은 미실행이다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
+고정 upstream 전체 tree와 Thrift v0.25.0 tree를 별도 checkout에서 확보하고 두 IDL, handler·queue·store·파일 경로, 동적 bucket 갱신, 기존 PHP driver·build 연결, 목표 Thrift의 주요 C++ 경계를 정적으로 대조했다. 모든 source 경로의 동작이나 전체 header를 검증한 것은 아니다. 설정 파서의 경로는 `src/conf.cpp`다. 전체 key·기본값·파싱·상속의 연결 관계는 구현 전 inventory로 완성한다. Thrift/fb303·Scribe RPC library build와 초기 전체 compile 실패는 [빌드 기록](build-status.md), 후속 성공과 현재 범위는 [API 이식 기록](api-compat-status.md)에 남겼다. 제한된 StdFile component ASan/UBSan·양방향 frame 비교와 config/routing 55개 시험의 cloud·Ubuntu 결과 및 Ubuntu reader LSan 성공은 [최신 기록](contracts-status.md)에 추가했다. 초기 단계 이후 격리 production daemon의 제한된 old/new 대조를 진행했다. PHP suite, 전체 sanitizer/LeakSanitizer, 전체 old/new option matrix·성능 시험은 미완료다. 고정 commit과 근거 범위는 [출처 기록](source-status.md)을 따른다.
 
 설계 문서의 링크를 evidence entrypoint로 사용한다. 구현 시 각 계약에 source path·symbol·line, fixture ID, old 결과, new 결과, 검증 command, timestamp와 reviewer를 연결한다. upstream 사실, 요청에서 제공된 보존 조건, 구현 제안 및 회사 확인이 필요한 항목을 ledger에서 구분한다. 실패와 미실행도 보존한다.
 
