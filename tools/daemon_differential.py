@@ -483,7 +483,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores','performance','fb303'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores','performance','fb303','mapping'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -515,6 +515,9 @@ def main():
     if CASE=='spool':
         if PORT==65535: parser.error('spool case requires two unprivileged ports')
         port_free(PORT+1)
+    if CASE=='mapping':
+        if PORT>65532:parser.error('mapping case requires four unprivileged ports')
+        for port in (PORT+1,PORT+2,PORT+3):port_free(port)
     os.makedirs(ROOT);os.makedirs(os.path.join(ROOT,'evidence'))
     if CASE=='spool':
         import daemon_spool_case
@@ -526,6 +529,11 @@ def main():
         old=daemon_fb303_case.run_lane(sys.modules[__name__],daemon_spool_case,'old')
         new=daemon_fb303_case.run_lane(sys.modules[__name__],daemon_spool_case,'modern')
         result=daemon_fb303_case.compare_lanes(sys.modules[__name__],old,new)
+    elif CASE=='mapping':
+        import daemon_mapping_case,daemon_spool_case
+        old=daemon_mapping_case.run_lane(sys.modules[__name__],daemon_spool_case,'old')
+        new=daemon_mapping_case.run_lane(sys.modules[__name__],daemon_spool_case,'modern')
+        result=daemon_mapping_case.compare_lanes(sys.modules[__name__],old,new)
     elif CASE=='performance':
         import daemon_performance_case,daemon_spool_case
         result=daemon_performance_case.run_comparison(sys.modules[__name__],daemon_spool_case)
