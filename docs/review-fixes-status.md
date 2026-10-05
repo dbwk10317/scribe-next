@@ -102,3 +102,48 @@ git diff --check
 전체124개/skip0을 확인하고 기본256MiB−1/동일/+1과20MiB spool 시험에 충분한 메모리를 확보한다. 실제 명령·source hashes·log·binary hash·효과적인 settings와 source unchanged 확인을 보존한다. sanitized lane은 CXX에 `-fsanitize=address,undefined -fno-sanitize-recover=all`, CXXFLAGS에 `-O1 -g -std=c++17 -fno-omit-frame-pointer`를 사용해 새 configure/build한다. API fixture는 configured CXX를 사용하므로 sanitizer 링크 flag도 이 경로로 전파된다. `ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`로 API suite69개를 실행한다. 이 설정을 LSan 성공으로 보고하지 않는다.
 
 checkpoint에는 credential-free Git bundle·source files/modes·tracked diff·이번 및 이전 raw evidence·복원/재검증 명령을 포함한다. dependency caches·executables·objects·runtime spool·인증 값·개인 Git 설정은 제외한다. 승인된 push/merge는 Mac executor의 source/hash/diff/test 확인 뒤 수행하며 cloud checkpoint 생성 자체를 원격 반영으로 설명하지 않는다.
+
+
+## P1 dynamic-copy global-lock stall regression (2026-10-06)
+
+Base main `b0bfc89`. The approved NetworkStore copy-setting fix resolved the new
+category synchronously while `createCategoryFromModel` held the handler write
+lock. A blocked mapping resolver therefore stalled both the creating Log and an
+unrelated existing-category Log. Cloud before-fix regression tests failed twice:
+`resolver_entered=1 new_log_ready=0 existing_log_ready=0`, plus inline resolution.
+The explicit resolver blocker stays blocked until the fixture releases it; the
+post-fix checks require both Log calls to finish beforehand and keep OK queue
+acceptance. This is an actual handler/worker fixture with a scripted resolver,
+not a production-daemon outage or a latency benchmark.
+
+`NetworkStore::copy` now preserves the approved configuration fields and static
+fallback, marking a one-shot initial lookup. The worker's first open or preceding
+periodic check performs it; failure keeps fallback without repeated lookup on
+reopen, and ordinary periodic refresh remains. No compatibility-default decision,
+previous copy/data-preservation fix or wire/ACK/retry policy is reverted.
+
+Cloud and server each passed focused6 and full203 with failures/errors/skips0.
+Server `/workspace/scribe-next-dynamic-copy-validation-20261005-NdPAFz` used fresh
+source and the existing toolchain for eight clean build/test/DESTDIR/help steps;
+source-copy, generated-code and dependency freshness checks stayed enabled.
+The new staged binary SHA256 is
+`c446b2ccbbb5885be1dd8c2a00c238d35f0ea2f2903f5d20e50b0b819434bbf9`;
+build/stage bytes match. The old fcd294f/Thrift0.9 baseline was unchanged.
+
+The existing actual direct/unpooled mapping case passed with that new binary:
+A/cacheA/strict TTL5 B/failed-refresh-stillB/recoveryA, plus both missing-key static
+fallbacks. Exact payload/wire/chronology, ordinary counts/status and six owned
+child/listener cleanup matched; local raw replay reproduced comparison.json.
+This lifecycle comparison is separate from the copied-category lock fixture.
+A network-none/lo-only uid65534 task container had CPU2/RAM2GiB/PIDs128,
+cap-drop ALL/no-new-privileges and no mounts/published ports. All32 current
+operating IDs, including the separate LumaWeave task, remained unchanged; only
+the owned stopped container and temporary snapshot were removed. An initial
+preflight stopped before creating a container because its prior-batch count31
+was stale; its diagnostic is retained with the final current-ID preservation.
+
+This removes the new locking regression within the reviewed scope. It does not
+settle compatibility-default policy, prove the full fault/config/platform matrix,
+or add a benchmark, release/package/tag or service deployment. Input bundle26
+lacked the separate pinned-upstream object; existing verified local baseline
+objects were supplied explicitly without changing import-checker protections.
