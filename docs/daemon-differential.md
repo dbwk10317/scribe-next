@@ -119,7 +119,34 @@ networknone 컨테이너에서 한 번 실행했다. 두 lane 모두 첫 RPC 전
 shutdown exit0 비교가 통과했다. old/new runtime30개(바이너리 포함)의 hash와 loader/help를 확인했으며 운영30개 container ID도 유지됐다.
 새 clean build는 수행하지 않았고, old/new runtime/ABI 차이는 유지했다.
 
-다음 coverage는 file rotation·재시작/reinitialize, 이어서 spool/relay의 장애·재시도
-순으로 우선순위를 잡는다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
+다음 coverage는 일반 프로세스 restart와 spool/relay의 장애·재시도 순으로
+우선순위를 잡는다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
 mapping, 모든 fb303 method, old/new 양방향 spool 및 성능 완료로 확대하지 않는다.
 기존 승인된 bug-fix 차이는 명시하며 oversized/empty 처리 보존 결정도 유지한다.
+
+
+## 크기 회전과 reinitialize case
+
+같은 opt-in 명령에 --case rotation을 지정한다. 기존 file template에서
+max_size=4/target_write_size=1만 바꾼다. rotate_period=never를 유지하여
+시각·날짜 경계에 의존하지 않는다. 첫 Log는 기존 binary5/tail4 payload를
+순서대로 보내며 strict currentSize > max_size 회전으로 fixture_00000=5바이트,
+fixture_00001=4바이트와 current→00001을 기대한다. 다음 oneway reinitialize와
+동일 connection의 getStatus(ALIVE) 응답 뒤 같은 파일 상태를 확인한다. 마지막
+Z 한 바이트는 재열린00001에 append되어5바이트가 되고00002 빈 파일로 회전한다.
+최종 current→00002와 수신 good3 카운터가 기준이다.
+
+두 lane은 요청13개/비교 응답10개(버전 응답 제외), 중간·최종 파일 세 snapshot,
+카운터 및 shutdown exit0을 대조한다. 최대10초의 파일 관찰은 정확한 예상
+bytes/suffix/link 준비를 기다릴 뿐 입력이나 RPC를 추가하지 않는다. timeout은
+실패이며 정기 회전·일반 프로세스 restart·장애 복구까지 통과했다고 해석하지 않는다.
+production 수정과 신규 dependency는 없다. Cloud에서는 synthetic report와
+fake snapshot readiness/실패만 검사한다. 후속 서버에서 같은 source의 전체164개
+시험 failure/error/skip0과 실제 rotation case1회를 통과했다. 요청13/비교 응답10,
+초기 good2/최종 good3 및 세 snapshot의 bytes/link와 양쪽 shutdown exit0이 일치했다.
+각 snapshot의 최대10초 read-only 관찰과 정확한 기대값을 유지했다. owned child
+socket inode 검사, runtime30개 hash/private loader/help, 실제 networknone/uid65534
+및 기존 resource 제한을 확인했고 운영30개 container ID는 유지됐다. 기존 matching
+compiled production을 재사용했고 새 clean build는 수행하지 않았다. Focused offline
+시험은 기존9+새2=11이며 실제 daemon 실행 횟수와 구분한다.
+승인된 empty-only/truncate/copy 예외와 oversized/empty 정책은 유지한다.

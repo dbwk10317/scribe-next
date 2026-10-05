@@ -178,6 +178,60 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'output file'):
             client.compare_lanes(broken,copy.deepcopy(broken),'stores')
 
+    def test_rotation_case_checks_threshold_reopen_append_and_phase_evidence(self):
+        report=self.report();report['case']='rotation'
+        entries,delta,unused=client.case_data('rotation')
+        report['counter_delta']=delta
+        report['files'],report['symlinks']=client.expected_outputs('rotation')
+        records=report['records'][:8]
+        records[6]['request_hex']=client.hexbytes(client.framed(b'Log',7,client.log_fields(entries)))
+        def counter_record(seq,count):
+            values={'fixture:received good':count,'scribe_overall:received good':count}
+            fields=b'\x0d\x00\x00\x0b\x0a'+struct.pack('>i',2)
+            for key,value in sorted(values.items()):
+                fields+=client.string(key.encode())+struct.pack('>q',value)
+            body=client.string(b'getCounters')+b'\x02'+struct.pack('>i',seq)+fields+b'\0'
+            return {'method':'getCounters','sequence':seq,'oneway':False,'value':values,
+                    'request_hex':client.hexbytes(client.framed(b'getCounters',seq)),
+                    'reply_hex':client.hexbytes(struct.pack('>I',len(body))+body)}
+        records[7]=counter_record(8,2)
+        for seq,method,oneway,value in ((9,'reinitialize',True,None),(10,'getStatus',False,2),
+                                         (11,'Log',False,0),(13,'shutdown',True,None)):
+            fields=client.log_fields([(b'fixture',b'Z')]) if seq==11 else b'\0'
+            record={'method':method,'sequence':seq,'oneway':oneway,
+                    'request_hex':client.hexbytes(client.framed(method.encode(),seq,fields,oneway))}
+            if not oneway:
+                body=client.string(method.encode())+b'\x02'+struct.pack('>i',seq)+b'\x08\x00\x00'+struct.pack('>i',value)+b'\0'
+                record.update(value=value,reply_hex=client.hexbytes(struct.pack('>I',len(body))+body))
+            if seq==13: records.append(counter_record(12,3))
+            records.append(record)
+        report['records']=records
+        for phase in ('before_reinitialize','after_reinitialize','after_append'):
+            files,links=client.rotation_outputs(phase=='after_append')
+            report[phase]={'files':files,'symlinks':links}
+        self.assertEqual(client.compare_lanes(report,copy.deepcopy(report),'rotation')['status'],'passed')
+        self.assertEqual([f['bytes'] for f in report['files']],[5,5,0])
+        for mutate in (lambda r:r.pop('after_reinitialize'),
+                       lambda r:r['before_reinitialize']['files'][1].update(hex='00'),
+                       lambda r:r['records'][8].update(oneway=False),
+                       lambda r:r['records'][10].update(request_hex='00'),
+                       lambda r:r['records'].__setitem__(7,counter_record(8,1)),
+                       lambda r:r['records'].__setitem__(11,counter_record(12,2))):
+            broken=copy.deepcopy(report);mutate(broken)
+            with self.assertRaises(ValueError): client.compare_lanes(broken,report,'rotation')
+
+    def test_rotation_snapshot_waits_for_exact_bytes_and_fails_closed(self):
+        expected=client.rotation_outputs(False)
+        with patch.object(client,'output_snapshot',side_effect=[OSError(errno.ENOENT,'replaced symlink'),([],[]),expected]), \
+                patch.object(client.time,'sleep'):
+            self.assertEqual(client.rotation_snapshot('/unused'),{'files':expected[0],'symlinks':expected[1]})
+        with patch.object(client,'output_snapshot',return_value=([],[])), \
+                patch.object(client.time,'time',side_effect=[0,11]):
+            with self.assertRaisesRegex(ValueError,'rotation snapshot'):
+                client.rotation_snapshot('/unused')
+        with patch.object(client,'output_snapshot',side_effect=OSError(errno.EACCES,'denied')):
+            with self.assertRaises(OSError): client.rotation_snapshot('/unused')
+
 
 if __name__ == "__main__":
     unittest.main()
