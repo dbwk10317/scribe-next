@@ -82,6 +82,8 @@ relay Log 송신 전에는 non-strict wire size `21 + sum(15 + category bytes + 
 
 ## 재현 및 서버 인계
 
+아래124/69 기대값은 이전 독립 범위의 역사적 실행 기준이다. 후속 store stage는137/82였고, main `c3f3459` 이후 test-only ThriftFileStore는146개/새 focused9를 통과했고, 후속 승인된 copy 수정의 현재 재현 기대값은 [147개/focused10 기록](thriftfile-contracts-status.md)을 따른다. 서로 다른 source/stage의 시험 수를 합산하지 않는다.
+
 기존 승인된 toolchain/dependency prefixes를 사용하고 새 설치·서비스 기동 없이 격리된 새 source copy에서 [README build recipe](../README.md)를 실행한다. 실제 production source가 현재 checkout과 일치해야 한다. generated code는 재생성하며 objects를 이전 checkpoint에서 복사하지 않는다.
 
 ```sh

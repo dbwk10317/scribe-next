@@ -16,6 +16,8 @@ main `32004a6` 이후 실제 NetworkStore/ConnPool의 loopback relay bytes·OK/T
 
 ## 문서
 
+- [ThriftFileStore bytes·copy 수정·재열기와 보존 동작](docs/thriftfile-contracts-status.md)
+- [ThriftFileStore copy 수정과 chunk/empty 보존 결정](docs/thriftfile-fix-options.md)
 - [독립 리뷰 수정·유한 wire 한도·최종 검증](docs/review-fixes-status.md)
 - [설계 및 호환성 계약](docs/design.ko.md)
 - [세부 구현 계획과 검증 gate](docs/implementation.ko.md)
@@ -82,6 +84,8 @@ server와 accepted socket, 별도 input-memory transport/protocol, relay 및 buc
 Thrift 0.9.0 `PosixThreadFactory`의 기본 stack은 명시적인 **1 MiB**다. 0.25.0 `ThreadFactory`는 `std::thread`를 사용하므로 stack은 OS/runtime 기본값을 따르며 **8 MiB로 가정하지 않는다**. worker 수와 detached 설정을 맞춘 것만으로 stack footprint·scheduler·종료 동등성을 선언하지 않는다. 회사의 0.9.0 사용은 사용자 기억에 따른 잠정 정보이며 확정 deployment metadata가 아니다. [API 이식 기록](docs/api-compat-status.md)의 역사적 defaults와 현재 review 설정을 구분한다.
 
 ## 첫 개발 작업과 다음 단계
+
+기준 main `c3f3459`는 [PR #5](https://github.com/dbwk10317/scribe-next/pull/5)의 store 수정이 반영된 기준이다. 앞선 test-only ThriftFileStore 관찰은 cloud·Ubuntu에서146개/skip0과 focused ASan+UBSan9개/skip0을 통과했다. 사용자 승인 뒤 copy의 `useSimpleFile`만 보존한 후속 작업 트리는 새 cloud clean build·help, **전체147개/skip0과 focused ASan+UBSan10개/skip0**을 통과했다. simple1/2 copy는 raw 형식을 유지하며 기존 framed clone 파일은 보존하고 새 suffix에 기록한다. chunk 초과와 empty의 기존 Thrift 처리·성공 집계는 사용자 결정대로 유지한다. [실측·미완료 범위](docs/thriftfile-contracts-status.md)와 [승인 범위·보존 결정](docs/thriftfile-fix-options.md)을 따른다. 동일 production·test 소스의 새 Ubuntu clean build/help와 전체147개/skip0·focused ASan+UBSan10개/skip0도 통과했다. 회사/구 runtime 동등성과 운영 배포는 별도 미완료 범위다.
 
 1. 회사 fork·설정·운영 기준과 Linux toolchain matrix를 확인한다. 회사 자료가 없으면 공개 upstream 이식 범위와 회사 호환성 미확정 상태를 구분한다.
 2. 고정 SHA의 원본 tree와 `LICENSE`·파일별 고지는 도입했다. upstream에는 `NOTICE`가 없다. 118개 upstream commit은 별도 로컬 `refs/remotes/upstream/baseline`에 보존했으며 프로젝트 이력과의 merge·원격 반영은 아직 하지 않았다. 출처와 검증 절차는 [현재 상태](docs/source-status.md)를 따른다.

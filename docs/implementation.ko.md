@@ -60,6 +60,10 @@ fb303는 동일 0.25.0 release로 실제 build·workspace 설치를 통과했다
 
 완료 조건은 old-write/new-read 및 new-write/old-read가 ordinary spool과 thriftfile 모두에서 통과하는 것이다. 같은 spool 동시 writer는 테스트에서도 금지한다. reader가 corruption을 다르게 처리하면 호환성 이슈로 남기고 배포 gate를 열지 않는다.
 
+### 제한된 ThriftFileStore 현재 관찰
+
+main `c3f3459` 이후 test-only 관찰은 default TFileTransport와 use_simple_file의 bytes, chunk padding, 실제 reader, close/reopen/suffix와 copy 설정을9개 시험으로 확인했고 cloud·Ubuntu146개/skip0과 focused ASan+UBSan9개/skip0을 통과했다. 후속 승인된 copy의 useSimpleFile 한 필드 수정과 legacy 파일 보존 회귀를 추가한 작업 트리는 새 cloud clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0을 통과했다. 기존 framed 파일은 유지하고 새 suffix에 설정된 raw mode를 기록한다. chunk 초과와 empty의 기존 transport 처리·반환·성공 집계는 사용자 결정대로 유지한다. 같은 production·test 소스는 새 Ubuntu clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0도 통과했다. 위 old/new 양방향 완료 조건은 미통과다. [현재 기록](thriftfile-contracts-status.md)과 [승인 범위·동작 보존 결정](thriftfile-fix-options.md)을 따른다.
+
 ### 원본 메모리 결함의 별도 검증
 
 고정 upstream의 [StdFile 소스](https://github.com/facebookarchive/scribe/blob/fcd294faffd1e88af1643a3a8c2359c41713f7c2/src/file.cpp#L65)에서 `readNext()`가 malloc으로 할당한 inputBuffer를 소멸자가 delete[]로 해제하는 오류를 ASan으로 재현했다. 후속 별도 변경에서 해제만 free로 맞추고, 공개 원본 C++03 component 대 현재 C++17 component의 양방향 frame bytes·EOF·손상 입력 결과와 현재 ASan/UBSan 통과를 확인했다. [현재 계약 기록](contracts-status.md)을 따른다. 클라우드 LeakSanitizer는 ptrace 제약으로 미검증이며, 별도 Ubuntu에서는 37-byte 양성 대조와 제한된 reader의 LSan 활성 9개 시험을 통과했다. 전체 daemon 누수 검사나 full old Scribe/Thrift runtime 비교는 아니다. 미정의 동작을 호환 계약으로 보존하지 않고 빌드 복구나 일괄 RAII 정리와 분리했다.
@@ -118,7 +122,7 @@ main `32004a6` 이후 production 변경 없이 실제 NetworkStore/ConnPool의 f
 | multifile | 다중 category 파일 경로·이름·분배 |
 | thriftmultifile | 다중 category와 thriftfile 형식의 결합 |
 
-표의 사례는 아직 생성하거나 실행하지 않았다. 모든 설정 key를 constructor 기본값과 configure 파싱에 연결하는 inventory가 추가로 필요하다. 사용되지 않는 store도 upstream 지원 범위를 유지하므로 compile 및 fixture coverage에서 제외하지 않는다.
+표는 전체 store별 목표 검증 범위다. 일부 ordinary FileStore·relay와 제한된 ThriftFileStore 관찰은 후속 기록대로 실행했지만 표 전체를 통과하지 않았다. 모든 설정 key를 constructor 기본값과 configure 파싱에 연결하는 inventory가 추가로 필요하다. 사용되지 않는 store도 upstream 지원 범위를 유지하므로 compile 및 fixture coverage에서 제외하지 않는다.
 
 ## 검증 계획
 

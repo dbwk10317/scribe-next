@@ -29,6 +29,7 @@ from review_queue_contracts import ReviewQueueContracts
 from review_limits_contracts import ReviewLimitsContracts
 from review_retry_shuffle_contracts import ReviewRetryShuffleContracts
 from store_review_contracts import StoreReviewContracts
+from thriftfile_contracts import ThriftFileContracts
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,7 +72,7 @@ def check_fresh_object(build, name):
             raise AssertionError(f"stale build object {obj}; rebuild after changing {path}")
 
 
-class ScribeApiIntegrationTests(StoreReviewContracts, ReviewRetryShuffleContracts, ReviewLimitsContracts,
+class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, ReviewRetryShuffleContracts, ReviewLimitsContracts,
                                 ReviewQueueContracts, RelayContracts, unittest.TestCase):
     @classmethod
     def setUpClass(cls):

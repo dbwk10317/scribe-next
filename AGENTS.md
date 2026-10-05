@@ -52,6 +52,8 @@ Gate D: 회사가 승인한 baseline·허용 차이에 따른 성능과 운영 �
 
 ## 저장소·배포·고지
 
+main `c3f3459` 이후 test-only ThriftFileStore 관찰은 cloud·Ubuntu의146개/skip0과 focused ASan+UBSan9개/skip0을 통과했다. 후속 승인된 copy 설정 보존은 `useSimpleFile` 한 필드만 수정했으며 새 cloud clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0을 통과했다. 기존 framed clone 파일을 변환하지 않고 다음 suffix에 설정된 raw mode로 기록한다. 사용자는 chunk 초과의 기존 Thrift 처리와 반환/집계를 유지하도록 결정했고 empty도 새 정책으로 바꾸지 않는다. [실측 범위](docs/thriftfile-contracts-status.md)와 [승인 범위·보존 결정](docs/thriftfile-fix-options.md)을 따르며 해당 유실 동작이 해결됐다고 설명하지 않는다. 같은 production·test 소스는 새 Ubuntu clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0도 통과했다. 이번 배치의 commit·push·main merge는 사용자가 별도로 승인했으며 서비스·배포 권한으로 확대하지 않는다.
+
 현재 구현은 사용자가 승인한 클라우드 작업 사본에서 수행한다. 검증된 변경의 동기화와 승인된 작업 브랜치의 commit·push는 Mac checkout에서 수행하며 다음 구현은 클라우드에서 이어간다. 이번 push 승인을 후속 push나 main merge 권한으로 확대하지 않는다. 봉구서버에서 첫 소스 도입의 격리 검증을 통과했으며 상세 결과는 [현재 상태](docs/source-status.md)를 따른다. 이후 실제 Linux build·runtime 검증은 별도 승인 범위에서 사용한다. 작업 사본 이전은 서버 기동·배포 권한을 뜻하지 않는다. 사용자가 승인한 원격 비공개 범위를 준수하고 공개 범위를 임의로 바꾸지 않는다. 기존 변경과 unrelated 파일을 보존하고 stage할 경로를 명시한다. 전역 Git 설정, 임의 Git identity, 비밀 값·캐시·runtime spool·거대 산출물을 저장소에 넣지 않는다.
 
 upstream 코드 도입 시 원본 Apache 2.0 `LICENSE`, 존재하는 `NOTICE`, 파일별 copyright·attribution 및 의존성 고지를 유지한다. 변경 사실을 표시하되 임의의 개인 저작권이나 회사 권리를 주장하지 않는다. 회사 fork의 공개·배포 권한은 별도로 확인한다.
