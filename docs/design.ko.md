@@ -8,7 +8,7 @@
 
 scribe-next는 기존 Scribe의 구조와 외부 동작을 유지하면서 최신 Thrift 및 현대 Linux 환경에서 빌드할 수 있도록 이식하는 프로젝트다. 프로젝트 이름은 scribe-next로 정하되 기존 바이너리, 서비스, IDL namespace, 설정 key와 설치 경로의 이름은 호환성 검증 없이 바꾸지 않는다. 먼저 빌드와 의존성 경계만 복구하고, 동작 비교가 통과한 뒤 오래된 C++ 표현을 작은 변경으로 정리한다. 처리 구조, 저장 형식, 전달 보장, 성능 정책을 새로 설계하지 않는다.
 
-이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. IDL·queue/store/spool 로직과 기존 시험 소스는 유지한다. API 시험 이력은 [API 이식 기록](api-compat-status.md), 최신 ordinary spool·설정 계약과 메모리 수정은 [계약 기록](contracts-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 운영 daemon 기동·성능 측정·전체 old/new 동등성 검증은 수행하지 않았다.
+이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. 초기 build/API 단계에서 IDL·queue/store/spool 로직과 기존 시험 소스를 유지했으며 후속 승인된 production 수정은 단계별 기록으로 분리한다. API 시험 이력은 [API 이식 기록](api-compat-status.md), 최신 ordinary spool·설정 계약과 메모리 수정은 [계약 기록](contracts-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 운영 daemon 기동·성능 측정·전체 old/new 동등성 검증은 수행하지 않았다.
 
 ## 범위와 비목표
 

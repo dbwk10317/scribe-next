@@ -235,7 +235,9 @@ bool scribeConn::open() {
      */
     socket->setLinger(0, 0);
 
-    framedTransport = std::shared_ptr<TFramedTransport>(new TFramedTransport(socket));
+    auto config = scribe::createThriftConfiguration();
+    socket->setConfiguration(config);
+    framedTransport = std::shared_ptr<TFramedTransport>(new TFramedTransport(socket, config));
     if (!framedTransport) {
       throw std::runtime_error("Failed to create framed transport");
     }
@@ -278,6 +280,26 @@ void scribeConn::close() {
 
 int
 scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
+  // Non-strict binary Log payload: 21-byte envelope, then 15 bytes plus the
+  // category/message bytes per entry. The outer four-byte frame is excluded.
+  // TFramedTransport::flush itself only limits writes to 2GB. Reject locally
+  // without splitting or discarding a retained batch that exceeds our policy.
+  const uint64_t limit = (std::min)(g_Handler->getThriftMaxFrameSize(),
+                                   g_Handler->getThriftMaxMessageSize());
+  uint64_t wire_size = 21;
+  for (const auto& message : *messages) {
+    wire_size += 15 + message->category.size() + message->message.size();
+    if (wire_size > limit) {
+      LOG_OPER("Relay Log exceeds configured wire limit <%llu> bytes",
+               static_cast<unsigned long long>(limit));
+      return CONN_TRANSIENT;
+    }
+  }
+  if (wire_size > limit) {
+    LOG_OPER("Relay Log exceeds configured wire limit <%llu> bytes",
+             static_cast<unsigned long long>(limit));
+    return CONN_TRANSIENT;
+  }
   bool fatal;
   int size = messages->size();
   if (!isOpen()) {

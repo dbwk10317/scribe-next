@@ -29,6 +29,21 @@ def git(*args, input=None, ok=(0,)):
 
 
 def main():
+    # Probe safety options without reading objects or permitting a lazy fetch.
+    try:
+        git("--version")
+    except subprocess.CalledProcessError as error:
+        print(
+            "FAIL: local Git cannot use the required --no-lazy-fetch and "
+            "--no-replace-objects options.", file=sys.stderr,
+        )
+        print(error.stderr.decode(errors="replace").strip(), file=sys.stderr)
+        print(
+            "Use a Git version that supports both options; upstream objects were not checked.",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         tree = git("rev-parse", "--verify", COMMIT + "^{tree}").decode().strip()
         if tree != TREE:

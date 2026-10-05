@@ -1,6 +1,6 @@
 # 의존성과 빌드 경계의 실제 검증 상태
 
-2026-10-04 · base `00826b8f0ac9288944e7ae56844f926dd654f0bb` · 후속 작업 트리, 아직 commit/push하지 않음
+2026-10-04 · base `00826b8f0ac9288944e7ae56844f926dd654f0bb` · 아래 측정은 당시 미commit·미push 작업 트리 기준. 이후 build/API 변경은 `96a7fc1`로 반영
 
 관련 문서: [저장소 안내](../README.md) · [구현 계획](implementation.ko.md) · [원본 도입 기록](source-status.md) · [기계 판독 manifest](build-manifest.json)
 
@@ -75,6 +75,12 @@ Dependency 소스를 수정하지 않고 지원되는 include flag와 공식 fix
 - TLS 검증을 끄거나 certificate를 바꾸지 않음. 사용한 key는 upstream 공개 시험 fixture이며 사용자 인증 정보가 아님
 
 Thrift의 configure는 CXX에 `-std=c++11`을 붙였지만 실제 compile 명령의 뒤쪽 CXXFLAGS `-O2 -std=c++17`이 최종 표준을 결정한다. fb303의 원래 configure가 flags를 덮어쓰므로 make 호출에서 CXXFLAGS를 명시했다. source·option·출력 hash·결과는 manifest와 checkpoint의 실제 log에 구분해 남긴다.
+
+## flag·생성 파일 계약과 검증된 recipe
+
+caller가 지정한 CFLAGS/CXXFLAGS는 각각 독립적으로 보존하며 빈 값도 지정한 값이다. 지정하지 않은 flag만 기존 opt(`-Wall -O3`)/debug(`-Wall -g`) 기본값을 받는다. 따라서 `--disable-opt`가 caller의 C++17·최적화·sanitizer flag를 덮어쓰지 않는다. 두 IDL에 constants 선언이 없을 때 고정 compiler가 생성하지 않는 `*_constants.cpp`만 static/shared source 목록에서 제외했다. IDL 변경·wire 변경이나 수동 generated-code 수정은 아니다. constants를 IDL에 새로 추가하는 별도 변경이 생기면 실제 generator 출력과 source 목록을 함께 재검증한다.
+
+현재 source를 재현할 bootstrap/configure 명령은 [README의 검증된 Linux C++ recipe](../README.md#검증된-linux-c-빌드-recipe)를 따른다. `--with-boost`, `--with-boost-system=boost_system`, `--with-boost-filesystem=boost_filesystem`과 Thrift/fb303·include/link prefix를 모두 명시한다. build manifest의 `command_templates.scribe_configure`와 v13의 Ubuntu raw configure/build records가 과거 성공의 근거이며 새 review source의 완료 결과와 구분한다.
 
 ## 재실행과 남은 경계
 

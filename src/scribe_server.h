@@ -76,6 +76,9 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   unsigned long getMaxConn() {
     return maxConn;
   }
+  int getThriftMaxFrameSize() const { return thriftMaxFrameSize; }
+  int getThriftMaxMessageSize() const { return thriftMaxMessageSize; }
+  bool hasValidThriftLimits() const { return thriftLimitsValid; }
  private:
   std::shared_ptr<apache::thrift::server::TNonblockingServer> server;
 
@@ -99,6 +102,9 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   unsigned long maxMsgPerSecond;
   unsigned long maxConn;
   unsigned long long maxQueueSize;
+  int thriftMaxFrameSize;
+  int thriftMaxMessageSize;
+  bool thriftLimitsValid;
   StoreConf config;
   bool newThreadPerCategory;
 

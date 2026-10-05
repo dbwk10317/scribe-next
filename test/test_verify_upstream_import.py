@@ -4,9 +4,11 @@
 import contextlib
 import importlib.util
 import io
+import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -72,6 +74,7 @@ class ImportVerificationTests(unittest.TestCase):
             actual = VERIFIER.main()
         self.assertEqual(actual, status, output.getvalue() + errors.getvalue())
         self.assertIn(message, output.getvalue() + errors.getvalue())
+        return output.getvalue() + errors.getvalue()
 
     def test_pristine_import_passes(self):
         self.verify(0, "PASS: 105 upstream paths match")
@@ -159,6 +162,33 @@ class ImportVerificationTests(unittest.TestCase):
     def test_missing_pinned_object_fails(self):
         with mock.patch.object(VERIFIER, "COMMIT", "0" * 40):
             self.verify(1, "cannot read pinned upstream")
+
+    def test_git_without_no_lazy_fetch_fails_before_reading_objects(self):
+        # Reproduce Git 2.43's option rejection without installing another Git.
+        bin_dir = self.root.parent / "bin"
+        bin_dir.mkdir()
+        calls = bin_dir / "calls"
+        executable = bin_dir / "git"
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import sys\n"
+            f"with open({str(calls)!r}, 'a') as log:\n"
+            "    print(sys.argv[1:], file=log)\n"
+            "if '--no-lazy-fetch' in sys.argv:\n"
+            "    sys.stderr.write('unknown option: --no-lazy-fetch\\n')\n"
+            "    sys.exit(129)\n"
+            "print('git version 2.43.0')\n"
+        )
+        executable.chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}):
+            diagnostic = self.verify(1, "FAIL: local Git")
+        self.assertIn("unknown option: --no-lazy-fetch", diagnostic)
+        self.assertIn("Use a Git version that supports both options", diagnostic)
+        self.assertNotIn("cannot read pinned upstream", diagnostic)
+        self.assertNotIn("git fetch", diagnostic)
+        self.assertEqual(calls.read_text(), str([
+            "--no-lazy-fetch", "--no-replace-objects", "-C", str(self.root), "--version",
+        ]) + "\n")
 
     def test_wrong_tree_fails(self):
         with mock.patch.object(VERIFIER, "TREE", "0" * 40):

@@ -363,8 +363,10 @@ bool DynamicBucketUpdater::updateInternal(
   socket->setRecvTimeout(recvTimeout);
   socket->setSendTimeout(sendTimeout);
 
+  auto config = scribe::createThriftConfiguration();
+  socket->setConfiguration(config);
   std::shared_ptr<TFramedTransport> framedTransport = std::shared_ptr<TFramedTransport>(
-                new TFramedTransport(socket));
+                new TFramedTransport(socket, config));
   framedTransport->open();
   std::shared_ptr<TBinaryProtocol> protocol = std::shared_ptr<TBinaryProtocol>(
                                       new TBinaryProtocol(framedTransport));

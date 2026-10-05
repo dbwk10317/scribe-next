@@ -1,6 +1,6 @@
 # FileStore byte·replay 통합 계약과 기존 손실 경로
 
-2026-10-04 · base/main `ffc73ee268a8a3430e57464f460bdf3556c983bb` · 후속 클라우드 작업 트리, 미commit·미push
+2026-10-04 · base/main `ffc73ee268a8a3430e57464f460bdf3556c983bb` · 아래 측정은 당시 미commit·미push 작업 트리의 수정 전 characterization 기준. 현재 반영 상태는 Git 이력과 인계 manifest를 따른다
 
 관련 문서: [README](../README.md) · [manifest](filestore-contracts-manifest.json) · [이전 55개 계약·메모리 수정](contracts-status.md)
 

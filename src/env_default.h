@@ -73,6 +73,10 @@ const std::string scribeversion("2.2");
 
 namespace scribe {
 
+// Explicit finite wire limits, shared by the server and both RPC clients.
+const int DEFAULT_THRIFT_MAX_SIZE = 256 * 1024 * 1024;
+std::shared_ptr<apache::thrift::TConfiguration> createThriftConfiguration();
+
 /*
  * Network based configuration and directory service
  */
@@ -125,6 +129,11 @@ class strhash {
 /*
  * Starting a scribe server.
  */
+// Shared construction path; an explicit transport permits isolated fixtures.
+// The default preserves the configured production listener and does not serve.
+std::shared_ptr<apache::thrift::server::TNonblockingServer> createServer(
+    std::shared_ptr<apache::thrift::transport::TNonblockingServerTransport>
+        server_transport = nullptr);
 void startServer();
 
 /*

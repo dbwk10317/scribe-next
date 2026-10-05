@@ -1,6 +1,6 @@
 # StdFile truncate 열기 수정과 부분 replay 보존
 
-2026-10-04 · base/main `ffc73ee268a8a3430e57464f460bdf3556c983bb` · 후속 클라우드 작업 트리, 미commit·미push
+2026-10-04 · base/main `ffc73ee268a8a3430e57464f460bdf3556c983bb` · 아래 측정은 당시 미commit·미push 작업 트리 기준. 이후 구현 `8baf6f3`·PR #1을 거쳐 main `24692d6`에 반영
 
 관련 문서: [README](../README.md) · [수정 manifest](truncate-fix-manifest.json) · [수정 전 70개 characterization](filestore-contracts-status.md)
 

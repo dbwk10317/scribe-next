@@ -36,6 +36,28 @@ using namespace scribe::concurrency;
 
 using boost::shared_ptr;
 
+std::shared_ptr<TConfiguration> scribe::createThriftConfiguration() {
+  if (!g_Handler->hasValidThriftLimits()) {
+    throw std::runtime_error("Invalid Thrift wire limits; listener not started");
+  }
+  return std::make_shared<TConfiguration>(g_Handler->getThriftMaxMessageSize(),
+                                         g_Handler->getThriftMaxFrameSize());
+}
+
+// TNonblockingServer owns a separate TMemoryBuffer, which otherwise keeps its
+// default 100MiB budget even after configuring the accepted socket.
+class ConfiguredInputTransportFactory : public TTransportFactory {
+ public:
+  explicit ConfiguredInputTransportFactory(std::shared_ptr<TConfiguration> config)
+      : config_(config) {}
+  std::shared_ptr<TTransport> getTransport(std::shared_ptr<TTransport> transport) override {
+    transport->setConfiguration(config_);
+    return transport;
+  }
+ private:
+  std::shared_ptr<TConfiguration> config_;
+};
+
 /*
  * Network configuration and directory services
  */
@@ -97,7 +119,9 @@ uint32_t scribe::strhash::hash32(const char *s) {
  * Starting a scribe server.
  */
 // note: this function uses global g_Handler.
-void scribe::startServer() {
+std::shared_ptr<TNonblockingServer> scribe::createServer(
+    std::shared_ptr<TNonblockingServerTransport> server_transport) {
+  auto config = createThriftConfiguration();
   std::shared_ptr<TProcessor> processor(new scribeProcessor(g_Handler));
   /* This factory is for binary compatibility. */
   std::shared_ptr<TProtocolFactory> protocol_factory(
@@ -116,14 +140,18 @@ void scribe::startServer() {
     thread_manager->start();
   }
 
-  std::shared_ptr<TNonblockingServerTransport> server_transport(
-    new TNonblockingServerSocket(g_Handler->port));
+  if (!server_transport) {
+    server_transport.reset(new TNonblockingServerSocket(g_Handler->port));
+  }
   std::shared_ptr<TNonblockingServer> server(new TNonblockingServer(
                                           processor,
                                           protocol_factory,
                                           server_transport,
                                           thread_manager
                                         ));
+  server->setConfiguration(config);
+  server->setInputTransportFactory(
+      std::make_shared<ConfiguredInputTransportFactory>(config));
   g_Handler->setServer(server);
 
   LOG_OPER("Starting scribe server on port %lu", g_Handler->port);
@@ -137,7 +165,11 @@ void scribe::startServer() {
     server->setOverloadAction(T_OVERLOAD_CLOSE_ON_ACCEPT);
   }
 
-  server->serve();
+  return server;
+}
+
+void scribe::startServer() {
+  createServer()->serve();
   // this function never returns
 }
 

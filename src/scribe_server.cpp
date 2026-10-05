@@ -24,6 +24,7 @@
 
 #include "common.h"
 #include "scribe_server.h"
+#include <climits>
 
 using namespace apache::thrift::concurrency;
 using scribe::concurrency::RWGuard;
@@ -46,6 +47,24 @@ std::shared_ptr<scribeHandler> g_Handler;
 
 static string overall_category = "scribe_overall";
 static string log_separator = ":";
+
+// Only the new wire-limit settings use strict decimal parsing. Legacy settings
+// retain their original conversion and inheritance behavior.
+static int readThriftLimit(const StoreConf& config, const string& name) {
+  string value;
+  if (!config.getString(name, value)) {
+    return scribe::DEFAULT_THRIFT_MAX_SIZE;
+  }
+  if (value.empty() || value.find_first_not_of("0123456789") != string::npos) {
+    throw runtime_error(name + " must be a positive decimal byte count");
+  }
+  errno = 0;
+  unsigned long long limit = strtoull(value.c_str(), NULL, 10);
+  if (errno == ERANGE || limit == 0 || limit > INT_MAX) {
+    throw runtime_error(name + " must be between 1 and 2147483647 bytes");
+  }
+  return static_cast<int>(limit);
+}
 
 void print_usage(const char* program_name) {
   cout << "Usage: " << program_name << " [-p port] [-c config_file]" << endl;
@@ -136,6 +155,9 @@ scribeHandler::scribeHandler(unsigned long int server_port, const std::string& c
     maxMsgPerSecond(DEFAULT_MAX_MSG_PER_SECOND),
     maxConn(DEFAULT_MAX_CONN),
     maxQueueSize(DEFAULT_MAX_QUEUE_SIZE),
+    thriftMaxFrameSize(scribe::DEFAULT_THRIFT_MAX_SIZE),
+    thriftMaxMessageSize(scribe::DEFAULT_THRIFT_MAX_SIZE),
+    thriftLimitsValid(true),
     newThreadPerCategory(true) {
   time(&lastMsgTime);
   scribeHandlerLock = scribe::concurrency::createReadWriteMutex();
@@ -567,6 +589,22 @@ void scribeHandler::initialize() {
       checkPeriod = 1;
     }
     config.getUnsigned("max_conn", maxConn);
+    // An invalid initial wire policy must not silently start a listener using
+    // defaults. A failed store reload leaves the existing wire policy intact.
+    if (!server) thriftLimitsValid = false;
+    const int frame_limit = readThriftLimit(config, "thrift_max_frame_size");
+    const int message_limit = readThriftLimit(config, "thrift_max_message_size");
+    // Like the listener port, wire limits are startup settings. Keep clients
+    // and the live server on the same policy when reinitialize reloads stores.
+    if (!server) {
+      thriftMaxFrameSize = frame_limit;
+      thriftMaxMessageSize = message_limit;
+      thriftLimitsValid = true;
+    } else if (frame_limit != thriftMaxFrameSize ||
+               message_limit != thriftMaxMessageSize) {
+      LOG_OPER("Thrift wire-limit changes require restart; retaining frame=%d message=%d",
+               thriftMaxFrameSize, thriftMaxMessageSize);
+    }
 
     // If new_thread_per_category, then we will create a new thread/StoreQueue
     // for every unique message category seen.  Otherwise, we will just create
