@@ -50,7 +50,7 @@ class DistributedHdfsRunnerTests(unittest.TestCase):
             hadoop, java, output = root / 'hadoop', root / 'java', root / 'output'
             for prefix, relative in ((hadoop, 'bin/hdfs'), (java, 'bin/java')):
                 (prefix / 'bin').mkdir(parents=True)
-                (prefix / relative).symlink_to('/bin/true')
+                (prefix / relative).symlink_to(Path(sys.executable).resolve(strict=True))
             calls = []
             def fake_command(arguments, env, log, **kwargs):
                 calls.append([str(x) for x in arguments])
@@ -61,7 +61,7 @@ class DistributedHdfsRunnerTests(unittest.TestCase):
                 Path(log).write_bytes(payload)
                 return 0, payload
             arguments = ['daemon_hdfs.py', '--run-isolated-hdfs', '--hadoop', str(hadoop),
-                         '--java-home', str(java), '--scribed', '/bin/true', '--output', str(output)]
+                         '--java-home', str(java), '--scribed', str(Path(sys.executable).resolve(strict=True)), '--output', str(output)]
             with mock.patch.dict(h.os.environ, {'HADOOP_WORKER_MODE': 'true', 'HDFS_DFSADMIN_OPTS': '-javaagent:bad', 'HADOOP_COMMON_HOME': '/wrong-sdk'}), \
                  mock.patch.object(sys, 'argv', arguments), mock.patch.object(h.c, 'network_check'), \
                  mock.patch.object(h.c, 'port_free'), mock.patch.object(h, 'command', fake_command), \
@@ -90,17 +90,17 @@ class DistributedHdfsRunnerTests(unittest.TestCase):
             process.poll.return_value = 0
             with mock.patch.object(h.subprocess, 'Popen', return_value=process), \
                  mock.patch.object(h.c, 'cleanup_process') as cleanup:
-                self.assertEqual(h.command(['/bin/true'], {}, Path(directory) / 'log'), (0, b''))
+                self.assertEqual(h.command([sys.executable, '-c', 'pass'], {}, Path(directory) / 'log'), (0, b''))
                 cleanup.assert_called_once_with(process)
 
     def test_cli_timeout_cleans_group_before_propagating(self):
         with tempfile.TemporaryDirectory() as directory:
             process = mock.Mock()
-            process.wait.side_effect = subprocess.TimeoutExpired('/bin/true', 1)
+            process.wait.side_effect = subprocess.TimeoutExpired(sys.executable, 1)
             with mock.patch.object(h.subprocess, 'Popen', return_value=process), \
                  mock.patch.object(h.c, 'cleanup_process') as cleanup:
                 with self.assertRaises(subprocess.TimeoutExpired):
-                    h.command(['/bin/true'], {}, Path(directory) / 'log', timeout=1)
+                    h.command([sys.executable, '-c', 'pass'], {}, Path(directory) / 'log', timeout=1)
                 cleanup.assert_called_once_with(process)
 
     def test_readiness_retries_a_timed_out_owned_cli(self):
