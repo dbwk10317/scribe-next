@@ -354,3 +354,43 @@ client를 양 lane에 사용했지만 old GCC5.4/Boost1.58/Thrift0.9와 modern
 GCC15.2/Boost1.83/Thrift0.25의 ABI/userland 차이는 남는다. CPU는0.01초 ticks,
 RSS는 startup/warmup 포함 lifetime high-water다. durable ACK·fsync·Gate D 또는
 운영 배포 승인으로 확대하지 않는다.
+
+
+## fb303 option/counter와 unknown-method 회복 묶음
+
+--case fb303는 같은 owned child/legacy framed binary helper로 한15-RPC batch를
+보낸다. fresh getOptions{},미존재 getOption의 빈 값 삽입,getOptions map,
+setOption→binary getOption→overwrite→getOptions를 확인한다. option key/value는
+embedded NUL/0xff를 포함하며 map key/value는 helper JSON에서 hex로 보존한다.
+setOption은 oneway가 아닌 일반 void REPLY(STOP만 있는 result)다.
+미존재 getCounter는0을 반환하지만 counter map에는 새 key를 만들지 않아야 한다.
+그뒤 존재하는 counter의 i64 getter와 전체 map을 같은 입력 수2로 대조한다.
+
+compat_unknown은 T_EXCEPTION header3/UNKNOWN_METHOD type1/message를 비교하고
+같은 연결에서 정상 Log2개/getStatus(ALIVE)와 shutdown을 이어간다. 원본과 현대
+exception message/field 표현이 다르면 실패 원시 기록으로 보고하고 production을
+임의로 고치지 않는다. 새 decoder는 void·map<string,string>·i64와 명시 exception만
+지원하고 map element type/중복/길이·count·field ID/header/trailing bytes를 거부한다.
+기존 getCounters map<string,i64> 타입 검사는 옵션 map과 별도로 유지한다.
+
+공통 정상 config는 num_thrift_server_threads=2,max_msg_per_second=0으로
+원본의 rate-disable 경로를 확인한다. stdout/config metadata와 final raw9바이트
+fixture_00000/current link,exit0·child 회수·listener 해제를 기록한다. 요청15개 중
+shutdown만 oneway이며 비교 응답14개다. unknown method는 대표 application error
+이지 malformed frame/모든 error/config 거절 경로 시험이 아니다. 원본 throttle은
+limit의 절반보다 큰 batch를 우회 허용하므로 작은 limit+큰 batch를 곧바로
+TRY_LATER로 기대하지 않는다. 시간 의존 rate-denial/backpressure는 이 batch에 없다.
+
+RPC256MiB·retained spool 한도,zero-range modulo·copy·truncate 승인 예외와
+empty/oversized 정책은 이전대로 분리한다. 상세 성능 비교·추가 run·tuning은 계속
+보류하며 이번 cloud는 synthetic parser/report만 검증한다. 실제 old/new fb303
+결과는 후속 서버 actual case1회에서 PASS로 확인됐다. 서버 전체180개와 Mac
+집중27개 시험은 failure/error/skip0이다. old/modern의 요청15개·응답14개가
+byte 단위로 일치했고 binary option state·counter2·UNKNOWN_METHOD exception 뒤
+동일 연결 Log/getStatus와 raw9바이트/상대 link가 일치했다. old PID19/modern PID23은
+각 exit0/cleanup0이며 owned listener·socket 검사와 child 회수가 통과했다.
+기존 runtime30개 hash/private loader/help·network-none/uid65534·CPU2/RAM2GiB/
+PIDs128을 유지했고 운영30개 container ID는 전후 동일했다. production/fixture
+C++·header·IDL38개와 matching binary는 그대로이며 새 clean build는 하지 않았다.
+이는 대표 fb303/wire error와 rate-disabled 정상 config 범위이며 malformed
+frame·시간 경계·큰 frame·zero-range 승인 예외나 전체 API 완료가 아니다.
