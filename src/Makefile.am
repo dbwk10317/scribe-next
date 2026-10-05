@@ -110,7 +110,7 @@ if USE_SCRIBE_HDFS
 endif
 # scribe-next modification: keep library dependencies after their consumers for --as-needed.
 scribed_LDADD = $(INTERNAL_LIBS) $(EXTERNAL_LIBS) $(BOOST_FILESYSTEM_LIB) $(BOOST_SYSTEM_LIB)
-noinst_HEADERS = compat_mutex.h
+noinst_HEADERS = compat_mutex.h compat_hdfs.h
 
 if SHARED
 scribed_DEPENDENCIES = libscribe.so libdynamicbucketupdater.so
