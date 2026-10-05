@@ -20,6 +20,10 @@ def case_data(case):
     if case == 'file':
         return ([(b'fixture',p) for p in PAYLOADS]+[(b'',b'blank-discard'),(b'unknown',b'unknown-discard')],
                 EXPECTED_DELTA, {'fixture_00000':b''.join(PAYLOADS)})
+    if case == 'rotation':
+        return ([(b'fixture',PAYLOADS[0]),(b'fixture',PAYLOADS[2])],
+                {'fixture:received good':3,'scribe_overall:received good':3},
+                {'fixture_00000':PAYLOADS[0],'fixture_00001':PAYLOADS[2]+b'Z','fixture_00002':b''})
     if case != 'stores': raise ValueError('unknown comparison case')
     entries=[(b'discard',p) for p in PAYLOADS]+[(b'fanout',p) for p in PAYLOADS]
     entries += [(b'catA',b''),(b'catB',PAYLOADS[2]),(b'catA',PAYLOADS[0]),
@@ -38,7 +42,9 @@ def expected_outputs(case):
     for path,data in sorted(case_data(case)[2].items()):
         files.append({'path':path,'bytes':len(data),'hex':hexbytes(data),'sha256':hashlib.sha256(data).hexdigest()})
         parent,name=os.path.split(path)
-        links.append({'path':os.path.join(parent,name.rsplit('_',1)[0]+'_current'),'target':name})
+        link={'path':os.path.join(parent,name.rsplit('_',1)[0]+'_current'),'target':name}
+        links=[item for item in links if item['path']!=link['path']]
+        links.append(link)
     return files,links
 
 def hexbytes(data):
@@ -194,13 +200,48 @@ def cleanup_process(process):
     if group_exists(process.pid): raise ValueError('owned session remains after cleanup')
     return code
 
+def output_snapshot(output):
+    files=[];links=[]
+    for path,dirs,names in os.walk(output):
+        dirs.sort()
+        for name in sorted(names):
+            full=os.path.join(path,name);relative=os.path.relpath(full,output)
+            if os.path.islink(full): links.append({'path':relative,'target':os.readlink(full)})
+            elif os.path.isfile(full):
+                with open(full,'rb') as f: data=f.read()
+                files.append({'path':relative,'bytes':len(data),'hex':hexbytes(data),'sha256':hashlib.sha256(data).hexdigest()})
+    files.sort(key=lambda item:item['path']);links.sort(key=lambda item:item['path'])
+    return files,links
+
+def rotation_outputs(final=False):
+    files,links=expected_outputs('rotation')
+    if not final:
+        files=files[:2]
+        files[1].update(bytes=4,hex=hexbytes(PAYLOADS[2]),sha256=hashlib.sha256(PAYLOADS[2]).hexdigest())
+        links[0]['target']='fixture_00001'
+    return files,links
+
+def rotation_snapshot(output,final=False):
+    files,links=rotation_outputs(final)
+    deadline=time.time()+10
+    while True:
+        try: actual=output_snapshot(output)
+        except OSError as error:
+            # FileStore replaces _current during rotation/reopen.
+            if error.errno!=errno.ENOENT: raise
+            actual=None
+        if actual==(files,links): return {'files':actual[0],'symlinks':actual[1]}
+        if time.time()>=deadline: raise ValueError('rotation snapshot differs: %r' % (actual,))
+        time.sleep(0.05)
+
 def run_lane(lane):
     network_check()
     directory = os.path.join(ROOT,'evidence',lane); output = os.path.join(ROOT,lane+'-output')
     os.makedirs(directory); os.makedirs(output)
-    template=TEMPLATE if CASE=='file' else os.path.join(os.path.dirname(TEMPLATE),'daemon_stores.conf.template')
+    template=TEMPLATE if CASE in ('file','rotation') else os.path.join(os.path.dirname(TEMPLATE),'daemon_stores.conf.template')
     with open(template) as f:
         config=f.read().replace('@SEPARATE_TEMP_OUTPUT@',output).replace('@PORT@',str(PORT))
+    if CASE=='rotation': config=config.replace('max_size=1000000','max_size=4').replace('target_write_size=16384','target_write_size=1')
     config_path=os.path.join(ROOT,lane+'.conf')
     with open(config_path,'w') as f: f.write(config)
     env=os.environ.copy();env.pop('LD_PRELOAD',None);env.pop('LD_AUDIT',None)
@@ -237,29 +278,31 @@ def run_lane(lane):
             if call(conn,b'Log',7,log_fields(entries),directory,records) != 0: raise ValueError('batch not OK')
             # Same bounded pause on both lanes; NullStore ignored counters are worker-side.
             if CASE=='stores': time.sleep(2)
+            if CASE=='rotation': result['before_reinitialize']=rotation_snapshot(output)
             after=call(conn,b'getCounters',8,b'\0',directory,records)
+            if CASE=='rotation':
+                initial_delta={key:after.get(key,0)-records[4]['value'].get(key,0) for key in set(after)|set(records[4]['value'])}
+                initial_delta={key:value for key,value in initial_delta.items() if value}
+                if initial_delta!={'fixture:received good':2,'scribe_overall:received good':2}: raise ValueError('initial rotation counter delta differs')
+                call(conn,b'reinitialize',9,b'\0',directory,records,oneway=True)
+                if call(conn,b'getStatus',10,b'\0',directory,records)!=2: raise ValueError('reinitialize not ALIVE')
+                result['after_reinitialize']=rotation_snapshot(output)
+                if call(conn,b'Log',11,log_fields([(b'fixture',b'Z')]),directory,records)!=0: raise ValueError('post-reinitialize Log not OK')
+                result['after_append']=rotation_snapshot(output,final=True)
+                after=call(conn,b'getCounters',12,b'\0',directory,records)
             before=records[4]['value']
             delta={key:after.get(key,0)-before.get(key,0) for key in set(before)|set(after)}
             delta={key:value for key,value in delta.items() if value}
             if delta != expected_delta: raise ValueError('counter delta differs: %r' % delta)
             result['counter_delta']=delta
-            call(conn,b'shutdown',9,b'\0',directory,records,oneway=True)
+            call(conn,b'shutdown',13 if CASE=='rotation' else 9,b'\0',directory,records,oneway=True)
             conn.close();conn=None
             deadline=time.time()+10
             while process.poll() is None and time.time()<deadline: time.sleep(0.05)
             if process.poll() is None: raise ValueError('shutdown timeout')
             result['exit']=process.returncode
             if process.returncode != 0: raise ValueError('shutdown exit not zero')
-            files=[];links=[]
-            for path,dirs,names in os.walk(output):
-                dirs.sort()
-                for name in sorted(names):
-                    full=os.path.join(path,name);relative=os.path.relpath(full,output)
-                    if os.path.islink(full): links.append({'path':relative,'target':os.readlink(full)})
-                    elif os.path.isfile(full):
-                        with open(full,'rb') as f: data=f.read()
-                        files.append({'path':relative,'bytes':len(data),'hex':hexbytes(data),'sha256':hashlib.sha256(data).hexdigest()})
-            files.sort(key=lambda item:item['path']);links.sort(key=lambda item:item['path'])
+            files,links=output_snapshot(output)
             result['files']=files;result['symlinks']=links
             expected_files,expected_links=expected_outputs(CASE)
             if files!=expected_files or links!=expected_links:
@@ -281,12 +324,13 @@ def run_lane(lane):
     return result
 
 def compare_lanes(old,new,case='file'):
+    methods=METHODS if case!='rotation' else METHODS[:8]+['reinitialize','getStatus','Log','getCounters','shutdown']
     for lane in (old,new):
-        if lane.get('status') != 'passed' or len(lane.get('records',[])) != 9:
+        if lane.get('status') != 'passed' or len(lane.get('records',[])) != len(methods):
             raise ValueError('incomplete or failed lane')
-        if [r['method'] for r in lane['records']] != METHODS:
+        if [r['method'] for r in lane['records']] != methods:
             raise ValueError('unexpected RPC sequence')
-        if [r['sequence'] for r in lane['records']] != list(range(1,10)):
+        if [r['sequence'] for r in lane['records']] != list(range(1,len(methods)+1)):
             raise ValueError('unexpected sequence IDs')
         if lane.get('case','file') != case: raise ValueError('comparison case mismatch')
         if lane['counter_delta'] != case_data(case)[1]:
@@ -296,9 +340,11 @@ def compare_lanes(old,new,case='file'):
             fields=b'\0'
             if seq == 6: fields=log_fields([])
             if seq == 7: fields=log_fields(case_data(case)[0])
-            if record.get('oneway') != (seq==9) or record['request_hex'] != hexbytes(framed(name,seq,fields,seq==9)):
+            if case=='rotation' and seq==11: fields=log_fields([(b'fixture',b'Z')])
+            oneway=record['method'] in ('shutdown','reinitialize')
+            if record.get('oneway') != oneway or record['request_hex'] != hexbytes(framed(name,seq,fields,oneway)):
                 raise ValueError('unexpected first-batch request')
-            if seq != 9:
+            if not oneway:
                 wire=binascii.unhexlify(record['reply_hex'])
                 if len(wire)<4 or struct.unpack('>I',wire[:4])[0] != len(wire)-4 or not 0<len(wire)-4<=MAX_REPLY:
                     raise ValueError('invalid recorded reply frame')
@@ -314,8 +360,24 @@ def compare_lanes(old,new,case='file'):
     checks={}
     for a,b in zip(old['records'],new['records']):
         checks['request-%d'%a['sequence']]=a['request_hex']==b['request_hex']
-        if a['method'] not in ('getVersion','shutdown'):
+        if a['method'] not in ('getVersion','shutdown','reinitialize'):
             checks['reply-%d'%a['sequence']]=a['reply_hex']==b['reply_hex']
+    if case=='rotation':
+        for lane in (old,new):
+            if lane['records'][9]['value']!=2 or lane['records'][10]['value']!=0:
+                raise ValueError('reinitialize status or append Log result differs')
+            before=lane['records'][4]['value']
+            for index,count in ((7,2),(11,3)):
+                after=lane['records'][index]['value']
+                delta={key:after.get(key,0)-before.get(key,0) for key in set(before)|set(after)}
+                delta={key:value for key,value in delta.items() if value}
+                if delta!={'fixture:received good':count,'scribe_overall:received good':count}:
+                    raise ValueError('recorded rotation counter delta differs')
+        for phase in ('before_reinitialize','after_reinitialize','after_append'):
+            expected_files,expected_links=rotation_outputs(phase=='after_append')
+            expected={'files':expected_files,'symlinks':expected_links}
+            if old.get(phase)!=expected or new.get(phase)!=expected: raise ValueError('missing or wrong rotation phase '+phase)
+            checks[phase]=old[phase]==new[phase]
     checks['counter-delta']=old['counter_delta']==new['counter_delta']
     checks['files']=old['files']==new['files']
     checks['symlinks']=old['symlinks']==new['symlinks']
@@ -331,7 +393,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
