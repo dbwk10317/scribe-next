@@ -1066,6 +1066,7 @@ boost::shared_ptr<Store> ThriftFileStore::copy(const std::string &category) {
 
   store->flushFrequencyMs = flushFrequencyMs;
   store->msgBufferSize = msgBufferSize;
+  store->useSimpleFile = useSimpleFile;
   store->copyCommon(this);
   return copied;
 }

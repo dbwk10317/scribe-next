@@ -419,6 +419,7 @@ static void testRouting(const std::string& filename) {
 }
 
 #include "filestore_contracts.h"
+#include "thriftfile_contracts.h"
 #include "loopback_rpc.h"
 #include "relay_contracts.h"
 #include "review_queue_contracts.h"
@@ -479,6 +480,8 @@ int main(int argc, char** argv) {
       testHandlerInvalid(argv[2]);
     } else if (std::string(argv[1]) == "routing") {
       testRouting(argv[2]);
+    } else if (dispatchThriftFile(argv[1], argv[2], argv[3])) {
+      // Test-only actual Thrift file-transport characterization completed.
     } else if (dispatchFileStore(argv[1], argv[2], argv[3])) {
       // Actual filesystem contract mode completed.
     } else if (dispatchReviewQueue(argv[1], argv[2], argv[3])) {

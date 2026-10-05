@@ -46,6 +46,8 @@ file, buffer, network, bucket, thriftfile, null, multi, category, multifile, thr
 
 일반 replay buffer는 4 byte little-endian 길이와 payload를 사용한다. write_category 사용 시 category와 newline은 별도 프레임이다. ThriftFileStore의 transport 형식은 일반 replay framing과 구분한다. Thrift 0.25.0의 `TFileTransport`와 `TSimpleFileTransport`를 먼저 사용해 형식·flush·복구 동작을 검증한다. 호환 차이가 확인된 지점만 좁게 수정하며 통합 새 포맷을 만들지 않는다.
 
+후속 [ThriftFileStore 관찰과 copy 수정](thriftfile-contracts-status.md)은 native event length/padding과 simple raw 형식을 구분한다. 승인된 copy 수정은 useSimpleFile 한 필드를 보존해 새 clone의 설정된 형식을 유지하고, 기존 framed 파일은 변환하지 않는다. 사용자는 chunk 초과의 기존 Thrift 처리·반환·성공 집계를 유지하도록 결정했으며 empty도 새 정책으로 바꾸지 않는다. [승인 범위와 보존 결정](thriftfile-fix-options.md)을 따른다. 현재 reader 성공을 old/company 양방향 호환이나 crash durability로 확대하지 않는다.
+
 구 버전이 만든 spool을 신 버전이 읽고 신 버전 spool을 구 버전이 읽을 수 있어야 한다. 같은 spool 경로에 두 프로세스가 동시에 쓰지 않는다. 원본 stream flush는 fsync가 아니며 이번 이식은 crash durability를 추가하지 않는다. 오류와 재시도에 의한 손실·중복의 기존 가능성을 운영 설명에 남긴다.
 
 ### 설정과 운영
