@@ -263,3 +263,94 @@ resource 제한을 유지했고 운영30개 container ID는 그대로였다. C++
 (production24/fixture14)는 matching build와 동일하며 새 clean build는 하지 않았다.
 Focused offline19개는 실제 daemon 실행 횟수와 구분한다. 전체10종의 제한된
 정상 config가 확인됐지만 모든 설정/fault branch나 완료 gate 통과는 아니다. 지원 현황은 [현재 Linux/store 범위](linux-build-mvp.md#공개-원본-store와-optional-지원-현황)를 따른다.
+
+
+## 공개 fixed-profile 성능 baseline
+
+--case performance는 기존 Python3 client와 owned-daemon helper로 한 profile만
+측정한다. 각 새 process는 num_thrift_server_threads=4,max_queue_size=33554432,
+std FileStore/never/max_size=1000000000을 공유한다. 256개 warm-up record가
+파일에 flush된 것을 확인한 뒤 4 producer가 각각4096개1024-byte 메시지를
+256개 batch로 전송한다. measured payload는16MiB/16384 entries, trial당64 RPC다.
+64개 request packet 생성·hash(약17MiB client 메모리)는 timer 전에 끝낸다.
+각 producer connection도 첫 RPC 전 owned PID socket inode를 확인한다.
+
+old0→modern0→modern1→old1→old2→modern2, 각3회면 끝낸다. 매번 새 process/파일이지만
+warm-up 뒤의 warm workload다. startup/cold-start 성능을 측정하지 않으며 OS page
+cache를 drop하거나 CPU affinity/quota·서비스·보안 설정을 바꾸지 않는다.
+여섯 파일은 measured96MiB+warm-up1.5MiB=97.5MiB이며 bounded control/log metadata가
+추가된다. 실행자는 기존 container resource 배정과 현재 운영 부하를 읽기로
+확인·기록한다. 관찰한 부하 변동은 숨기지 않는다.
+
+- ACK 처리량: synchronized gate부터 모든 measured batch가 OK로 응답할 때까지
+  time.monotonic wall time. 메시지/초와 application payload MiB/초이며 wire
+  throughput이 아니다. client thread/send/parse/bookkeeping도 포함한다
+- p95: 각 trial의64개 send→parse ACK client wall latency를 정렬해
+  nearest-rank ceil(0.95×64)=61번째 값. warm-up·packet encoding/hash는 제외한다
+- 파일 완료: 같은 시작점부터 기대 file size가 보이는 첫5ms interval 관찰까지.
+  실제 완료 시점의 관찰 상한이며 write/fsync durability latency가 아니다
+- client CPU: measured 시작부터 file-size 관찰까지 time.process_time delta
+- daemon CPU: 같은 구간 전후 owned /proc/PID/stat의 utime+stime delta를
+  SC_CLK_TCK로 나눈 값. coarse kernel ticks이며 종료 전에 읽는다
+- RSS: owned /proc/PID/status VmHWM의 kB(KiB). 시작/warm-up까지 포함한 process
+  lifetime high-water through completion이며 구간 delta나 가상 stack 크기가 아니다
+
+모든 measured Log는 OK여야 하고 retry하지 않는다. collective producer timeout은
+30초/socket3초이며 실패 시 gate를 해제하고 SHUT_RDWR/close·bounded join 뒤 기존
+owned process/session cleanup을 수행한다. 32MiB queue는 이번 전체 payload와
+category bytes보다 크고 high max_size는 크기 회전을 피한다. 이는 메모리/RSS의
+엄격 상한이 아니다. default backpressure 성능이나 모든 store mix를 대표하지 않는다.
+
+payload 앞8바이트는 producer/순번이며 나머지 binary tail도 정확히 검사한다.
+종료/회수 뒤 파일을 streaming으로 읽어 누락·중복·변형·producer 내부 reorder를
+거부하고 expected counter, regular file/current link와 SHA를 대조한다. producer간
+interleaving은 Thrift thread scheduling에 따라 달라져 raw file hash가 같아야 한다고
+요구하지 않는다. 실제 summary 직전 retained raw outputs도 다시 검증한다.
+measured packet은 전체 raw/hex를 기록하지 않고 재현 recipe·SHA·reply bytes를
+보존해 observer I/O를 timer에 넣지 않는다. consumer raw files는 commit하지 않는다.
+
+각 lane3개 값의 median/min/max와 modern/old ACK ratio만 기술한다. 미리 임의
+성능 합격 threshold를 넣지 않는다. 같은 container/resources라도 compiler,
+Thrift/fb303/Boost/libc와 ABI가 달라 원인 격리는 불가능하다. client/loopback와
+filesystem/page-cache 영향도 포함한다. ACK는 queue 수락이고 fsync/exactly-once가
+아니다. cloud의 synthetic/fake tests는 측정 코드 검증이며 실제 수치가 아니다.
+2026-10-05 서버의 실제 여섯 trial은 지정 순서 그대로 실행됐다. 서버 전체177개,
+Mac 집중24개 시험은 failure/error/skip0이다. 모든 measured ACK는 OK, 매 trial
+received16640, 정확한 binary record16640·producer 내부 순서·regular file/상대
+current link, child exit/reap/port 해제를 확인했다. 실제 consumer raw97.5MiB는
+서버 private evidence에 보존하며 저장소에 넣지 않았다. container exit0/OOM없음,
+운영 container30개의 ID는 전후 동일했다. production/fixture C++·header·IDL38개와
+기존 두 daemon binary는 그대로이며 새 clean build는 하지 않았다.
+
+아래 값은 각 lane3개 trial의 **중앙값 [최소, 최대]**다. 임의 합격 threshold가
+없는 descriptive baseline이며 correctness PASS를 성능 PASS로 해석하지 않는다.
+
+| 측정 | old | modern |
+| --- | --- | --- |
+| ACK messages/s | 1519392 [1409687,1526618] | 1894796 [1554360,1976483] |
+| ACK payload MiB/s | 1483.781 [1376.647,1490.838] | 1850.387 [1517.930,1930.159] |
+| 파일 크기 완료 관찰 payload MiB/s | 1479.891 [1373.915,1487.904] | 1164.109 [1021.776,1192.822] |
+| batch ACK p95 ms | 1.092 [0.947,1.503] | 1.069 [1.031,1.343] |
+| daemon CPU s | 0.030 [0.030,0.030] | 0.030 [0.020,0.030] |
+| client CPU s | 0.004278 [0.003817,0.004417] | 0.004509 [0.004249,0.006657] |
+| process VmHWM KiB | 13832 [10572,14080] | 21144 [20024,23880] |
+
+modern/old 중앙값 비율은 ACK1.2471, 파일 완료 관찰0.7866, VmHWM1.5286다.
+파일 완료 관찰 처리량의21.3% 감소와 RSS high-water의52.9% 증가는 raw 관찰
+차이로 보존한다. 성능 합격이나 퇴보를 판정하지 않는다. 사용자는 프로젝트가
+어느 정도 완성된 뒤 상세 성능 비교를 진행하기로 결정했다. 현재 단계에서는
+추가 run·원인 분석·tuning을 하지 않고 원본 기능 완성 작업을 이어간다.
+파일 완료는5ms poll의 관찰 상한이고 각 workload는 짧으므로 원인을 격리하거나
+지속 처리량·최대 처리량을 입증하지 않는다. 추가 run·tuning은 하지 않았다.
+
+측정 직전 host18 logical CPUs,2초 busy9.55%,load0.39/0.30/0.37,
+MemAvailable61.24GB와 disk free661.04GB를 읽었고 다른 build process는 없었다.
+기존 network-none task container의 CPU2/RAM2GiB/PIDs128·uid65534를 유지했다.
+호스트 부하 변동, filesystem/page cache와 관찰 간격의 영향을 배제하지 않는다.
+기존 container에는 Python3가 없어 host의 기존 Python3.14.4 표준 runtime만
+private 경로로 복사했다. 705개 runtime 파일 bytes/hash를 확인하고 matching
+private loader/lib를 사용했으며 시스템 패키지·설정은 바꾸지 않았다. 동일
+client를 양 lane에 사용했지만 old GCC5.4/Boost1.58/Thrift0.9와 modern
+GCC15.2/Boost1.83/Thrift0.25의 ABI/userland 차이는 남는다. CPU는0.01초 ticks,
+RSS는 startup/warmup 포함 lifetime high-water다. durable ACK·fsync·Gate D 또는
+운영 배포 승인으로 확대하지 않는다.

@@ -467,7 +467,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores','performance'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -505,6 +505,9 @@ def main():
         old=daemon_spool_case.run_lane(sys.modules[__name__],'old')
         new=daemon_spool_case.run_lane(sys.modules[__name__],'modern')
         result=daemon_spool_case.compare_lanes(sys.modules[__name__],old,new)
+    elif CASE=='performance':
+        import daemon_performance_case,daemon_spool_case
+        result=daemon_performance_case.run_comparison(sys.modules[__name__],daemon_spool_case)
     else:
         old=run_lane('old');new=run_lane('modern')
         result=compare_lanes(old,new,CASE)

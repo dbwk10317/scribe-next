@@ -118,7 +118,38 @@ case가 서버에서 확인됐다. 공개 fcd294f+명시 build-only patch/Thrift
 
 응답 유실·TRY_LATER·fault/retry component 근거와 실제 daemon case를 구분한다.
 actual 응답 유실/부분 replay, mapping/TTL 변경, HDFS, 전체 store option matrix와
-동일 조건 성능 비교는 아직 완료하지 않았다. 기존 승인된 free/truncate·bucket
+넓은 workload 성능 비교는 아직 완료하지 않았다. 기존 승인된 free/truncate·bucket
 OOB/copy·network 설정·ThriftFile raw-copy 수정은 old 버그를 재현해 같음을
 요구하지 않는 명시 예외다. oversized/empty Thrift 정책과256MiB 초과 retained
 spool 재시도 경계도 그대로 남는다. ACK를 durable/exactly-once 보장으로 확대하지 않는다.
+
+
+## v0.1 검증 경계와 다음 우선순위
+
+v0.1은 공개 fcd294f 기반의 **Linux x86_64·비-HDFS/static 후보**다. release/tag나
+서비스 배포를 이 문서로 수행하지 않는다. 확인된 build/staged install/help,
+기존 framed binary/fb303,10종 limited 정상 daemon case와 ordinary spool/relay,
+크기 회전·reinitialize·process 재개는 근거가 있다. 전체 option/fault/platform
+matrix가 완료된 호환 릴리즈라고 표현하지 않는다.
+
+동일 공개 synthetic workload의 [fixed 성능 baseline](daemon-differential.md#공개-fixed-profile-성능-baseline)은
+서버에서 old/modern 각3회 실행됐고 correctness와 전체177개 시험/skip0이 통과했다.
+ACK payload 중앙값은 old1483.781/modern1850.387MiB/s지만 파일 크기 완료 관찰은
+old1479.891/modern1164.109MiB/s, VmHWM은13832/21144KiB다. 완료 관찰 처리량
+감소와 RSS 증가는 미판정 raw 관찰로 보존한다. 사용자는 프로젝트가 어느 정도
+완성된 뒤 상세 성능 비교를 진행하기로 결정했으며 성능 합격·퇴보를 판정하지 않는다.
+측정은 짧은 warm workload와5ms completion poll, 별도 toolchain/ABI/userland의
+제한을 갖는다. 현재 추가 run·원인 분석·tuning 없이 원본 기능 완성 작업을
+이어간다. 성능 gate 통과나 운영 배포 승인으로 확대하지 않는다.
+
+그다음 우선순위는 actual wire/error와 주요 config/backpressure 계약, dynamic
+mapping/TTL·응답 유실/부분 replay fault를 적절한 묶음으로 대조하는 것이다.
+그뒤 optional HDFS/shared와 넓은 workload/platform은 필요한 기존 runtime 및
+실행 권한을 확인해 별도 lane으로 다룬다. 미설치 환경을 보안 우회로 만들지 않는다.
+
+명시된 허용 차이는 [truncate/free](truncate-fix-status.md), [bucket/network 및
+retry-zero 회귀](review-fixes-status.md), [ThriftFile raw-copy](thriftfile-contracts-status.md)
+등 사용자가 승인한 수정뿐이다. 원본의 오류 응답·ACK·empty/oversized drop/count,
+retry·파일 의미를 새 정책으로 바꾸지 않는다. 유한 RPC256MiB 후보와 그보다 큰
+retained spool 재전송 경계는 별도 제한으로 남는다. 이 경계와 optional 미검증을
+사용자에게 숨기지 않으며 회사 baseline을 필수 gate로 되살리지 않는다.
