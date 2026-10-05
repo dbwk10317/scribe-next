@@ -101,10 +101,98 @@ delete-return behavior; this does not fix those policies or establish durability
 ## Remaining original-feature gate
 
 Local JNI validation establishes a modern optional build and local client API
-boundary. Distributed HDFS create/append/flush/list/delete, Namenode failures,
-permissions, replication and end-to-end Scribe HDFS file-store behavior remain
-unverified. A bounded isolated official Hadoop JDK17 server lane is the next
-meaningful HDFS validation, requiring a separate explicit cluster/resource plan.
-Historical libhdfs binary old/new equivalence is also unverified. The other ten
-normal-store actual comparisons do not include distributed HDFS. Performance
-comparison remains deferred by the user.
+boundary. The subsequent single-DataNode result below confirms one normal
+modern Scribe distributed file-store create/write/read-by-CLI/restart-append path.
+Distributed deletion, Namenode failures, permissions/replication matrix and other
+fault paths remain unverified. Historical libhdfs binary old/new equivalence is
+also unverified; the ten normal-store old/new comparisons do not establish it.
+Performance comparison remains deferred by the user.
+
+## Single-DataNode distributed check
+
+`tools/daemon_hdfs.py --run-isolated-hdfs` reuses the existing owned-child,
+framed client and cleanup helpers inside an already network-none/lo-only Docker
+container, uid65534. It never sets up Docker/networking, downloads dependencies
+or starts SSH/YARN. It requires explicit verified Hadoop3.5/JDK17, matching
+HDFS-enabled scribed and existing private library prefixes. JDK21/native loader
+preflight failures stop before NameNode format/start and retain diagnostics.
+
+The two Hadoop foreground processes bind loopback; their actual owned socket
+inventory is checked. Original scribed retains its wildcard socket, confined by
+network-none with only lo. The 120-second work budget uses monotonic per-operation
+bounds; owned-process teardown is bounded separately and cannot be interrupted by
+an asynchronous deadline signal. The inherited environment cannot select Hadoop
+worker/SSH mode, another SDK or extra JVM flags.
+
+The private directory includes an unrelated empty `.fixture-seed`: original
+FileStore lists before creating its file, and HdfsFile throws on a NULL directory
+listing, including an empty-list shape. This recorded normal-case precondition
+avoids changing or claiming validation of the original empty-directory edge.
+
+Expected data is derived from public fcd294f FileStore::writeMessages/openInternal
+and HdfsFile::openWrite/createSymlink: first `A\0B\n\xfftail` (9 bytes), then a new
+owned Scribe process appends `Z` (10 bytes). `_current` is a regular marker file
+containing `fixture_00000`, not a filesystem symlink. Independent HDFS CLI reads,
+exact three-file inventory, fresh counters, one registered DataNode, safemode OFF,
+healthy distributed block locations and full child/listener cleanup are required.
+No actual historical libhdfs binary comparison, durable ACK, failure recovery or
+production cluster operation is claimed by this bounded test.
+
+```sh
+python3 -B tools/daemon_hdfs.py --run-isolated-hdfs \
+  --hadoop /absolute/verified/hadoop-3.5.0 \
+  --java-home /absolute/verified/jdk17 \
+  --scribed /absolute/matching/hdfs-enabled/scribed \
+  --library-dir /absolute/existing/thrift/lib \
+  --library-dir /absolute/existing/fb303/lib \
+  --library-dir /absolute/existing/boost-event/lib \
+  --output /absolute/new/private-hdfs-evidence
+```
+
+Proposed Docker ceiling, subject to operational resource preflight:2 CPUs,
+3GiB memory,512 PIDs and4GiB free disposable disk. NameNode heap512MiB,
+DataNode/Scribe JNI256MiB each. No host mounts/socket, published ports, privileged
+mode or host network. Stop/reap only owned children; preserve all existing
+operational container IDs. This resource proposal is not a measured minimum.
+
+### Actual isolated server result
+
+2026-10-05: the source-defined modern case passed using the existing official
+Ubuntu26.04 image pinned to digest
+`88a381d5b5eeb2b35d3ad70925a362c37ce569daf43ede89ff818ec20e4d3794`,
+privately verified Ubuntu JRE17.0.20.1 and the previous signature/hash-verified
+Hadoop3.5 distribution. Matching HDFS-enabled scribed SHA256 was
+`a0a815375be63a315853c8736cd7696669b9b8de75fbea5a1dfab94a2e022b23`.
+JDK17/Hadoop version, native ldd and scribed help preflight all passed before
+formatting fresh container-only directories. No new daemon clean build occurred.
+
+The first disposable container failed because its default hostname did not
+resolve in network-none, causing Hadoop HTTP authentication initialization to
+exit. Both Hadoop children were reaped and listeners restored to empty; raw
+failure evidence was retained. A new container set only its hostname to
+`localhost`; an extra pre-format check resolved it solely to127.0.0.1/::1.
+No permission/authentication/registration/JVM security check was disabled.
+
+Actual readiness reported one live DataNode and safemode OFF (three attempts).
+All owned Hadoop listeners were loopback, including its ephemeral internal HTTP
+proxy port. Initial exact binary9 bytes and restart append10 bytes, fresh received
+counters2/1, the three regular files including the seed, marker bytes
+`fixture_00000` and HEALTHY block location127.0.0.1:19866 passed. Both Scribe
+children exited/cleaned0. Owned NameNode/DataNode received SIGTERM, exited143 and
+were reaped; listeners before/after were empty. The container exited0 without OOM.
+
+The actual Docker limits were network-none/no mounts or published ports,
+uid65534, all capabilities dropped, no-new-privileges,2CPUs/3GiB/512PIDs.
+Before the successful attempt host18CPUs,2-second busy1.67%,load0.81/1.03/0.74,
+MemAvailable61.44GB and disk free651.40GB were observed, with no other build.
+All31 operating container IDs were unchanged, including the previous30.
+Server full194 tests had failure/error/skip0; all40 production/fixture C++/header/IDL
+files matched the existing build. Cloud offline9 also passed. A Mac offline
+attempt yielded7PASS/2ERROR because the Linux fixture hardcodes `/bin/true`,
+absent on that Mac; no test was relaxed or changed. Mac support is not established.
+
+This closes one normal modern distributed HDFS storage/restart-append path,
+with the explicitly seeded directory precondition. It does not establish
+historical libhdfs binary equivalence, distributed fault recovery, permissions/
+replication matrix, durable ACK or performance. No host service/system/security/
+power settings changed. Raw evidence includes the failed preparation attempt.
