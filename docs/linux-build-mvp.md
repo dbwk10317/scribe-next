@@ -24,7 +24,8 @@ compile/link, 현재 회귀 시험(skip0), DESTDIR 설치와 설치된 scribed h
 cloud·Ubuntu에서 통과했다. 앞선147개, v23의147PASS+setupERROR1,
 그뒤 수정본150PASS를 같은 결과로 합치지 않는다. 원본10 store의 code는
 보존하지만 모든 store의 old/new runtime 동등성을 이150개로 주장하지 않는다.
-HDFS·sharedRPC·다른 platform lane은 기존 기능을 제거하지 않은 미검증 범위다.
+당시 HDFS·sharedRPC·다른 platform lane은 미검증이었다. 후속 shared cloud·서버 검증은
+아래 별도 기록을 따르며 HDFS/다른 platform과 shared actual old/new runtime 범위는 남는다.
 
 ## 단일 재사용 진입점
 
@@ -34,9 +35,9 @@ unittest discovery/runner, Makefile install과 설치된 scribed --help를 호�
 caller 입력·실제 configure flags, 시험 counts와 설치 파일 manifest를 새 폴더에
 기록한다. 기존 폴더·checkout 내부 출력·누락한 prefix를 거부한다. 시험은
 실패/error/skip이 모두0이고 기존 baseline150개 이상이 실행돼야 통과한다.
-새 wrapper 입력경계3개를 포함한 현재 suite는153개이며 반복/subcase를 더하지 않는다.
+당시 wrapper 입력경계3개를 포함한 suite는153개였으며 해당 단계에서 반복/subcase를 더하지 않았다.
 
-현재 wrapper와 입력경계 시험의 동일 bytes는 cloud Debian13/GCC14.2 및
+해당 단계 wrapper와 입력경계 시험의 동일 bytes는 cloud Debian13/GCC14.2 및
 Ubuntu26.04.1/GCC15.2에서 각각 새 출력 디렉터리로 실행했다. configure,
 compiler/Python 버전 확인, clean/build, 전체153개 시험(failure/error/skip0),
 staged install과 설치된 scribed help의8단계가 모두 exit0이었다. Ubuntu는
@@ -114,7 +115,8 @@ case가 서버에서 확인됐다. 공개 fcd294f+명시 build-only patch/Thrift
 | multifile | 보존된 CategoryStore→FileStore alias | PASS: 두 실제 category raw10/1 bytes·별도 path/link |
 | thriftmultifile | 보존된 CategoryStore→ThriftFileStore alias | PASS: framed 두 category25/5 bytes·별도 path/link |
 | optional HDFS | configure --enable-hdfs 및 HdfsFile.cpp/libhdfs/libjvm 경로 보존 | 미검증: build/link/runtime 및 HDFS endpoint 없음 |
-| shared RPC/다른 platform | 기존 선택 기능·source 보존 | 미검증: 현재 확인 lane은 비-HDFS/static/Linux x86_64 |
+| shared RPC | 원본 --disable-static 선택 보존 | cloud·서버 clean compile/link·183 tests·DESTDIR·stage-loader help PASS; actual old/new shared daemon은 미검증 |
+| 다른 platform | 기존 선택 기능·source 보존 | 미검증: 현재 확인 lane은 Linux x86_64 |
 
 응답 유실·TRY_LATER·fault/retry component 근거와 실제 daemon case를 구분한다.
 actual 응답 유실/부분 replay, mapping/TTL 변경, HDFS, 전체 store option matrix와
@@ -161,3 +163,56 @@ rate-disable 정상 config를 확인했다. 서버 전체180개 시험/skip0과 
 old/new 요청15·응답14·수신2·raw9바이트/상대 link·정상 종료/회수가 일치했다.
 malformed frame·시간 의존 rate denial·전체 config 거절이나 profiler API까지
 완료했다고 확대하지 않는다. 상세 성능 비교 보류 결정은 유지한다.
+
+
+## 원본 shared RPC 선택과 실제 사용 경계
+
+원본 switch는 --disable-static이며 --disable-shared라는 이전 source comment와
+혼동하지 않는다. tools/validate_linux.py의 --shared-rpc 한 option이 이 switch만
+전달한다. default/static mode와 production build 규칙·C++·두 IDL은 바꾸지 않는다.
+configured LTYPE(.a/.so)을 정확히 확인하고 test fixture도 해당 library와
+shared per-target object/.Po 이름을 따른다. missing/ambiguous/다른 suffix나
+selected library가 scribed보다 새로워 재링크가 필요한 경우를 거부한다.
+
+수정 전 원본 shared configure/clean/build는 성공했다. static object 이름을
+고정한 API test는 setupERROR/0 tests였고 default loader의 help는 libscribe.so
+미탐색으로127이었다. consumer-local build/src를 loader 경로에 주면 같은
+binary help0이었다. 이 결과를 production build 실패로 세지 않는다.
+
+cloud 최종 --shared-rpc run은9단계와183개 시험(failure/error/skip0), staged
+11개 파일·scribed help0을 통과했다. 두 shared RPC library는 build와 stage
+bytes가 같고 scribed DT_NEEDED 및 GNU loader trace로 실제 stage/opt/scribe/lib의
+두 .so를 읽는 것을 확인했다. staged help는 stage cwd와 stage+prepared dependency
+LD_LIBRARY_PATH만 사용해 build/src를 빌리지 않는다. 이 경로는 process-local이며
+ldconfig/시스템 설치·서비스·권한 변경은 하지 않는다. 일반 배포 때도 두 RPC .so와
+matching Thrift/Boost 등 loader closure를 함께 제공해야 하며 SDK 절대경로가
+자동으로 어느 머신에서나 유효해지는 것은 아니다. 후속 서버는 기존 승인된
+Thrift/fb303/Boost/tool prefix로 새 --shared-rpc output의9단계·183개 시험
+(failure/error/skip0)·DESTDIR11개 파일·staged help0을 재현했다. 두 RPC .so의
+build/stage bytes·SHA256과 actual loader init trace를 독립 확인했고 설치 help는
+build/src 경로를 사용하지 않았다. production/fixture C++·header·IDL38개는 기존
+matching source와 같고 production build 규칙·기본 static 선택은 바꾸지 않았다.
+서버 실행 container는 시작·종료31개로 모든 ID가 동일했고 이전 운영30개도
+그대로 포함됐다. 새 install·ldconfig·시스템 library 교체·권한/서비스 변경이나
+daemon 기동·benchmark는 하지 않았다. shared daemon의 actual old/new 전체 대조는
+아직 별도 결과가 필요하다.
+
+현재 v0.1의 비-HDFS/static 제한 후보와 이 추가 shared 검증을 구분한다.
+‘원본 기능 전체를 보존한 현대 build 완료’라고 말하려면 최소한 아래 남은 범위를
+명시적으로 닫아야 한다. 단순히 시험 수를 늘리는 것으로 대체하지 않는다.
+
+1. 선택한 HDFS header/native API compile/link와 실제 저장·읽기/파일 동작
+2. 실제 dynamic mapping/TTL·대표 config 거절 및 backpressure/error·부분 replay
+   차이를 public baseline/승인 예외에 맞춰 정리
+3. 지원할 shared/platform·설치 loader 경계와 재현/롤백 문서 확인
+
+HDFS source와 configure --enable-hdfs/--with-hadooppath, HdfsFile.cpp/libhdfs/libjvm
+경로는 보존됐다. cloud에는 Java21 JRE/libjvm이 있으나 Hadoop hdfs.h/libhdfs/client jars가
+없어 아직 build·runtime 증거가 없다. javac/JNI development headers도 없으며
+native client를 source-build할지 prebuilt를 사용할지 선택한 뒤 필요성을 판단한다.
+원본 hdfsDelete의2-argument 호출 등 C API signature를 선택한 공식 header와 먼저
+대조해야 한다. JRE 존재만으로 Hadoop/JNI 호환이나 cluster 접근을 가정하지 않는다.
+다음 HDFS 단계는 공식 runtime/version·native/jar/classpath/loader 및 제한된 filesystem
+대상을 정한 뒤 필요한 취득·실행 권한을 별도로 확인한다. 지금 추가 설치나 service
+기동을 하지 않고 회사 자료를 gate로 삼거나 optional 기능을 삭제하지 않는다.
+상세 성능 비교·추가 benchmark/tuning 보류도 유지한다.

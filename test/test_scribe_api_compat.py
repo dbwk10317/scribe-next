@@ -51,10 +51,20 @@ def checked(command, cwd, env=None, timeout=120):
 
 
 def make_value(makefile, name):
-    match = re.search(rf"^{re.escape(name)} = (.*)$", makefile, re.M)
-    if not match:
-        raise AssertionError(f"missing configured Makefile variable: {name}")
-    return match.group(1)
+    matches = re.findall(rf"^{re.escape(name)} = (.*)$", makefile, re.M)
+    if len(matches)!=1:
+        raise AssertionError(f"missing or ambiguous configured Makefile variable: {name}")
+    return matches[0]
+
+
+def rpc_layout(makefile):
+    suffix=make_value(makefile,'LTYPE')
+    if suffix not in ('.a','.so'):raise AssertionError('unsupported configured RPC library suffix')
+    result=[]
+    for stem,members in (('libscribe',GENERATED[:2]),('libdynamicbucketupdater',GENERATED[2:])):
+        prefix=stem+'_so-' if suffix=='.so' else ''
+        result.append((stem+suffix,tuple(prefix+name for name in members)))
+    return result
 
 
 def check_fresh_object(build, name):
@@ -70,6 +80,36 @@ def check_fresh_object(build, name):
         path = source / dependency
         if path.stat().st_mtime_ns > obj.stat().st_mtime_ns:
             raise AssertionError(f"stale build object {obj}; rebuild after changing {path}")
+
+
+def check_fresh_link(build,libraries):
+    source=build / 'src';scribed=source / 'scribed'
+    inputs=[source / (name+'.o') for name in (*OBJECTS,'scribe_server')]
+    inputs += [source / library for library,members in libraries]
+    if any(path.stat().st_mtime_ns>scribed.stat().st_mtime_ns for path in inputs):
+        raise AssertionError('scribed is older than its selected objects/libraries; relink before testing')
+
+
+class RpcLibraryLayoutTests(unittest.TestCase):
+    def test_static_and_shared_select_exact_configured_artifacts(self):
+        self.assertEqual(rpc_layout('LTYPE = .a\n'),[('libscribe.a',('scribe','scribe_types')),('libdynamicbucketupdater.a',('BucketStoreMapping','bucketupdater_types'))])
+        self.assertEqual(rpc_layout('LTYPE = .so\n'),[('libscribe.so',('libscribe_so-scribe','libscribe_so-scribe_types')),('libdynamicbucketupdater.so',('libdynamicbucketupdater_so-BucketStoreMapping','libdynamicbucketupdater_so-bucketupdater_types'))])
+
+    def test_missing_ambiguous_or_other_library_mode_is_rejected(self):
+        for config in ('','LTYPE = .a\nLTYPE = .so\n','LTYPE = .other\n'):
+            with self.assertRaises(AssertionError):rpc_layout(config)
+
+
+    def test_newer_selected_shared_library_requires_relink_not_unrelated_objects(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build=Path(directory);source=build/'src';source.mkdir()
+            libraries=rpc_layout('LTYPE = .so\n')
+            for name in [*(n+'.o' for n in (*OBJECTS,'scribe_server')),*(library for library,members in libraries),'scribed']:
+                path=source/name;path.write_bytes(b'fixture');os.utime(path,ns=(100,100))
+            unrelated=source/'unrelated.o';unrelated.write_bytes(b'fixture');os.utime(unrelated,ns=(300,300))
+            check_fresh_link(build,libraries)
+            os.utime(source/'libscribe.so',ns=(200,200))
+            with self.assertRaises(AssertionError):check_fresh_link(build,libraries)
 
 
 class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, ReviewRetryShuffleContracts, ReviewLimitsContracts,
@@ -99,7 +139,10 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                     if source.read_bytes() != copy.read_bytes():
                         raise AssertionError(f"build source differs from current checkout: {source}")
 
+        libraries=rpc_layout(makefile)
+        shared=make_value(makefile,'LTYPE')=='.so'
         libdirs = [thrift / "lib", fb303 / "lib", tools / "lib"]
+        if shared:libdirs.insert(0,cls.build / 'src')
         libdirs += sorted((tools / "lib").glob("*-linux-gnu"))
         cls.env = dict(os.environ)
         cls.env["LD_LIBRARY_PATH"] = os.pathsep.join(map(str, libdirs))
@@ -119,18 +162,15 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                     cls.build / "src/gen-cpp" / (name + suffix)
                 ).read_bytes():
                     raise AssertionError(f"stale or modified generated source: {name}{suffix}")
-        for name in (*OBJECTS, *GENERATED, "scribe_server"):
+        for name in (*OBJECTS, *(member for library,members in libraries for member in members), "scribe_server"):
             check_fresh_object(cls.build, name)
-        for archive, members in (("libscribe.a", GENERATED[:2]),
-                                 ("libdynamicbucketupdater.a", GENERATED[2:])):
+        for archive,members in libraries:
             path = cls.build / "src" / archive
             if any((cls.build / "src" / (name + ".o")).stat().st_mtime_ns
                    > path.stat().st_mtime_ns for name in members):
                 raise AssertionError(f"stale generated RPC library: {path}")
         cls.scribed = cls.build / "src/scribed"
-        if any(path.stat().st_mtime_ns > cls.scribed.stat().st_mtime_ns
-               for path in (cls.build / "src").glob("*.o")):
-            raise AssertionError("scribed is older than its objects; relink before testing")
+        check_fresh_link(cls.build,libraries)
 
         includes = [ROOT / "src", cls.build, thrift / "include", thrift / "include/thrift",
                     fb303 / "include/thrift", fb303 / "include/thrift/fb303", tools / "include"]
@@ -142,7 +182,7 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
         cls.fixture = cls.temporary / "scribe-api-fixture"
         checked([*cxx, *flags, ROOT / "test/cpp/scribe_api_compat.cpp", server_object,
                  *(cls.build / "src" / (name + ".o") for name in OBJECTS),
-                 cls.build / "src/libscribe.a", cls.build / "src/libdynamicbucketupdater.a",
+                 *(cls.build / "src" / library for library,members in libraries),
                  *(f"-L{path}" for path in libdirs), "-lfb303", "-lthrift", "-lthriftnb",
                  "-levent", "-lboost_filesystem", "-lboost_system", "-o", cls.fixture], ROOT, cls.env)
 

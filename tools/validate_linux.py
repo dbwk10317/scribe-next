@@ -31,6 +31,7 @@ def file_record(path, root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="new directory outside the checkout")
+    parser.add_argument("--shared-rpc",action="store_true",help="validate original --disable-static RPC .so mode; default remains static")
     args = parser.parse_args()
     output = args.output.absolute()
     if output.exists() or output.is_symlink():
@@ -50,7 +51,7 @@ def main():
     missing = [name for name in PREFIXES if not env.get(name) or not Path(env[name]).is_dir()]
     if missing:
         parser.error("provide existing directories for " + ", ".join(missing))
-    for tool in ("git", "make", "autoreconf"):
+    for tool in ("git", "make", "autoreconf") + (("readelf",) if args.shared_rpc else ()):
         if not shutil.which(tool):
             parser.error("missing existing tool: " + tool)
     thrift, fb303, tools, python_source = (Path(env[n]).resolve() for n in PREFIXES)
@@ -89,7 +90,8 @@ def main():
     env.setdefault("LDFLAGS", " ".join(f"-L{p} -Wl,-rpath,{p}" for p in libraries))
     env.update(SCRIBE_BUILD=str(build), THRIFT_PREFIX=str(thrift), FB303_PREFIX=str(fb303),
                TOOLS_PREFIX=str(tools), THRIFT_PYTHON_SOURCE=str(python_source))
-    result = {"status": "running", "source_head": subprocess.check_output(
+    inherited_loader=env.get("LD_LIBRARY_PATH","")
+    result = {"status": "running", "rpc_library_mode":"shared" if args.shared_rpc else "static", "source_head": subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=SOURCE, text=True).strip(),
         "platform": platform.platform(), "thrift_version": version,
         "source_files": records, "steps": [],
@@ -110,15 +112,30 @@ def main():
         run("configure", ["sh", "./bootstrap.sh", "--prefix=/opt/scribe",
                           "--with-thriftpath=" + str(thrift), "--with-fb303path=" + str(fb303),
                           "--with-boost=" + str(tools), "--with-boost-system=boost_system",
-                          "--with-boost-filesystem=boost_filesystem"])
+                          "--with-boost-filesystem=boost_filesystem",
+                          *(["--disable-static"] if args.shared_rpc else [])])
         makefile = (build / "src/Makefile").read_text()
         configured = dict(line.split(" = ", 1) for line in makefile.splitlines() if " = " in line)
         result["configured"] = {n: configured[n] for n in ("CC", "CXX", "CFLAGS", "CXXFLAGS",
-                                                         "CPPFLAGS", "LDFLAGS", "PYTHON", "PY_PREFIX")}
+                                                         "CPPFLAGS", "LDFLAGS", "PYTHON", "PY_PREFIX", "LTYPE")}
+        if configured["LTYPE"] != (".so" if args.shared_rpc else ".a"):
+            raise RuntimeError("configured RPC mode differs from selected lane")
+        if args.shared_rpc:
+            env["LD_LIBRARY_PATH"]=str(build / "src")+(os.pathsep+inherited_loader if inherited_loader else "")
+            result["build_loader_path"]=env["LD_LIBRARY_PATH"]
         run("compiler-version", [*shlex.split(configured["CXX"]), "--version"])
         run("python-version", [*shlex.split(configured["PYTHON"]), "--version"])
         run("clean", ["make", "clean"])
         run("build", ["make", "-j2"])
+        if args.shared_rpc:
+            run("shared-elf",["readelf","-W","-d",build / "src/scribed",
+                              build / "src/libscribe.so",build / "src/libdynamicbucketupdater.so"])
+            elf=(logs / "shared-elf.log").read_text()
+            sections=[part.partition("\n")[2] for part in elf.split("\nFile: ")
+                      if part.partition("\n")[0]==str(build / "src/scribed")]
+            if len(sections)!=1 or any("Shared library: ["+name+"]" not in sections[0]
+                                       for name in ("libscribe.so","libdynamicbucketupdater.so")):
+                raise RuntimeError("shared scribed lacks expected RPC DT_NEEDED entries")
         # Existing discovery/runner, with machine-readable counts and explicit skip rejection.
         run("tests", [sys.executable, "-B", "-c", """
 import json, pathlib, sys, unittest
@@ -129,7 +146,19 @@ pathlib.Path(sys.argv[2]).write_text(json.dumps({'run': r.testsRun, 'failures': 
 sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
 """, SOURCE / "test", output / "test-results.json"], cwd=SOURCE)
         run("install", ["make", "install", "DESTDIR=" + str(stage)])
-        run("installed-help", [stage / "opt/scribe/bin/scribed", "--help"])
+        if args.shared_rpc:
+            env["LD_LIBRARY_PATH"]=os.pathsep.join(map(str,(stage / "opt/scribe/lib",*libraries)))
+            for name in ("libscribe.so","libdynamicbucketupdater.so"):
+                installed=stage / "opt/scribe/lib" / name
+                if installed.is_symlink() or not installed.is_file() or installed.read_bytes()!=(build / "src" / name).read_bytes():
+                    raise RuntimeError("staged RPC library differs from built file: "+name)
+            env["LD_DEBUG"]="libs"
+            result["installed_loader_path"]=env["LD_LIBRARY_PATH"]
+        run("installed-help", [stage / "opt/scribe/bin/scribed", "--help"],cwd=stage)
+        if args.shared_rpc:
+            loader=(logs / "installed-help.log").read_text()
+            if any("calling init: "+str(stage / "opt/scribe/lib" / name) not in loader for name in ("libscribe.so","libdynamicbucketupdater.so")):
+                raise RuntimeError("staged help did not load the staged RPC libraries")
         if records != [file_record(SOURCE / relative, SOURCE) for relative in paths]:
             raise RuntimeError("source changed during validation; result cannot identify one source snapshot")
         if any(p.is_symlink() for p in stage.rglob("*")):
