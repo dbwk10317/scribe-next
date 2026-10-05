@@ -119,7 +119,7 @@ networknone 컨테이너에서 한 번 실행했다. 두 lane 모두 첫 RPC 전
 shutdown exit0 비교가 통과했다. old/new runtime30개(바이너리 포함)의 hash와 loader/help를 확인했으며 운영30개 container ID도 유지됐다.
 새 clean build는 수행하지 않았고, old/new runtime/ABI 차이는 유지했다.
 
-다음 coverage는 spool/relay의 장애·재시도 순으로 우선순위를 잡는다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
+남은 coverage는 spool/relay의 부분 실패·응답 유실·재시도 경계다. 이번 정상 null/multi/category batch의 통과를 전체10 store, bucket
 mapping, 모든 fb303 method, old/new 양방향 spool 및 성능 완료로 확대하지 않는다.
 기존 승인된 bug-fix 차이는 명시하며 oversized/empty 처리 보존 결정도 유지한다.
 
@@ -178,3 +178,46 @@ hash/private loader/help와 실제 networknone/uid65534/resource 제한을 유�
 운영30개 container ID는 그대로였다. C++/header/IDL38개(production24/fixture14)는
 기존 matching build와 동일했고 새 clean build는 하지 않았다. Focused offline
 13개는 실제 실행 횟수와 구분한다. production source/새 dependency 변경은 없다.
+
+
+## downstream 비가동 → ordinary spool 전체 replay
+
+--case spool은 각 lane에서 별도 upstream/downstream 두 owned child를 사용하며
+--port와 --port+1 모두 unprivileged/미점유인지 검사한다. 기존 isolation/socket
+소유권/session cleanup은 양쪽에 적용한다. upstream은 exact fixture BufferStore,
+고정127.0.0.1 NetworkStore primary와 std FileStore secondary다. downstream은
+기존 ordinary file template이다. relay가 처음 연결할 때 downstream은 없다.
+
+binary5/tail4 두 nonempty 메시지를 보내 Log=OK 후 spool_00000의 정확한17바이트
+050000004100420aff040000007461696c를 관찰한다. header는 각각 little-endian
+uint32 길이이며 metadata/category frame/newline/padding/symlink가 없다.
+초기 WARNING5/수신2/retries1을 기록한다. downstream을 띄운 뒤 전체 replay9바이트,
+spool 삭제, upstream sent2/ALIVE2를 확인하고 Z를 streaming하여 downstream10바이트,
+양쪽 수신3와 upstream sent3을 확인한다. upstream→downstream 순서로 shutdown하여
+각 exit0/회수와 listener 해제를 검사하며 종료 후 spool 빈 상태와 최종10바이트를 다시 대조한다. 요청은 upstream9/downstream5,
+version 응답 제외 비교 응답은7/3이다.
+
+원본의 rand()%retryIntervalRange는0에 정의되지 않으므로 승인된 zero-range
+bug-fix 예외를 정상 동등성 기대에 섞지 않는다. range=1은 integer1/2=0와
+rand()%1=0으로 양쪽 모두 고정 retry_interval=10을 준다. 최초 실패 재접속 이전
+준비를 보장하기 위해 upstream launch부터 downstream status/counter 준비까지
+8초 미만이어야 한다. 초과는 raw 단계/child 오류와 함께 실패하며 retries 차이를
+삭제·정규화하지 않는다. 초기 spool은8초, replay/streaming 준비 관찰은 각20초 이내 정확한 bytes/link/delete를
+기다릴 뿐 추가 RPC/input을 보내지 않는다. 느린 환경에서는 기한을 실패로 보고한다.
+
+이 작은 full-success replay는 deleteOldest 경로이며 승인된 partial replay
+replaceOldest/openTruncate 수정은 실행하지 않는다. relay ACK는 queue 수락이며
+fsync/power-loss 또는 exactly-once 보장은 아니다. empty frame/oversized chunk와
+256MiB 초과 retry 계약도 바꾸거나 검증한 것으로 확대하지 않는다. production과
+dependency 변경은 없다. cloud는 synthetic report/가짜 child 실패 회수와 spool
+준비 실패 시 downstream 기동 차단을 검증한다. 후속 서버에서 전체170개 시험
+failure/error/skip0과 실제 spool case1회를 통과했다. 공통 client의 upstream
+요청9/비교 응답7 및 downstream 요청5/비교 응답3, spool17→replay9→stream10,
+retries1/received3/sent3와 WARNING5→ALIVE2가 일치했다. 두 child를 정상 종료·
+회수한 후에도 spool 빈 상태와 최종10바이트를 확인했다. 각 connection의 owned
+socket 검사와 runtime30개 hash/private loader/help, 실제 networknone/uid65534
+및 resource 제한을 유지했으며 운영30개 container ID는 그대로였다. 초기8초 및
+replay/streaming20초 한도와 정확한 기대값을 바꾸지 않았다. C++/header/IDL38개
+(production24/fixture14)는 기존 matching build와 동일했고 새 clean build는 없다.
+Focused offline17개는 실제 daemon 실행 횟수와 구분한다. consumer raw path/PID
+정보는 commit하지 않는다.
