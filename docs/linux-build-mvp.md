@@ -90,3 +90,35 @@ config는 소비하지 않는다. 원래 HOME/config 파일을 수정하지 않�
 보존 결정대로 유지하며 새 retry/failure-file/drop 정책을 추가하지 않는다.
 회사 자료 없이도 위 공개 원본 대조를 계속할 수 있다. 현재 build MVP와 전체
 원본 동등성·운영 배포를 구분하며 서비스를 올리는 권한을 추정하지 않는다.
+
+
+## 공개 원본 store와 optional 지원 현황
+
+2026-10-05, base main4017060 이후 전체172개 시험/skip0과 아래 actual old/new
+case가 서버에서 확인됐다. 공개 fcd294f+명시 build-only patch/Thrift0.9.0과
+현대 C++17/Thrift0.25.0을 별도 userland에서 대조했다. 회사 자료는 gate가 아니다.
+아래 PASS는 해당 작은 config/입력/관찰 범위이며 모든 기능 동등성 선언이 아니다.
+10종 모두 제한된 actual 정상 case가 확인됐지만 전체 option/fault matrix·HDFS·
+성능·완료 gate를 통과했다는 뜻은 아니다.
+
+| Store/backend | 보존·기존 시험 | 실제 production old/new daemon 대조 |
+| --- | --- | --- |
+| file | std file bytes/설정/worker 계약 | PASS: batch, strict 크기 회전, reinitialize, owned process crash/restart append |
+| buffer | ordinary spool reader/full·partial replay 계약 | PASS: downstream 비가동→framed spool17→full replay→streaming |
+| network | fixed/list/dynamic relay·copy component 계약 | PASS: 고정 loopback 목적지, 비가동/재연결과 full batch ACK/sent |
+| null | ignored/drop 계약 | PASS: 수신과 ignored3 |
+| multi | child order/fan-out 및 failure component 계약 | PASS: 두 file+null, 파일과 ignored3 |
+| category | per-category clone/파일 분리 계약 | PASS: 두 category 파일·링크·수신 카운터 |
+| bucket | route·copy 및 승인 결함 회귀 | PASS: implicit exact key_range(20,2)/remove_key, 정상 두 bucket와 failure bucket |
+| thriftfile | raw/framed·chunk/empty/oversized·copy/reopen component 계약 | PASS: 직접 raw10/framed25, chunk padding, 정상 종료 뒤 bytes/link |
+| multifile | 보존된 CategoryStore→FileStore alias | PASS: 두 실제 category raw10/1 bytes·별도 path/link |
+| thriftmultifile | 보존된 CategoryStore→ThriftFileStore alias | PASS: framed 두 category25/5 bytes·별도 path/link |
+| optional HDFS | configure --enable-hdfs 및 HdfsFile.cpp/libhdfs/libjvm 경로 보존 | 미검증: build/link/runtime 및 HDFS endpoint 없음 |
+| shared RPC/다른 platform | 기존 선택 기능·source 보존 | 미검증: 현재 확인 lane은 비-HDFS/static/Linux x86_64 |
+
+응답 유실·TRY_LATER·fault/retry component 근거와 실제 daemon case를 구분한다.
+actual 응답 유실/부분 replay, mapping/TTL 변경, HDFS, 전체 store option matrix와
+동일 조건 성능 비교는 아직 완료하지 않았다. 기존 승인된 free/truncate·bucket
+OOB/copy·network 설정·ThriftFile raw-copy 수정은 old 버그를 재현해 같음을
+요구하지 않는 명시 예외다. oversized/empty Thrift 정책과256MiB 초과 retained
+spool 재시도 경계도 그대로 남는다. ACK를 durable/exactly-once 보장으로 확대하지 않는다.

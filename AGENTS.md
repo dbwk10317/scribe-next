@@ -47,7 +47,7 @@ Gate B: 두 IDL/wire/fb303/config, 10 store와 동적 목적지 갱신의 golden
 
 Gate C: 양방향 ordinary spool·thriftfile·relay, fault/retry와 종료 계약 검증 통과.
 
-Gate D: 회사가 승인한 baseline·허용 차이에 따른 성능과 운영 승인. 그 뒤 배포·롤백 실행 권한을 확인한다.
+Gate D: 공개 원본 baseline·명시 허용 차이에 따른 성능과 운영 검증. 그 뒤 배포·롤백 실행 권한을 확인한다.
 
 어느 gate도 현재 전체 통과하지 않았다. 클라우드 및 Ubuntu의 비-HDFS 기본 C++ lane은 scribed compile/link와 당시 프로젝트 55개 시험을 통과했고, 후속 cloud FileStore characterization은 70개, 승인된 truncate 수정본은 cloud·Ubuntu에서 새 clean build·74개 시험을 통과했으나 전체 platform/feature matrix와 runtime 동등성은 미검증이다. 후속 TCP fixture는 명시적 127.0.0.1 bind로 실제 handler/worker를 검증하며 cloud·Ubuntu에서 각 89개 시험을 통과했다. Ubuntu는 v8의 새 clean build·help, TCP 반복 50회와 listener/자식 회수도 통과했다. 당시 상위 작업 요약 뒤 v10에서 raw records를 수신·검증했다. 후속 relay suite는 cloud·Ubuntu에서 각101개 시험을 통과했다. Ubuntu v11의 새 clean build·help, relay 반복50회와 loopback/자식 회수는 당시 v12 요약 뒤 v13 main 인계의 raw records로 확인했다. relay 구현 `5594efaae67e214880a31c755c0f5cb86cfc192a`는 PR #3/main `ddca67e6c3485459648e4cbc975d5dae9ddccfc2`에 반영됐다. 이 101개는 이전 relay 단계의 수이며 후속 review 수정본의 최종 결과가 아니다. 후속 승인된 독립 범위는 새 clean build·help, 전체124개/skip0과 ASan+UBSan API69개/skip0 및 독립 검토를 통과했다. 후속 store 수정은 Ubuntu clean build·help, 전체137개/skip0과 ASan+UBSan API82개/skip0을 통과했다. 해결된 store 5건의 검증 범위와 전체 미완료 gate는 [review 기록](docs/review-fixes-status.md)을 따른다. 실제 두-worker 정상 연결과 직접 호출 fault/retry를 구분한다. 응답 유실 재시도의 중복 관찰과 downstream prefix 모의를 실제 old-runtime/company differential로 확대하지 않는다. production main/startServer 실행과 구분한다. GNU --wrap mutex lane의 non-Linux skip을 Linux 성공으로 세지 않는다. 동일 장비·조건에서 old/new를 비교하고 source·fixture·결과의 근거를 연결한다. 실제 명령은 확인된 source와 toolchain에서 실행하고, import 시험 성공을 Scribe build/test 성공으로 기록하지 않는다.
 

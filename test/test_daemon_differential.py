@@ -285,6 +285,38 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
             self.assertTrue((Path(directory)/'evidence/old/restart-before/result.json').exists())
             self.assertFalse((Path(directory)/'evidence/old/restart-after').exists())
 
+    def test_file_store_family_oracles_cover_routing_raw_event_padding_and_aliases(self):
+        entries,delta,files=client.case_data('file-stores')
+        self.assertEqual(len(entries),13);self.assertTrue(all(payload for category,payload in entries))
+        self.assertEqual(delta['scribe_overall:received good'],13)
+        self.assertEqual(files['bucket/b001/data_00000'],b'A\0B\n\xff')
+        self.assertEqual(files['bucket/b002/data_00000'],b'ends\n')
+        self.assertEqual(files['bucket/failed/data_00000'],b'no-key')
+        self.assertEqual(files['thrift/data_00000'].hex(),'050000004100420aff0000000000000005000000656e64730a')
+        self.assertEqual(files['rawthrift/data_00000'],b'A\0B\n\xffends\n')
+        self.assertEqual(files['thriftmultifile/tmfA/tmfA_00000'],files['thrift/data_00000'])
+        self.assertEqual(len(files),9);self.assertEqual(len(client.expected_outputs('file-stores')[1]),9)
+        config=(ROOT/'tools/daemon_file_stores.conf.template').read_text()
+        self.assertIn('bucket_type=key_range\nbucket_range=20\n',config)
+        self.assertIn('<bucket>\ntype=file',config);self.assertNotIn('<bucket0>',config)
+        self.assertIn('categories=tmf*\ntype=thriftmultifile',config)
+
+    def test_synthetic_file_store_report_rejects_missing_bytes_and_wrong_wire_counts(self):
+        report=self.report();report['case']='file-stores'
+        entries,delta,unused=client.case_data('file-stores')
+        report['counter_delta']=delta;report['files'],report['symlinks']=client.expected_outputs('file-stores')
+        report['records'][6]['request_hex']=client.hexbytes(client.framed(b'Log',7,client.log_fields(entries)))
+        fields=b'\x0d\x00\x00\x0b\x0a'+struct.pack('>i',len(delta))
+        for key,value in sorted(delta.items()):fields+=client.string(key.encode())+struct.pack('>q',value)
+        body=client.string(b'getCounters')+b'\x02'+struct.pack('>i',8)+fields+b'\0'
+        report['records'][7].update(value=delta,reply_hex=client.hexbytes(struct.pack('>I',len(body))+body))
+        self.assertEqual(client.compare_lanes(report,copy.deepcopy(report),'file-stores')['status'],'passed')
+        for mutate in (lambda r:r['files'].pop(),lambda r:r['symlinks'].pop(),
+                       lambda r:r['files'][0].update(hex='00'),
+                       lambda r:r['records'].__setitem__(7,self.counter_record(8,13))):
+            broken=copy.deepcopy(report);mutate(broken)
+            with self.assertRaises(ValueError):client.compare_lanes(broken,copy.deepcopy(broken),'file-stores')
+
 
 if __name__ == "__main__":
     unittest.main()

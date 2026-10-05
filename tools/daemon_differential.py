@@ -20,6 +20,23 @@ def case_data(case):
     if case == 'file':
         return ([(b'fixture',p) for p in PAYLOADS]+[(b'',b'blank-discard'),(b'unknown',b'unknown-discard')],
                 EXPECTED_DELTA, {'fixture_00000':b''.join(PAYLOADS)})
+    if case == 'file-stores':
+        first=PAYLOADS[0];second=b'ends\n'
+        event=lambda value:struct.pack('=I',len(value))+value
+        framed=event(first)+b'\0'*7+event(second) # two 9-byte events in 16-byte chunks
+        entries=[(b'bucket',b'5|'+first),(b'bucket',b'15|'+second),(b'bucket',b'no-key')]
+        entries += [(category,value) for category in (b'thrift',b'rawthrift') for value in (first,second)]
+        entries += [(b'mfA',first),(b'mfB',b'Z'),(b'mfA',second),
+                    (b'tmfA',first),(b'tmfB',b'Z'),(b'tmfA',second)]
+        delta={'bucket:received good':3,'thrift:received good':2,'rawthrift:received good':2,
+               'mfA:received good':2,'mfB:received good':1,'tmfA:received good':2,
+               'tmfB:received good':1,'scribe_overall:received good':13}
+        files={'bucket/failed/data_00000':b'no-key','bucket/b001/data_00000':first,
+               'bucket/b002/data_00000':second,'thrift/data_00000':framed,
+               'rawthrift/data_00000':first+second,'multifile/mfA/mfA_00000':first+second,
+               'multifile/mfB/mfB_00000':b'Z','thriftmultifile/tmfA/tmfA_00000':framed,
+               'thriftmultifile/tmfB/tmfB_00000':event(b'Z')}
+        return entries,delta,files
     if case in ('restart-before','restart-after'):
         entries=[(b'fixture',p) for p in (PAYLOADS[0],PAYLOADS[2])] if case=='restart-before' else [(b'fixture',b'Z')]
         count=len(entries)
@@ -267,7 +284,7 @@ def run_lane(lane,restart_stage=None):
     if restart_stage=='restart-after':
         if not os.path.isdir(output) or os.path.islink(output): raise ValueError('missing owned first-stage output')
     else: os.makedirs(output)
-    template=TEMPLATE if case in ('file','rotation','restart-before','restart-after') else os.path.join(os.path.dirname(TEMPLATE),'daemon_stores.conf.template')
+    template=TEMPLATE if case in ('file','rotation','restart-before','restart-after') else os.path.join(os.path.dirname(TEMPLATE),'daemon_file_stores.conf.template' if case=='file-stores' else 'daemon_stores.conf.template')
     with open(template) as f:
         config=f.read().replace('@SEPARATE_TEMP_OUTPUT@',output).replace('@PORT@',str(PORT))
     if case in ('rotation','restart-before','restart-after'): config=config.replace('max_size=1000000','max_size=4').replace('target_write_size=16384','target_write_size=1')
@@ -392,6 +409,14 @@ def compare_lanes(old,new,case='file'):
             raise ValueError('unexpected first-batch output file')
         if lane['symlinks'] != expected_links:
             raise ValueError('unexpected first-batch symlink')
+    if case=='file-stores':
+        for lane in (old,new):
+            if lane['records'][2]['value']!=2 or any(lane['records'][i]['value']!=0 for i in (5,6)):
+                raise ValueError('file store ALIVE/Log OK result differs')
+            before=lane['records'][4]['value'];after=lane['records'][7]['value']
+            delta={key:after.get(key,0)-before.get(key,0) for key in set(before)|set(after)}
+            if {key:value for key,value in delta.items() if value}!=case_data(case)[1]:
+                raise ValueError('recorded file store counters differ')
     if case in ('restart-before','restart-after'):
         for lane in (old,new):
             expected_exit=-signal.SIGKILL if case=='restart-before' else 0
@@ -442,7 +467,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()

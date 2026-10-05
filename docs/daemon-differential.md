@@ -221,3 +221,45 @@ replay/streaming20초 한도와 정확한 기대값을 바꾸지 않았다. C++/
 (production24/fixture14)는 기존 matching build와 동일했고 새 clean build는 없다.
 Focused offline17개는 실제 daemon 실행 횟수와 구분한다. consumer raw path/PID
 정보는 commit하지 않는다.
+
+
+## 남은 file-backed store 묶음
+
+--case file-stores는 같은9요청/7비교응답 driver로 13개 nonempty entry를
+보낸다. exact category BucketStore는 implicit <bucket>의 key_range(20,2 buckets),
+remove_key=yes와 delimiter124를 사용한다. 5|binary5→b001,15|ends\n→b002,
+no-key→failed이며 key/delimiter 제거 후 각 file bytes를 비교한다. numbered
+bucket0..N의 원본 pointer arithmetic 결함과 BucketStore 외부 copy 설정 차이는
+이 정상 config에서 실행하지 않는다.
+
+직접 thriftfile의 framed0/raw1 두 인스턴스와 multifile/thriftmultifile aliases를
+같이 검사한다. aliases는 fan-out이 아니라 CategoryStore 모델의 per-category
+파일 생성이다. wildcard 공유 queue(new_thread_per_category=no) 아래 mfA/mfB와
+tmfA/tmfB를 나누고 child directory/basename과 상대 current link를 대조한다.
+framed thriftmultifile은 use_simple_file=0이므로 승인된 raw-copy 차이가 없다.
+직접 raw thriftfile은 copy를 호출하지 않는다.
+
+framed binary5/ends\n은 각각 native uint32 length+5 bytes의9바이트 event다.
+chunk_size=16이므로 둘 사이7개 zero padding을 포함한25바이트가 기준이다.
+확인한 Linux x86_64 lane의 native length는 little-endian이며 RPC frame의
+big-endian과 구분한다. raw 파일은 원문10바이트, Z category의 framed 파일은
+5바이트다. 총9개 파일·9개 relative link·수신 good13을 정확히 대조하며 model
+파일, 메타 출력이나 다른 suffix를 허용하지 않는다. ThriftFileStore flush는
+production no-op이므로 authoritative snapshot은 정상 shutdown과 child exit0
+뒤에만 읽는다. 기록 시간이나 고정 pause로 flush 완료를 추정하지 않는다.
+
+온라인 구 writer 조회는 실패했으나 후속 서버에서 이미 검증한 공식 Thrift0.9 tar
+(SHA256 71d129c49a2616069d9e7a93268cdba59518f77b3c41e763e09537cb3f3f0aac)의
+lib/cpp/src/thrift/transport/TFileTransport.cpp와 보존 build source가 byte 단위로
+같음을 확인했다. write의 native eventLen 4-byte memcpy와 writerThread의
+chunk 경계 zero padding을 읽었고 실제 old/new에서 위25/5바이트가 일치했다.
+원문 source SHA256은 f31c0b97210a826e838dcddf225e55fc805896258ac22aafa67b35bd0f86d14c다.
+
+Cloud는 synthetic wire/report와 oracle을 검사했고 후속 서버에서 전체172개
+시험 failure/error/skip0과 실제 file-stores case1회를 통과했다. 요청9/비교 응답7,
+received13, 정상 child exit0 뒤 파일9/상대 symlink9와 정확한 bytes가 일치했다.
+owned socket 검사, runtime30개 hash/private loader/help와 networknone/uid65534/
+resource 제한을 유지했고 운영30개 container ID는 그대로였다. C++/header/IDL38개
+(production24/fixture14)는 matching build와 동일하며 새 clean build는 하지 않았다.
+Focused offline19개는 실제 daemon 실행 횟수와 구분한다. 전체10종의 제한된
+정상 config가 확인됐지만 모든 설정/fault branch나 완료 gate 통과는 아니다. 지원 현황은 [현재 Linux/store 범위](linux-build-mvp.md#공개-원본-store와-optional-지원-현황)를 따른다.

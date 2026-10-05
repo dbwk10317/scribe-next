@@ -8,7 +8,7 @@
 
 scribe-next는 기존 Scribe의 구조와 외부 동작을 유지하면서 최신 Thrift 및 현대 Linux 환경에서 빌드할 수 있도록 이식하는 프로젝트다. 프로젝트 이름은 scribe-next로 정하되 기존 바이너리, 서비스, IDL namespace, 설정 key와 설치 경로의 이름은 호환성 검증 없이 바꾸지 않는다. 먼저 빌드와 의존성 경계만 복구하고, 동작 비교가 통과한 뒤 오래된 C++ 표현을 작은 변경으로 정리한다. 처리 구조, 저장 형식, 전달 보장, 성능 정책을 새로 설계하지 않는다.
 
-이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 따라서 아래 계약은 upstream 기준이며 회사 운영 동등성은 회사 baseline 승인 후 판단한다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. 초기 build/API 단계에서 IDL·queue/store/spool 로직과 기존 시험 소스를 유지했으며 후속 승인된 production 수정은 단계별 기록으로 분리한다. API 시험 이력은 [API 이식 기록](api-compat-status.md), 최신 ordinary spool·설정 계약과 메모리 수정은 [계약 기록](contracts-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 운영 daemon 기동·성능 측정·전체 old/new 동등성 검증은 수행하지 않았다.
+이 문서는 공개 upstream SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2`를 기준으로 한다. 타깃 OS는 Linux로 확정됐다. 회사 fork, 실제 설정, 운영 부하, Linux 배포판과 toolchain 버전은 제공되지 않았다. 현재 목표는 공개 원본 기능 보존이며 회사 자료는 범위 밖이다. 아래 계약은 upstream 기준이고 최신 완료 범위는 [Linux/store 지원 현황](linux-build-mvp.md#공개-원본-store와-optional-지원-현황)을 따른다. 공개 소스 정적 검토와 고정 tree 도입 뒤 제한된 build/API 경계를 이식했다. Thrift/fb303 및 기본 비-HDFS C++ lane의 scribed clean compile/link가 클라우드에서 성공했다. 초기 build/API 단계에서 IDL·queue/store/spool 로직과 기존 시험 소스를 유지했으며 후속 승인된 production 수정은 단계별 기록으로 분리한다. API 시험 이력은 [API 이식 기록](api-compat-status.md), 최신 ordinary spool·설정 계약과 메모리 수정은 [계약 기록](contracts-status.md), 의존성 준비·초기 실패는 [빌드 기록](build-status.md), 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04)을 따른다. 초기 설계 이후 격리 production old/new daemon의 제한된 정상·재열기·실패 복구 대조를 진행했다. 동일 조건 성능과 전체 option matrix는 미검증이다.
 
 ## 범위와 비목표
 
@@ -69,19 +69,19 @@ Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6`에서 아래
 
 fb303의 source 존재만으로 header/library 설치·운영 method 호환성을 선언하지 않는다. 기존 구현의 빌드 경계부터 검증하고 필요한 부분만 수정한다.
 
-autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, fb303 연결을 우선 유지한다. optional HDFS는 회사 사용 여부 확인 후 독립 build lane으로 검증하며 조용히 제거하지 않는다. Boost를 일괄 제거하지 않는다. CMake 전환은 의존성 이식과 행동 변경에서 분리한 후속 선택 작업이다. 기존 운영 install 경로가 동등하게 유지되어야 한다.
+autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, fb303 연결을 우선 유지한다. optional HDFS는 공개 원본의 별도 build/runtime lane에서 검증해야 하며 조용히 제거하지 않는다. Boost를 일괄 제거하지 않는다. CMake 전환은 의존성 이식과 행동 변경에서 분리한 후속 선택 작업이다. 기존 운영 install 경로가 동등하게 유지되어야 한다.
 
 ## 현대화 경계와 제안값
 
-C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 봉구서버의 Ubuntu 26.04.1에서 첫 소스 도입 검사 후 GCC 15.2·Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 clean build와 당시 계약 시험 55개를 통과했다. 후속 v8의 Ubuntu clean build·help와 89개 test-only loopback 포함 시험 결과 및 근거 출처는 [최신 loopback 기록](loopback-rpc-status.md)을 따른다. 이는 확인한 lane의 결과이며 전체 platform/feature matrix를 대신하지 않는다. 회사 Linux 배포판과 compiler 버전은 baseline 확보 단계에서 확정한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
+C++17을 프로젝트 표준 후보로 제안한다. C++20 이상의 기능은 현재 목표에 필요하지 않다. 대상 Thrift가 더 높은 표준을 요구하면 해당 release의 실제 build 요구를 근거로 재결정한다. Linux를 주 검증 대상으로 확정한다. 봉구서버의 Ubuntu 26.04.1에서 첫 소스 도입 검사 후 GCC 15.2·Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 clean build와 당시 계약 시험 55개를 통과했다. 후속 v8의 Ubuntu clean build·help와 89개 test-only loopback 포함 시험 결과 및 근거 출처는 [최신 loopback 기록](loopback-rpc-status.md)을 따른다. 이는 확인한 lane의 결과이며 전체 platform/feature matrix를 대신하지 않는다. 확인한 Linux/compiler lane과 미검증 optional 범위를 최신 지원 현황에 기록한다. Windows 지원 확대는 POSIX I/O와 symlink 계약을 포함하는 별도 범위다. 특정 OS·컴파일러를 최신이라고 주장하지 않는다.
 
 shared_ptr 전환은 generated interface와 Thrift constructor boundary에서 시작한다. Boost와 std 포인터가 서로 같은 객체의 별도 control block을 만들지 않도록 소유권 연결부를 함께 수정한다. 내부 포인터의 일괄 치환, raw StoreQueue backlink의 소유권 변경, global handler 재설계는 하지 않는다. 새로운 thread API를 적용할 때 현재 concurrency wrapper에 필요한 부분만 맞추고 lock 순서와 scope는 유지한다. 파일 transport는 기존 구현의 API와 byte format을 비교한 뒤 호환에 필요한 변경만 선택한다.
 
 ## 결정과 미확정 사항
 
-확정 방향은 두 단계 이식, 기존 구조 유지, IDL 및 spool 불변, 초기 concurrency 동결, 기존 autotools 우선이다. 제안값은 C++17과 Thrift 0.25.0이다. 확정에 필요한 자료는 회사 fork SHA와 patch 목록, production configs, 실제 store 사용률, 지원 플랫폼, client 언어와 버전, HDFS 사용, 기존 빌드 산출물 및 baseline 부하다.
+확정 방향은 두 단계 이식, 기존 구조 유지, IDL 및 spool 불변, 초기 concurrency 동결, 기존 autotools 우선이다. 제안값은 C++17과 Thrift 0.25.0이다. 다음 검증은 공개 고정 baseline의 남은 store/운영 API·optional HDFS·동일 조건 workload에 집중한다. 회사 fork/config 자료를 완료 조건으로 요구하지 않는다.
 
-성능 동등성은 같은 machine, compiler 옵션, filesystem, client, payload/category 분포, category 수, batch 크기, fan-out, 지속 시간과 장애 지속 조건에서 측정한다. throughput, latency 분포, CPU, RSS, thread 수, queue peak, retry, loss 및 recovery 시간을 비교한다. 허용 차이는 회사가 baseline과 함께 승인한다. 이 문서는 임의 성능 수치나 무손실을 보장하지 않는다.
+성능 동등성은 같은 machine, compiler 옵션, filesystem, client, payload/category 분포, category 수, batch 크기, fan-out, 지속 시간과 장애 지속 조건에서 측정한다. throughput, latency 분포, CPU, RSS, thread 수, queue peak, retry, loss 및 recovery 시간을 비교한다. 허용 차이는 공개 원본 baseline과 명시된 사용자 승인 예외로 관리한다. 이 문서는 임의 성능 수치나 무손실을 보장하지 않는다.
 
 ## 위험과 대응
 
