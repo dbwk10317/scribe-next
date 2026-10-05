@@ -104,23 +104,32 @@ class ReviewLimitsContracts:
 
     def test_wire_limits_reload_retains_startup_policy(self):
         config = self.limit_null_config(128, 1024)
-        with self.loopback_process(config=config) as server:
-            connection = server.connect()
-            server.config.write_text(self.limit_null_config(64, 64))
-            connection.sendall(tcp.message(b"reinitialize", 730, oneway=True))
-            self.assertEqual(self.send_sized_log(connection, 128, 731),
-                             tcp.reply(b"Log", 731, tcp.result_i32(0)))
-            self.limit_header_rejected(server, 129)
-        self.assertIn("wire-limit changes require restart", server.diagnostics())
+        for frame, message in ((64, 64), (None, None), (128, None), (None, 1024),
+                               ("0", 1024), (128, "garbage")):
+            with self.subTest(frame=frame, message=message), self.loopback_process(config=config) as server:
+                connection = server.connect()
+                server.config.write_text(self.limit_null_config(frame, message))
+                connection.sendall(tcp.message(b"reinitialize", 730, oneway=True))
+                self.assertEqual(self.send_sized_log(connection, 128, 731),
+                                 tcp.reply(b"Log", 731, tcp.result_i32(0)))
+                self.limit_header_rejected(server, 129)
+            if frame != "0" and message != "garbage":
+                self.assertIn("wire-limit changes require restart", server.diagnostics())
 
     def test_wire_relay_outgoing_limit_and_incoming_reply_limit(self):
-        for frame, message, category, payload, reply_size, expected in (
-                (128, 1024, 4, 87, 24, 0), (128, 1024, 4, 88, 24, 0),
-                (128, 1024, 4, 89, None, 1), (1024, 128, 4, 89, None, 1),
-                (128, 1024, 88, 4, 24, 0), (128, 1024, 89, 4, None, 1),
-                (128, 1024, 4, 0, 129, -1), (1024, 128, 4, 0, 129, -1)):
+        for frame, message, category, payload, reply_size, expected, count in (
+                (128, 1024, 4, 87, 24, 0, 1), (128, 1024, 4, 88, 24, 0, 1),
+                (128, 1024, 4, 89, None, 1, 1), (1024, 128, 4, 89, None, 1, 1),
+                (128, 1024, 88, 4, 24, 0, 1), (128, 1024, 89, 4, None, 1, 1),
+                (128, 1024, 4, 0, 129, -1, 1), (1024, 128, 4, 0, 129, -1, 1),
+                (20, 1024, 0, 0, None, 1, 0), (21, 1024, 0, 0, 20, 0, 0),
+                (22, 1024, 0, 0, 20, 0, 0), (1024, 20, 0, 0, None, 1, 0),
+                (1024, 21, 0, 0, 20, 0, 0), (1024, 22, 0, 0, 20, 0, 0),
+                (128, 1024, 4, 68, 20, 0, 2), (128, 1024, 4, 69, 20, 0, 2),
+                (128, 1024, 4, 70, None, 1, 2), (1024, 128, 4, 68, 20, 0, 2),
+                (1024, 128, 4, 69, 20, 0, 2), (1024, 128, 4, 70, None, 1, 2)):
             with self.subTest(frame=frame, message=message, category=category,
-                              payload=payload, reply=reply_size):
+                              payload=payload, reply=reply_size, count=count):
                 directory = Path(tempfile.mkdtemp(prefix="limit-relay-", dir=self.temporary))
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
                     listener.bind(("127.0.0.1", 0))
@@ -129,7 +138,7 @@ class ReviewLimitsContracts:
                     config = directory / "scribe.conf"
                     config.write_text(self.limit_null_config(frame, message) +
                                       f"remote_port={listener.getsockname()[1]}\n"
-                                      f"category_size={category}\npayload_size={payload}\n")
+                                      f"category_size={category}\npayload_size={payload}\nentry_count={count}\n")
                     process = subprocess.Popen([str(self.fixture), "limit-relay", str(config), str(directory)],
                                                cwd=directory, env=self.env, stdout=subprocess.PIPE,
                                                stderr=subprocess.PIPE, text=True)
@@ -152,7 +161,8 @@ class ReviewLimitsContracts:
                                     self.assertTrue(data, "truncated relay Log")
                                     body.extend(data)
                                 expected_wire = tcp.message(b"Log", 0, tcp.log_fields(
-                                    [(b"c" * category, b"x" * payload)]))
+                                    [(b"c" * category, b"x" * (payload if i == 0 else 0))
+                                     for i in range(count)]))
                                 self.assertEqual(bytes(header + body), expected_wire)
                                 if expected == 0:
                                     response = tcp.reply(b"Log", 0, tcp.result_i32(0))
@@ -162,7 +172,7 @@ class ReviewLimitsContracts:
                                     self.assertEqual(connection.recv(1), b"")
                         output, errors = process.communicate(timeout=5)
                         self.assertEqual(process.returncode, 0, errors)
-                        self.assertIn(f"RESULT {expected} {int(expected == 0)} 1", output)
+                        self.assertIn(f"RESULT {expected} {count if expected == 0 else 0} {count}", output)
                     finally:
                         if process.poll() is None:
                             process.kill()

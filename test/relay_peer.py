@@ -54,6 +54,8 @@ def receive_request(connection, deadline):
 
 
 class RelayPeer(tcp.LoopbackProcess):
+    mode = "relay-driver"
+
     def __init__(self, executable, environment, directory, pooled=False):
         super().__init__(executable, environment, directory, "")
         self.pooled = pooled
@@ -93,16 +95,14 @@ class RelayPeer(tcp.LoopbackProcess):
             if self.bound_address[0] != "127.0.0.1" or not self.bound_address[1]:
                 raise AssertionError("scripted peer did not bind assigned IPv4 loopback")
             # The same socket remains open until cleanup; never reserve/release.
-            self.config.write_text(
-                f"remote_host=127.0.0.1\nremote_port={self.bound_address[1]}\n"
-                f"timeout=500\nuse_conn_pool={'yes' if self.pooled else 'no'}\n")
+            self.config.write_text(self.configuration())
             self.stderr = self.stderr_path.open("wb")
             self.process = subprocess.Popen(
-                [str(self.executable), "relay-driver", str(self.config), str(self.directory)],
+                [str(self.executable), self.mode, str(self.config), str(self.directory)],
                 cwd=self.directory, env=self.environment, stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=self.stderr, bufsize=0,
             )
-            if self.read_line() != "READY relay-driver":
+            if self.read_line() != "READY " + self.mode:
                 raise AssertionError("invalid relay driver readiness")
             return self
         except BaseException as error:
@@ -115,6 +115,10 @@ class RelayPeer(tcp.LoopbackProcess):
             if isinstance(error, (KeyboardInterrupt, SystemExit)):
                 raise
             raise AssertionError(f"{error}\n{detail}") from error
+
+    def configuration(self):
+        return (f"remote_host=127.0.0.1\nremote_port={self.bound_address[1]}\n"
+                f"timeout=500\nuse_conn_pool={'yes' if self.pooled else 'no'}\n")
 
     def command(self, value):
         encoded = (value + "\n").encode("ascii")
@@ -133,11 +137,12 @@ class RelayPeer(tcp.LoopbackProcess):
         if actual != expected:
             raise AssertionError(f"relay result {actual!r} != {expected!r}\n{self.diagnostics()}")
 
-    def accept(self):
-        self.listener.settimeout(self.remaining())
-        connection, address = self.listener.accept()
+    def accept(self, listener=None):
+        listener = self.listener if listener is None else listener
+        listener.settimeout(self.remaining())
+        connection, address = listener.accept()
         self.sockets.append(connection)
-        if address[0] != "127.0.0.1" or connection.getsockname() != self.bound_address:
+        if address[0] != "127.0.0.1" or connection.getsockname() != listener.getsockname():
             raise AssertionError("relay connection escaped assigned loopback peer")
         self.accepted.append(address)
         return connection
@@ -171,7 +176,7 @@ class RelayPeer(tcp.LoopbackProcess):
 
     def finish(self):
         self.command("QUIT")
-        if self.read_line() != "PASS relay-driver":
+        if self.read_line() != "PASS " + self.mode:
             raise AssertionError("relay driver did not finish successfully")
         result = self.process.wait(timeout=self.remaining())
         if result != 0:

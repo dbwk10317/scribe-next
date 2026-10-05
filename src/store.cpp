@@ -1,5 +1,6 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
+// scribe-next modification: preserve store-copy policy and close the correct pooled destination.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1751,6 +1752,7 @@ NetworkStore::NetworkStore(StoreQueue* storeq,
     serviceBased(false),
     listBased(false),
     remotePort(0),
+    serviceListDefaultPort(0),
     serviceCacheTimeout(DEFAULT_NETWORKSTORE_CACHE_TIMEOUT),
     ignoreNetworkError(false),
     configmod(NULL),
@@ -1781,6 +1783,9 @@ void NetworkStore::configure(pStoreConf configuration, pStoreConf parent) {
     // List of host[:port] in 'service_list'
     listBased = true;
     configuration->getUnsigned("list_default_port", serviceListDefaultPort);
+    // Lists have no service name; identify both the list and its default port
+    // so unrelated destinations cannot share the empty pool key.
+    serviceName = "service_list:" + serviceList + ":" + to_string(serviceListDefaultPort);
  } else {
     serviceBased = false;
     configuration->getString("remote_host", remoteHost);
@@ -1844,15 +1849,16 @@ void NetworkStore::periodicCheck() {
       LOG_OPER("[%s] dynamic configred network store destination changed. old value:<%s:%lu>, new value:<%s:%lu>",
                categoryHandled.c_str(), remoteHost.c_str(), remotePort,
                host.c_str(), (long unsigned)port);
+      close();
       remoteHost = host;
       remotePort = port;
-      close();
     }
   }
 }
 
 bool NetworkStore::loadFromList(const std::string &list, unsigned long defaultPort,
                                 server_vector_t& _return) {
+  _return.clear();
   vector<string> strs;
   boost::split(strs, list, boost::is_any_of("\t "));
   vector<string> split;
@@ -1983,6 +1989,22 @@ boost::shared_ptr<Store> NetworkStore::copy(const std::string &category) {
   store->remoteHost = remoteHost;
   store->remotePort = remotePort;
   store->serviceName = serviceName;
+  store->serviceList = serviceList;
+  store->serviceListDefaultPort = serviceListDefaultPort;
+  store->serviceOptions = serviceOptions;
+  store->serviceCacheTimeout = serviceCacheTimeout;
+  store->ignoreNetworkError = ignoreNetworkError;
+  store->configmod = configmod;
+  store->storeConf = storeConf;
+  if (configmod) {
+    // Resolve the new category, falling back to the configured static endpoint
+    // rather than inheriting another category's resolved destination.
+    store->remoteHost.clear();
+    store->remotePort = 0;
+    storeConf->getString("remote_host", store->remoteHost);
+    storeConf->getUnsigned("remote_port", store->remotePort);
+    store->periodicCheck();
+  }
 
   return copied;
 }
@@ -2182,6 +2204,10 @@ void BucketStore::createBuckets(pStoreConf configuration) {
     boost::shared_ptr<Store> bucket =
       createStore(storeQueue, type, categoryHandled, false, multiCategory);
 
+    if (!bucket) {
+      error_msg = "can't create store of type: " + type;
+      goto handle_error;
+    }
     buckets.push_back(bucket);
     //add bucket id configuration
     bucket_conf->setUnsigned("bucket_id", i);
@@ -2193,7 +2219,7 @@ void BucketStore::createBuckets(pStoreConf configuration) {
   }
 
   // Check if an extra bucket is defined
-  if (configuration->getStore("bucket" + (numBuckets + 1), tmp)) {
+  if (configuration->getStore("bucket" + to_string(numBuckets + 1), tmp)) {
     error_msg = "bucket store has too many buckets defined";
     goto handle_error;
   }
@@ -2407,6 +2433,9 @@ boost::shared_ptr<Store> BucketStore::copy(const std::string &category) {
   store->numBuckets = numBuckets;
   store->bucketType = bucketType;
   store->delimiter = delimiter;
+  store->removeKey = removeKey;
+  store->bucketRange = bucketRange;
+  store->storeConf = storeConf;
 
   for (std::vector<boost::shared_ptr<Store> >::iterator iter = buckets.begin();
        iter != buckets.end();

@@ -63,22 +63,26 @@ static void runLimitRelay(const std::string& filename) {
   auto handler = fixture.handler;
   handler->initialize();
   require(handler->getStatus() == facebook::fb303::ALIVE, "limit relay config");
-  unsigned long port = 0, category_size = 0, payload_size = 0;
+  unsigned long port = 0, category_size = 0, payload_size = 0, entry_count = 1;
   require(handler->getConfig().getUnsigned("remote_port", port) && port > 0 && port <= 65535,
           "limit relay requires assigned loopback port");
   handler->getConfig().getUnsigned("category_size", category_size);
   handler->getConfig().getUnsigned("payload_size", payload_size);
+  handler->getConfig().getUnsigned("entry_count", entry_count);
+  require(entry_count <= 2, "limit relay fixture entry bound");
   require(category_size + payload_size <= 21 * 1024 * 1024,
           "limit relay fixture payload bound");
-  auto messages = fileMessages({entry(std::string(category_size, 'c'),
-                                     std::string(payload_size, 'x'))});
+  std::vector<LogEntry> entries;
+  for (unsigned long i = 0; i < entry_count; ++i)
+    entries.push_back(entry(std::string(category_size, 'c'), std::string(i ? 0 : payload_size, 'x')));
+  auto messages = fileMessages(entries);
   LimitConnection connection(port);
   require(connection.open(), "limit relay connection failed");
   connection.checkPolicy();
   const int result = connection.send(messages);
-  require(messages->size() == 1 && messages->at(0)->category == std::string(category_size, 'c') &&
-              messages->at(0)->message == std::string(payload_size, 'x'),
-          "limit relay changed retained bytes");
+  require(messages->size() == entries.size(), "limit relay changed retained count");
+  for (size_t i = 0; i < entries.size(); ++i)
+    require(*messages->at(i) == entries[i], "limit relay changed retained bytes");
   std::cout << "RESULT " << result << " " << handler->getCounter("scribe_overall:sent")
             << " " << messages->size() << std::endl;
   connection.close();
