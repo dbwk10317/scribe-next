@@ -178,23 +178,24 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'output file'):
             client.compare_lanes(broken,copy.deepcopy(broken),'stores')
 
-    def test_rotation_case_checks_threshold_reopen_append_and_phase_evidence(self):
+    def counter_record(self,seq,count):
+        values={'fixture:received good':count,'scribe_overall:received good':count}
+        fields=b'\x0d\x00\x00\x0b\x0a'+struct.pack('>i',2)
+        for key,value in sorted(values.items()):
+            fields+=client.string(key.encode())+struct.pack('>q',value)
+        body=client.string(b'getCounters')+b'\x02'+struct.pack('>i',seq)+fields+b'\0'
+        return {'method':'getCounters','sequence':seq,'oneway':False,'value':values,
+                'request_hex':client.hexbytes(client.framed(b'getCounters',seq)),
+                'reply_hex':client.hexbytes(struct.pack('>I',len(body))+body)}
+
+    def rotation_report(self):
         report=self.report();report['case']='rotation'
         entries,delta,unused=client.case_data('rotation')
         report['counter_delta']=delta
         report['files'],report['symlinks']=client.expected_outputs('rotation')
         records=report['records'][:8]
         records[6]['request_hex']=client.hexbytes(client.framed(b'Log',7,client.log_fields(entries)))
-        def counter_record(seq,count):
-            values={'fixture:received good':count,'scribe_overall:received good':count}
-            fields=b'\x0d\x00\x00\x0b\x0a'+struct.pack('>i',2)
-            for key,value in sorted(values.items()):
-                fields+=client.string(key.encode())+struct.pack('>q',value)
-            body=client.string(b'getCounters')+b'\x02'+struct.pack('>i',seq)+fields+b'\0'
-            return {'method':'getCounters','sequence':seq,'oneway':False,'value':values,
-                    'request_hex':client.hexbytes(client.framed(b'getCounters',seq)),
-                    'reply_hex':client.hexbytes(struct.pack('>I',len(body))+body)}
-        records[7]=counter_record(8,2)
+        records[7]=self.counter_record(8,2)
         for seq,method,oneway,value in ((9,'reinitialize',True,None),(10,'getStatus',False,2),
                                          (11,'Log',False,0),(13,'shutdown',True,None)):
             fields=client.log_fields([(b'fixture',b'Z')]) if seq==11 else b'\0'
@@ -203,20 +204,24 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
             if not oneway:
                 body=client.string(method.encode())+b'\x02'+struct.pack('>i',seq)+b'\x08\x00\x00'+struct.pack('>i',value)+b'\0'
                 record.update(value=value,reply_hex=client.hexbytes(struct.pack('>I',len(body))+body))
-            if seq==13: records.append(counter_record(12,3))
+            if seq==13: records.append(self.counter_record(12,3))
             records.append(record)
         report['records']=records
         for phase in ('before_reinitialize','after_reinitialize','after_append'):
             files,links=client.rotation_outputs(phase=='after_append')
             report[phase]={'files':files,'symlinks':links}
+        return report
+
+    def test_rotation_case_checks_threshold_reopen_append_and_phase_evidence(self):
+        report=self.rotation_report()
         self.assertEqual(client.compare_lanes(report,copy.deepcopy(report),'rotation')['status'],'passed')
         self.assertEqual([f['bytes'] for f in report['files']],[5,5,0])
         for mutate in (lambda r:r.pop('after_reinitialize'),
                        lambda r:r['before_reinitialize']['files'][1].update(hex='00'),
                        lambda r:r['records'][8].update(oneway=False),
                        lambda r:r['records'][10].update(request_hex='00'),
-                       lambda r:r['records'].__setitem__(7,counter_record(8,1)),
-                       lambda r:r['records'].__setitem__(11,counter_record(12,2))):
+                       lambda r:r['records'].__setitem__(7,self.counter_record(8,1)),
+                       lambda r:r['records'].__setitem__(11,self.counter_record(12,2))):
             broken=copy.deepcopy(report);mutate(broken)
             with self.assertRaises(ValueError): client.compare_lanes(broken,report,'rotation')
 
@@ -231,6 +236,54 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
                 client.rotation_snapshot('/unused')
         with patch.object(client,'output_snapshot',side_effect=OSError(errno.EACCES,'denied')):
             with self.assertRaises(OSError): client.rotation_snapshot('/unused')
+
+    def test_crash_restart_preserves_disk_bytes_and_resets_process_counters(self):
+        rotation=self.rotation_report()
+        before=copy.deepcopy(rotation);before['case']='restart-before'
+        before['records']=before['records'][:8]
+        before['counter_delta']=client.case_data('restart-before')[1]
+        before['files'],before['symlinks']=client.expected_outputs('restart-before')
+        before['before_stop']={'files':before['files'],'symlinks':before['symlinks']}
+        before['exit']=before['cleanup_exit']=-signal.SIGKILL
+        after=copy.deepcopy(before);after['case']='restart-after';after['exit']=after['cleanup_exit']=0
+        after['counter_delta']=client.case_data('restart-after')[1]
+        after['files'],after['symlinks']=client.expected_outputs('restart-after')
+        after['before_stop']={'files':after['files'],'symlinks':after['symlinks']}
+        after['after_restart']=before['before_stop']
+        after['records'][6]['request_hex']=client.hexbytes(client.framed(b'Log',7,client.log_fields([(b'fixture',b'Z')])))
+        after['records'][7]=self.counter_record(8,1)
+        after['records'].append(self.report()['records'][8])
+        report={'case':'restart','status':'passed','before':before,'after':after}
+        self.assertEqual(client.compare_lanes(report,copy.deepcopy(report),'restart')['status'],'passed')
+        for mutate in (lambda r:r['before'].update(exit=0),
+                       lambda r:r['after'].pop('after_restart'),
+                       lambda r:r['before'].pop('cleanup_exit'),
+                       lambda r:r['after']['after_restart']['files'][1].update(hex='00'),
+                       lambda r:r['after']['records'][4].update(value={'old:ignored':1})):
+            broken=copy.deepcopy(report);mutate(broken)
+            try: result=client.compare_lanes(broken,report,'restart')
+            except ValueError: continue
+            self.assertEqual(result['status'],'failed')
+
+        for phase,index in (('before',2),('before',5),('before',6),('after',2),('after',6)):
+            broken=copy.deepcopy(report);record=broken[phase]['records'][index]
+            wire=binascii.unhexlify(record['reply_hex'])
+            record.update(value=1,reply_hex=client.hexbytes(wire[:-5]+struct.pack('>i',1)+wire[-1:]))
+            with self.assertRaisesRegex(ValueError,'ALIVE/Log'):
+                client.compare_lanes(broken,copy.deepcopy(broken),'restart')
+
+    def test_restart_orchestration_cannot_start_second_process_after_first_failure(self):
+        # Exercise real orchestration with fake process; no daemon/namespace setup.
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(client,'ROOT',directory),patch.object(client,'CASE','restart'), \
+                patch.object(client,'TARGETS',{'old':{'command':['/unused/fake']}}), \
+                patch.object(client,'network_check'),patch.object(client.os,'listdir',return_value=['lo']), \
+                patch.object(client,'port_free',side_effect=ValueError('occupied')), \
+                patch.object(client.subprocess,'Popen') as launch:
+            with self.assertRaisesRegex(ValueError,'occupied'): client.run_lane('old')
+            launch.assert_not_called()
+            self.assertTrue((Path(directory)/'evidence/old/restart-before/result.json').exists())
+            self.assertFalse((Path(directory)/'evidence/old/restart-after').exists())
 
 
 if __name__ == "__main__":

@@ -20,6 +20,12 @@ def case_data(case):
     if case == 'file':
         return ([(b'fixture',p) for p in PAYLOADS]+[(b'',b'blank-discard'),(b'unknown',b'unknown-discard')],
                 EXPECTED_DELTA, {'fixture_00000':b''.join(PAYLOADS)})
+    if case in ('restart-before','restart-after'):
+        entries=[(b'fixture',p) for p in (PAYLOADS[0],PAYLOADS[2])] if case=='restart-before' else [(b'fixture',b'Z')]
+        count=len(entries)
+        files={'fixture_00000':PAYLOADS[0],'fixture_00001':PAYLOADS[2]}
+        if case=='restart-after': files.update({'fixture_00001':PAYLOADS[2]+b'Z','fixture_00002':b''})
+        return entries,{'fixture:received good':count,'scribe_overall:received good':count},files
     if case == 'rotation':
         return ([(b'fixture',PAYLOADS[0]),(b'fixture',PAYLOADS[2])],
                 {'fixture:received good':3,'scribe_overall:received good':3},
@@ -234,14 +240,22 @@ def rotation_snapshot(output,final=False):
         if time.time()>=deadline: raise ValueError('rotation snapshot differs: %r' % (actual,))
         time.sleep(0.05)
 
-def run_lane(lane):
+def run_lane(lane,restart_stage=None):
+    if CASE=='restart' and restart_stage is None:
+        before=run_lane(lane,'restart-before')
+        after=run_lane(lane,'restart-after')
+        return {'lane':lane,'case':'restart','status':'passed','before':before,'after':after}
+    case=restart_stage or CASE
     network_check()
-    directory = os.path.join(ROOT,'evidence',lane); output = os.path.join(ROOT,lane+'-output')
-    os.makedirs(directory); os.makedirs(output)
-    template=TEMPLATE if CASE in ('file','rotation') else os.path.join(os.path.dirname(TEMPLATE),'daemon_stores.conf.template')
+    directory = os.path.join(ROOT,'evidence',lane,restart_stage) if restart_stage else os.path.join(ROOT,'evidence',lane); output = os.path.join(ROOT,lane+'-output')
+    os.makedirs(directory)
+    if restart_stage=='restart-after':
+        if not os.path.isdir(output) or os.path.islink(output): raise ValueError('missing owned first-stage output')
+    else: os.makedirs(output)
+    template=TEMPLATE if case in ('file','rotation','restart-before','restart-after') else os.path.join(os.path.dirname(TEMPLATE),'daemon_stores.conf.template')
     with open(template) as f:
         config=f.read().replace('@SEPARATE_TEMP_OUTPUT@',output).replace('@PORT@',str(PORT))
-    if CASE=='rotation': config=config.replace('max_size=1000000','max_size=4').replace('target_write_size=16384','target_write_size=1')
+    if case in ('rotation','restart-before','restart-after'): config=config.replace('max_size=1000000','max_size=4').replace('target_write_size=16384','target_write_size=1')
     config_path=os.path.join(ROOT,lane+'.conf')
     with open(config_path,'w') as f: f.write(config)
     env=os.environ.copy();env.pop('LD_PRELOAD',None);env.pop('LD_AUDIT',None)
@@ -249,7 +263,7 @@ def run_lane(lane):
     env.pop('LD_LIBRARY_PATH',None)
     env.update(TARGETS[lane].get('environment',{}))
     command=TARGETS[lane]['command'] + ['-c',config_path]
-    result={'lane':lane,'case':CASE,'command':command,'uid':os.getuid(),'interfaces':os.listdir('/sys/class/net'),'records':[]}
+    result={'lane':lane,'case':case,'command':command,'uid':os.getuid(),'interfaces':os.listdir('/sys/class/net'),'records':[]}
     save_json(os.path.join(directory,'start.json'),result)
     process=None;conn=None
     with open(os.path.join(directory,'daemon.stdout'),'wb') as stdout, open(os.path.join(directory,'daemon.stderr'),'wb') as stderr:
@@ -273,14 +287,18 @@ def run_lane(lane):
             for seq,name in enumerate([b'getName',b'getVersion',b'getStatus',b'getStatusDetails',b'getCounters'],1):
                 call(conn,name,seq,b'\0',directory,records)
             if records[2]['value'] != 2: raise ValueError('fb303 not ALIVE')
+            if restart_stage=='restart-after':
+                result['after_restart']=rotation_snapshot(output)
+                if records[4]['value']!={}: raise ValueError('fresh process counters not reset')
             if call(conn,b'Log',6,log_fields([]),directory,records) != 0: raise ValueError('empty Log not OK')
-            entries,expected_delta,unused=case_data(CASE)
+            entries,expected_delta,unused=case_data(case)
             if call(conn,b'Log',7,log_fields(entries),directory,records) != 0: raise ValueError('batch not OK')
             # Same bounded pause on both lanes; NullStore ignored counters are worker-side.
-            if CASE=='stores': time.sleep(2)
-            if CASE=='rotation': result['before_reinitialize']=rotation_snapshot(output)
+            if case=='stores': time.sleep(2)
+            if case=='rotation': result['before_reinitialize']=rotation_snapshot(output)
+            if restart_stage: result['before_stop']=rotation_snapshot(output,restart_stage=='restart-after')
             after=call(conn,b'getCounters',8,b'\0',directory,records)
-            if CASE=='rotation':
+            if case=='rotation':
                 initial_delta={key:after.get(key,0)-records[4]['value'].get(key,0) for key in set(after)|set(records[4]['value'])}
                 initial_delta={key:value for key,value in initial_delta.items() if value}
                 if initial_delta!={'fixture:received good':2,'scribe_overall:received good':2}: raise ValueError('initial rotation counter delta differs')
@@ -295,16 +313,21 @@ def run_lane(lane):
             delta={key:value for key,value in delta.items() if value}
             if delta != expected_delta: raise ValueError('counter delta differs: %r' % delta)
             result['counter_delta']=delta
-            call(conn,b'shutdown',13 if CASE=='rotation' else 9,b'\0',directory,records,oneway=True)
+            if restart_stage=='restart-before':
+                # This PID/session was created and socket ownership checked above.
+                if process.poll() is not None: raise ValueError('child exited before injected crash')
+                os.killpg(process.pid,signal.SIGKILL)
+            else: call(conn,b'shutdown',13 if case=='rotation' else 9,b'\0',directory,records,oneway=True)
             conn.close();conn=None
             deadline=time.time()+10
             while process.poll() is None and time.time()<deadline: time.sleep(0.05)
             if process.poll() is None: raise ValueError('shutdown timeout')
             result['exit']=process.returncode
-            if process.returncode != 0: raise ValueError('shutdown exit not zero')
+            expected_exit=-signal.SIGKILL if restart_stage=='restart-before' else 0
+            if process.returncode != expected_exit: raise ValueError('unexpected child exit')
             files,links=output_snapshot(output)
             result['files']=files;result['symlinks']=links
-            expected_files,expected_links=expected_outputs(CASE)
+            expected_files,expected_links=expected_outputs(case)
             if files!=expected_files or links!=expected_links:
                 raise ValueError('file bytes differ from accepted payloads')
             port_free()
@@ -324,7 +347,13 @@ def run_lane(lane):
     return result
 
 def compare_lanes(old,new,case='file'):
+    if case=='restart':
+        for lane in (old,new):
+            if lane.get('case')!='restart' or lane.get('status')!='passed': raise ValueError('incomplete restart lane')
+        phases={phase:compare_lanes(old[phase],new[phase],target) for phase,target in (('before','restart-before'),('after','restart-after'))}
+        return {'case':'restart','status':'passed' if all(p['status']=='passed' for p in phases.values()) else 'failed','phases':phases}
     methods=METHODS if case!='rotation' else METHODS[:8]+['reinitialize','getStatus','Log','getCounters','shutdown']
+    if case=='restart-before': methods=METHODS[:8]
     for lane in (old,new):
         if lane.get('status') != 'passed' or len(lane.get('records',[])) != len(methods):
             raise ValueError('incomplete or failed lane')
@@ -357,6 +386,20 @@ def compare_lanes(old,new,case='file'):
             raise ValueError('unexpected first-batch output file')
         if lane['symlinks'] != expected_links:
             raise ValueError('unexpected first-batch symlink')
+    if case in ('restart-before','restart-after'):
+        for lane in (old,new):
+            expected_exit=-signal.SIGKILL if case=='restart-before' else 0
+            if lane.get('cleanup_exit')!=expected_exit: raise ValueError('restart cleanup not confirmed')
+            if lane['records'][2]['value']!=2 or any(lane['records'][i]['value']!=0 for i in (5,6)):
+                raise ValueError('restart ALIVE/Log OK result differs')
+            expected_files,expected_links=expected_outputs(case)
+            if lane.get('before_stop')!={'files':expected_files,'symlinks':expected_links}: raise ValueError('missing crash/restart phase bytes')
+            before=lane['records'][4]['value'];after=lane['records'][7]['value']
+            delta={key:after.get(key,0)-before.get(key,0) for key in set(before)|set(after)}
+            if {key:value for key,value in delta.items() if value}!=case_data(case)[1]: raise ValueError('recorded restart counter delta differs')
+            if case=='restart-after':
+                files,links=rotation_outputs(False)
+                if before!={} or lane.get('after_restart')!={'files':files,'symlinks':links}: raise ValueError('restart did not preserve files/reset counters')
     checks={}
     for a,b in zip(old['records'],new['records']):
         checks['request-%d'%a['sequence']]=a['request_hex']==b['request_hex']
@@ -381,7 +424,7 @@ def compare_lanes(old,new,case='file'):
     checks['counter-delta']=old['counter_delta']==new['counter_delta']
     checks['files']=old['files']==new['files']
     checks['symlinks']=old['symlinks']==new['symlinks']
-    checks['exit']=old['exit']==new['exit']==0
+    checks['exit']=old['exit']==new['exit']==(-signal.SIGKILL if case=='restart-before' else 0)
     checks['versions']=old['records'][1]['value']==new['records'][1]['value']==hexbytes(b'2.2')
     result={'status':'passed' if all(checks.values()) else 'failed','case':case,'checks':checks,'old_version_hex':old['records'][1]['value'],'modern_version_hex':new['records'][1]['value'],'python':sys.version,'scope':'bounded synthetic production daemon differential; distinct old/new userlands/ABIs'}
     return result
@@ -393,7 +436,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
