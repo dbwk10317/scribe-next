@@ -1,3 +1,4 @@
+// scribe-next modification: adapt libhdfs delete API arity; preserve recursive behavior.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
