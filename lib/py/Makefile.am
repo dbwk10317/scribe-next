@@ -1,3 +1,4 @@
+# scribe-next modification: regenerate the current Python IDL package and force cache refresh.
 DESTDIR ?= /
 EXTRA_DIST = setup.py scribe
 
