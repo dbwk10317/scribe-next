@@ -114,7 +114,7 @@ case가 서버에서 확인됐다. 공개 fcd294f+명시 build-only patch/Thrift
 | thriftfile | raw/framed·chunk/empty/oversized·copy/reopen component 계약 | PASS: 직접 raw10/framed25, chunk padding, 정상 종료 뒤 bytes/link |
 | multifile | 보존된 CategoryStore→FileStore alias | PASS: 두 실제 category raw10/1 bytes·별도 path/link |
 | thriftmultifile | 보존된 CategoryStore→ThriftFileStore alias | PASS: framed 두 category25/5 bytes·별도 path/link |
-| optional HDFS | configure --enable-hdfs 및 HdfsFile.cpp/libhdfs/libjvm 경로 보존 | cloud·서버 enable compile/link·DESTDIR/help·bounded local JNI PASS; distributed HDFS 미검증 |
+| optional HDFS | configure --enable-hdfs 및 HdfsFile.cpp/libhdfs/libjvm 경로 보존 | cloud·서버 enable build/local JNI PASS; 서버 single-DN 정상 distributed storage/restart append PASS, fault/역사 binary는 미검증 |
 | shared RPC | 원본 --disable-static 선택 보존 | cloud·서버 clean compile/link·183 tests·DESTDIR·stage-loader help PASS; actual old/new shared daemon은 미검증 |
 | 다른 platform | 기존 선택 기능·source 보존 | 미검증: 현재 확인 lane은 Linux x86_64 |
 
@@ -227,5 +227,15 @@ and historical binary equivalence remain separate original-feature gates.
 The same port subsequently passed server default clean eight-step validation with
 185 tests/skip0, separate HDFS-enabled full compile/link, staged install/help0 and
 the bounded local JNI fixture. Official JRE/Hadoop were verified and privately
-extracted; distributed HDFS remains unverified. The original ignored delete return
-and closed-handle truncate append are preserved, and no cluster or service started.
+extracted; distributed HDFS was unverified at that local-only stage. The original
+ignored delete return and closed-handle truncate append were preserved. That stage
+started no cluster or service; the subsequent isolated distributed result follows.
+
+The subsequent single-DataNode case passed in an approved disposable
+network-none/nonroot container: exact binary9→10 bytes, regular marker, fresh
+counters2/1, live DataNode/safemode OFF, healthy distributed blocks and full owned
+cleanup. Server194 tests/skip0 passed using the unchanged matching build.
+[Actual scope and command](hdfs-compatibility.md#single-datanode-distributed-check)
+record the seeded-directory precondition, first hostname failure and successful
+localhost retry. This is source-defined modern validation, not historical binary
+equivalence, a distributed fault/permissions matrix or a performance claim.
