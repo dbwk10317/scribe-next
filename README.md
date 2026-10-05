@@ -2,6 +2,11 @@
 
 기존 Facebook Scribe의 외부 동작을 보존하면서 현대 Linux 환경으로 이식하는 C++ 프로젝트다. 프로젝트 이름은 `scribe-next`이며 실행 바이너리·서비스·CLI·설정 이름은 기존 `scribed` 계약을 유지한다.
 
+현재 목표는 회사 자료 확보와 무관한 **공개 고정 upstream 기능 보존**이다.
+확인된 Linux lane의 build MVP 완료 경계, 재사용 검증 진입점과 다음 old/new
+우선순위는 [현재 Linux 검증 범위](docs/linux-build-mvp.md)를 따른다. 회사 gate를
+다루는 아래 과거 기록은 현재 작업의 필수 조건으로 사용하지 않는다.
+
 고정 upstream 도입 `00826b8` 이후 빌드 경계와 Thrift 0.25 API를 좁게 이식했다. 클라우드 Debian 13·GCC 14·C++17의 기본 비-HDFS C++ lane에서 **scribed clean compile/link와 CLI help 실행에 성공했다**. Thrift upstream C++ 시험 29개도 통과했다. 동일 source commit `96a7fc1`은 Ubuntu 26.04·GCC 15·Boost 1.83에서도 clean build, 프로젝트 38개 및 Thrift 29개 시험을 skip 없이 통과했다. [Ubuntu 검증 기록](docs/ubuntu-validation-20261004.md)을 따른다. 프로젝트 시험과 코드 변경 범위는 [API 이식 기록](docs/api-compat-status.md), 의존성 준비 이력은 [빌드 기록](docs/build-status.md)을 따른다. IDL·queue/store/spool 로직은 유지했으며 전체 platform matrix·old/new 행동 동등성·운영 승인을 완료한 상태는 아니다.
 
 후속 클라우드 단계에서 **일반 spool component 양방향 비교·설정/라우팅을 포함한 55개 시험**이 통과했다. 원본 StdFile의 malloc/delete[] 오류를 재현하고 해제를 free로 맞췄다. 최신 결과와 실제 비교 범위는 [계약 검증 기록](docs/contracts-status.md)을 따른다. 동일 구현은 Ubuntu 26.04.1·GCC 15.2에서도 clean build·CLI help와 55개 시험(skip 0)을 통과했고, 제한된 StdFile reader의 LSan 활성 검증도 통과했다. 클라우드의 LSan ptrace 제약과 전체 daemon 누수 미검증은 별도로 유지한다. 이 후속 결과는 base `75c36bf`의 당시 미commit 작업 트리에서 측정했다. 현재 반영 상태는 Git 이력과 인계 manifest를 따른다.
@@ -16,6 +21,7 @@ main `32004a6` 이후 실제 NetworkStore/ConnPool의 loopback relay bytes·OK/T
 
 ## 문서
 
+- [제한 Linux build MVP·단일 재사용 검증·공개 원본 대조의 다음 단계](docs/linux-build-mvp.md)
 - [전체 autotools build·staged install·Python 생성물 패키징](docs/python-packaging-status.md)
 - [ThriftFileStore bytes·copy 수정·재열기와 보존 동작](docs/thriftfile-contracts-status.md)
 - [ThriftFileStore copy 수정과 chunk/empty 보존 결정](docs/thriftfile-fix-options.md)
