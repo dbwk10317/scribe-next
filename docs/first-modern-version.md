@@ -81,3 +81,12 @@ Source/evidence: [current support](linux-build-mvp.md),
 The actual dynamic gap follows `src/dynamic_bucket_updater.cpp`,
 `test/cpp/store_review_contracts.h`, `test/cpp/review_limits_contracts.h` and the
 original remapping intent in `test/bucketupdater.php`.
+
+The next [dynamic mapping batch](daemon-differential.md#dynamic-mappingttl-batch)
+passed its bounded actual old/new direct/unpooled case: cached A, strict TTL
+expiry to B, failed refresh retaining B, recovery to A, and two missing-key static
+fallbacks. Server201/Mac focused7 passed with zero skips. Exact wire/payload,
+ordinary counters/status, chronological raw evidence and owned cleanup were
+verified. This closes that named representative gap; the optional full dynamic
+matrix and release support/usage closeout remain separate. No version/tag,
+artifact publication or deployment is implied.

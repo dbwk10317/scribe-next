@@ -394,3 +394,101 @@ PIDs128을 유지했고 운영30개 container ID는 전후 동일했다. product
 C++·header·IDL38개와 matching binary는 그대로이며 새 clean build는 하지 않았다.
 이는 대표 fb303/wire error와 rate-disabled 정상 config 범위이며 malformed
 frame·시간 경계·큰 frame·zero-range 승인 예외나 전체 API 완료가 아니다.
+
+## Dynamic mapping/TTL batch
+
+Base main59748b1; `--case mapping` is prepared for the same explicit old/modern
+command/environment targets and already isolated uid65534/lo-only container.
+It reuses the owned-daemon/framed client helpers and three retained stdlib
+loopback listeners: mapping RPC, Log/OK destination A and destination B.
+No additional dependency, production code, pooling policy, malformed/huge-frame
+case or benchmark is introduced. The bounded actual old/new run passed below.
+
+The direct NetworkStore has bucket_id=1, thrift_bucket mapping, TTL5,
+use_conn_pool=no and target_write_size=1. A direct/unpooled store avoids requiring
+old bucket/copy and approved pooled endpoint-close bugs to match. Fixed ports are
+base (Scribe), base+1 (A), base+2 (B), base+3 (mapping), so base must be<=65532.
+
+Same five application payloads per lane:
+1. A0/NUL/ff goes to A after initial mapping
+2. After the stub changes to B, A1/newline still goes to cached A with no new
+   fetch, inside a guarded pre-expiry window
+3. After an observed strict TTL expiry fetch, B0 goes to B
+4. After an expired refresh returns the declared BucketStoreMappingException,
+   B1 still goes to the existing B endpoint
+5. After observed successful recovery, A2 goes to A
+
+Expected ordered bytes: A receives `413000ff`, `41310a`, `4132`; B receives
+`4230`, `4231`. The public updater erases its category cache before refresh;
+failed resolution does not alter the already-open NetworkStore destination.
+Recovery fetches again because the cache is absent. The original expiry rule is
+`lastUpdated + ttl < now`, not >=. The merged raw trace records mode controls,
+requests/replies and wall/monotonic times; replay checks phase ordering, raw
+cache/fetch evidence and strict expiry rather than trusting summary metadata.
+Every send must converge to its ordinary received/sent counters and ALIVE status.
+Mapping-specific stats are compiled under FACEBOOK and unavailable in public
+`env_default`; they are not fabricated as observable counters.
+
+Two additional fresh-child configs omit bucket_id or bucket_updater_port while
+retaining a static A endpoint. The original warning/module-disable/static-fallback
+must occur, one payload must reach A, and no mapping RPC may happen. Invalid
+configuration is not reinterpreted as universal startup rejection.
+
+All mapping/relay wire data remains raw. Diagnostic counter polls and repeated
+failed refresh calls can vary with scheduling; only their valid observed states,
+source-defined phase/data results and cleanup determine equivalence. No payload
+normalization or synthetic clock replacement occurs. A late cache-proof window
+fails diagnostically, rather than being relabelled as a pass.
+
+Run using the existing command, changing only the case:
+
+```sh
+python3 -B tools/daemon_differential.py --run-isolated-daemons \
+  --targets /absolute/verified/old-modern-targets.json \
+  --output /absolute/new/mapping-evidence --case mapping --port 14630
+```
+
+Three fresh Scribe children per lane run sequentially, never concurrent writers.
+Peers bound their tiny frames, idle-read polling, observation waits and thread
+joins. Owned Scribe cleanup uses the existing TERM/KILL/reap path; each listener
+must be gone afterward. Initial/final failed mapping results, active case/error,
+partial peers and daemon logs persist on every failure. A passed daemon shutdown
+alone cannot substitute for a passed mapping case.
+
+### Actual server result (2026-10-05)
+
+Base main59748b1, five test/tool/document files; production C++/headers/IDL/build
+files unchanged. Server full201 and Mac focused7 passed, failures/errors/skips0.
+The actual `--case mapping --port14630` comparison passed all three scenarios in
+both old fcd294f/Thrift0.9 and modern Thrift0.25 lanes. TTL received/sent5 and
+ALIVE2; each missing-key fallback received/sent1 and ALIVE2. A received the exact
+three payloads/9 bytes and B two/4 bytes in the TTL case. Both fallbacks received
+A0/4 bytes at A with no mapping RPC. Each valid trace contained A/B/fail/A mapping
+responses (four fetches here); cached fetch count was1 before/after, elapsed
+0.078534s old and0.076305s modern. Scheduling-dependent counts remain diagnostic.
+Local replay of every ingress/peer record and merged chronology reproduced the
+canonical comparison; raw results, configs, stdout/stderr and timing are retained.
+
+Server evidence root: `/workspace/scribe-next-mapping-validation-20261005-qH2K7c`;
+`actual-evidence/run/evidence/{old,modern}/mapping-result.json`, peer records and
+`comparison.json`, plus `actual-summary.json`. The normal old binary SHA256 is
+`929d9bf5e323c72b4770ef546559e721e3485140482afc198e2785c1d0460d8b`;
+modern is `7142824130803f679ac7986bba1309413a1728e32924fdb5e7fa86d94e43c6f5`.
+Thirty existing daemon/runtime files and705 private Python3 runtime files were
+hash/size verified. Modern loader resolution stayed private; help passed. These
+are reused verified artifacts, not a new clean build or HDFS binary comparison.
+
+One new owned container used a private local snapshot of the stopped trusted
+Ubuntu16 baseline task, preserving its existing dependency closure and target
+command/environment arrays. The snapshot is derived from the trusted task, not
+an unmodified official image. Runtime: Docker network-none, only lo, uid65534,
+all capabilities dropped, no-new-privileges, no mounts/published ports, CPU2,
+RAM/swap2GiB and PIDs128. Ports14630–14633 stayed internal. All six child exits,
+cleanup exits and peer cleanup passed; container exit0, no timeout/OOM. Operating
+31 container IDs were unchanged. The owned stopped container and temporary image
+were removed after raw evidence verification; the original baseline stayed stopped.
+
+This closes the named direct/unpooled mapping cache/TTL/failure/recovery and two
+static-fallback observations. It does not establish the full dynamic config,
+race, pooling, company fork, platform/feature or malformed-input matrix. No
+production policy, retry/loss/ACK semantics, deployment or performance claim changes.
