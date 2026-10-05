@@ -1,18 +1,29 @@
 # 독립 리뷰 항목 수정과 검증
 
-2026-10-04 · base/main `ddca67e6c3485459648e4cbc975d5dae9ddccfc2` 위의 수정 작업 트리
+2026-10-05 · 최신 store 수정의 base/main `da74ec9`; 이전 독립 범위의 base `ddca67e`
 
 관련 문서: [README](../README.md) · [이전 relay 기록](relay-contracts-status.md) · [manifest](review-fixes-manifest.json)
 
-## 결과와 범위
+## 현재 store 수정과 검증
 
-이번 독립 범위는 빈 payload queue drain, Git capability 진단, 실제 production server 생성 경로의 loopback 검증, retry jitter 0, C++17 shuffle, 유한 Thrift wire 한도와 build/이력 문서다. 다섯 store 결함은 제외되어 미해결로 남는다. 회사 fork·실제 Thrift binary·설정 및 성능 baseline은 미확인이다. 사용자가 기억한 회사 Thrift 0.9.0은 추정이며 회사 운영 동등성을 선언하지 않는다.
+사용자의 미해결 항목 수정 요청에 따라, 이전에 제외한 다섯 store 결함을 수정했다. `store.cpp`의 bucket 이름 pointer arithmetic, 서로 다른 service_list의 빈 pool key 공유, 동적 목적지 변경 시 이전 owner 해제, NetworkStore 설정 복사, BucketStore의 remove_key/bucket_range 복사를 다룬다. 기본 list port를 0으로 초기화하고 재연결 시 server 목록 누적과 알 수 없는 bucket child type의 null dereference도 막았다. 동적 store의 복사본은 새 category를 조회하며 실패하면 설정된 static endpoint를 사용한다.
+
+- [store 회귀](../test/store_review_contracts.py) 13개: 실제 파일 bytes·loopback 전송·공유 연결 수명·갱신 실패·복사된 category의 목적지를 확인한다. 처음 추가한 11개는 수정 전 각각 실패했고, 기존 sanitizer build의 bucket 경로에서는 실제 global-buffer-overflow를 재현했다.
+- Ubuntu 26.04.1·GCC 15.2·Boost 1.83·Thrift/fb303 0.25.0에서 새 clean build·`scribed --help`와 전체 **137개 통과, 실패0, skip0, 23.739초**. 기존 prefix를 재사용하고 generated code와 production objects를 새로 빌드했다.
+- 별도 새 ASan+UBSan build의 API suite **82개 통과, 실패0, skip0, 8.802초**. dependency libraries는 비계측이며 `detect_leaks=0`이다. 전체 daemon 누수·TSan 성공으로 확대하지 않는다.
+- [기존 wire 시험](../test/review_limits_contracts.py)에 outgoing empty/multi-entry의 작은 frame/message 정확 경계와 invalid/omitted-limit reload를 추가했다. 고유 시험 수는 그대로 10개이며 subcase를 더해 세지 않는다.
+
+동적 목적지 시험은 resolver 결과만 test module로 제어하고 production copy/periodicCheck/NetworkStore/ConnPool과 실제 TCP 연결을 실행한다. 실제 mapping TTL·service discovery·회사 old/new differential의 완료를 뜻하지 않는다. 후속 수정은 `codex/store-review-fixes`에서 검증했으며 원격 반영 상태는 Git 이력과 해당 PR을 따른다. 아래 manifest와 124/69개 기록은 PR #4 이전 단계의 근거로 유지한다.
+
+## 이전 독립 범위
+
+이전 독립 범위는 빈 payload queue drain, Git capability 진단, 실제 production server 생성 경로의 loopback 검증, retry jitter 0, C++17 shuffle, 유한 Thrift wire 한도와 build/이력 문서다. 당시 제외했던 다섯 store 결함은 위 후속 범위에서 처리했다. 회사 fork·실제 Thrift binary·설정 및 성능 baseline은 미확인이다. 사용자가 기억한 회사 Thrift 0.9.0은 추정이며 회사 운영 동등성을 선언하지 않는다.
 
 - 새 clean C++17 compile/link와 실제 `scribed --help` exit0. GCC14에서 `_GLIBCXX_USE_DEPRECATED=0`을 함께 사용했다
 - 이 새 build의 전체 프로젝트 **124 통과, 실패0, skip0, 34.375초**
 - 별도 ASan+UBSan build의 실제 API/queue/store/loopback/relay/한도 **69 통과, 실패0, skip0, 13.304초**
 - ASan/UBSan은 현재 Scribe production objects·generated code·fixture에 적용했다. 기존 dependency libraries는 비계측이며 `detect_leaks=0`이다. 전체 daemon 누수·TSan·회사 old/new differential 성공을 뜻하지 않는다
-- 독립 검토에서 blocking correctness/scope 문제 없이 승인된 독립 범위의 인계가 가능하다고 판정했다. 별도 전체124개 재실행도33.166초/skip0으로 통과했다. 이 작업 트리는 아직 commit/push/merge하지 않았다
+- 독립 검토에서 blocking correctness/scope 문제 없이 승인된 독립 범위의 인계가 가능하다고 판정했다. 별도 전체124개 재실행도33.166초/skip0으로 통과했다. 이후 PR #4/main `da74ec9`에 반영됐다
 
 기존101개에 queue4, shared factory1, Git 진단1, retry/shuffle7, wire 정책10이 추가됐다. 반복·subcase를 고유 시험 수124에 더하지 않는다. 앞선 API67개 통과 후 mapping RPC와 작은 downstream 한도에서 spool 보존 시험을 추가해 최종 API69개가 됐다. 첫 mapping 시험의 counter 기대는 FACEBOOK 전용 통계 stub을 일반 counter로 오해한 fixture 오류였으며 해당 기대만 제거했다. 실패 log도 보존한다.
 
@@ -65,11 +76,9 @@ relay Log 송신 전에는 non-strict wire size `21 + sum(15 + category bytes + 
 
 ## 남은 항목과 실행 경계
 
-- 제외된5건: bucket fallback pointer, service_list connection identity, dynamic destination 이전 owner close, NetworkStore copy, BucketStore copy. 수정/새 runtime 재현 없이 미해결로 남긴다. serviceListDefaultPort constructor 초기화도 별도 미검증이다
 - production CLI listener/main/startServer 전체 기동, namespace daemon 시험, 회사 old/new·HDFS/FACEBOOK/shared matrix, full worker failure scheduler/race·10 store/thriftfile·성능·운영은 미완료
-- 독립 검토의 nonblocking coverage 보완점: outgoing multi-entry/empty batch의 작은 preflight 정확 경계, invalid/omitted-limit reload 변형은 신규 한도 시험에서 직접 다루지 않았다. 기존 relay suite의 정상 empty/multi-entry wire 대조는 유지한다
 - cloud/server의 network namespace 생성은 EPERM으로 거절됐으며 다른 flag·권한 변경으로 재시도하지 않았다. shared production factory의 explicit loopback transport coverage와 전체 CLI 기동 미검증을 구분한다
-- server의 이번 source clean build/전체 회귀·산출물 publication은 다음 인계 후 별도 검증이다. 이전 Ubuntu101개 통과를 이번124개 통과로 계산하지 않는다
+- oversized retained spool의 처리 정책과 전체 gate는 열려 있다. 위 후속 수정의 Ubuntu 137/82개 결과를 이전 source의 101/124/69개 결과와 합산하지 않는다
 
 ## 재현 및 서버 인계
 

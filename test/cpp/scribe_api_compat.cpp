@@ -424,6 +424,7 @@ static void testRouting(const std::string& filename) {
 #include "review_queue_contracts.h"
 #include "review_limits_contracts.h"
 #include "review_retry_shuffle_contracts.h"
+#include "store_review_contracts.h"
 
 int main(int argc, char** argv) {
   try {
@@ -434,6 +435,13 @@ int main(int argc, char** argv) {
     } else if (std::string(argv[1]) == "relay-driver") {
       alarm(20);  // Test-only absolute child lifetime; the owner still reaps it.
       runRelayDriver(argv[2]);
+    } else if (std::string(argv[1]) == "review-store-driver") {
+      alarm(20);
+      runStoreReviewDriver(argv[2]);
+    } else if (std::string(argv[1]) == "review-store-defaults") {
+      testStoreReviewDefaults(argv[2]);
+    } else if (std::string(argv[1]) == "review-store-bucket") {
+      testStoreReviewBucket(argv[2]);
     } else if (std::string(argv[1]) == "relay-loopback-server") {
       alarm(20);
       runRelayLoopbackServer(argv[2], argv[3]);
