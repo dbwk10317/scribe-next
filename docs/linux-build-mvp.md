@@ -239,3 +239,8 @@ cleanup. Server194 tests/skip0 passed using the unchanged matching build.
 record the seeded-directory precondition, first hostname failure and successful
 localhost retry. This is source-defined modern validation, not historical binary
 equivalence, a distributed fault/permissions matrix or a performance claim.
+
+The [first modern-version boundary](first-modern-version.md) separates the
+remaining real dynamic-mapping/config closeout from optional deeper matrices.
+The modern single-DN HDFS case is now recorded PASS; historical HDFS binary
+comparison, delete/fault/permission/replication coverage remain declared limits.
