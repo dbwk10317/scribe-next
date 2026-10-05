@@ -123,6 +123,11 @@ endif
 $(eval $(call thrift_template,.,$(srcdir)/../if/scribe.thrift,$(THRIFT_OPTS)))
 $(eval $(call thrift_template,.,$(srcdir)/../if/bucketupdater.thrift,$(THRIFT_OPTS)))
 
+# scribe-next modification: regenerate the complete Python package before packaging.
+.PHONY: pythonstyle
+pythonstyle:
+	$(THRIFT) -o . $(THRIFT_INCLUDES) --gen py $(srcdir)/../if/scribe.thrift
+
 if FACEBOOK
   $(eval $(call thrift_template,.,$(smc_home)/if/ServiceManager.thrift,--gen cpp))
 endif
