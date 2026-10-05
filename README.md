@@ -21,6 +21,7 @@ main `32004a6` 이후 실제 NetworkStore/ConnPool의 loopback relay bytes·OK/T
 
 ## 문서
 
+- [첫 actual-daemon old/new 비교·opt-in harness와 offline 재현 범위](docs/daemon-differential.md)
 - [제한 Linux build MVP·단일 재사용 검증·공개 원본 대조의 다음 단계](docs/linux-build-mvp.md)
 - [전체 autotools build·staged install·Python 생성물 패키징](docs/python-packaging-status.md)
 - [ThriftFileStore bytes·copy 수정·재열기와 보존 동작](docs/thriftfile-contracts-status.md)
