@@ -25,6 +25,9 @@ import unittest
 
 import loopback_rpc as tcp
 from relay_contracts import RelayContracts
+from review_queue_contracts import ReviewQueueContracts
+from review_limits_contracts import ReviewLimitsContracts
+from review_retry_shuffle_contracts import ReviewRetryShuffleContracts
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +70,8 @@ def check_fresh_object(build, name):
             raise AssertionError(f"stale build object {obj}; rebuild after changing {path}")
 
 
-class ScribeApiIntegrationTests(RelayContracts, unittest.TestCase):
+class ScribeApiIntegrationTests(ReviewRetryShuffleContracts, ReviewLimitsContracts,
+                                ReviewQueueContracts, RelayContracts, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         names = ("THRIFT_PREFIX", "FB303_PREFIX", "SCRIBE_BUILD", "TOOLS_PREFIX")
@@ -379,6 +383,15 @@ class ScribeApiIntegrationTests(RelayContracts, unittest.TestCase):
     def tcp_call(self, connection, name, sequence, fields=b"\0", *, strict=False):
         connection.sendall(tcp.message(name, sequence, fields, strict=strict))
         return tcp.receive_frame(connection)
+
+    def test_loopback_shared_factory_applies_configured_connection_limit(self):
+        # Native fixture checks production factory max_conn/overload settings
+        # before listen. This is configuration coverage, not overload stress.
+        config = "max_conn=17\n" + self.loopback_config()
+        with self.loopback_process(config=config) as server:
+            connection = server.connect()
+            self.assertEqual(self.tcp_call(connection, b"Log", 91, tcp.log_fields([])),
+                             tcp.reply(b"Log", 91, tcp.result_i32(0)))
 
     def test_loopback_log_bytes_ack_fb303_counters_and_shutdown_file_output(self):
         for threads in (1, 3):

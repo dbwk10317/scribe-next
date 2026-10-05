@@ -22,8 +22,8 @@
 | 공개 기준 | [facebookarchive/scribe](https://github.com/facebookarchive/scribe), SHA `fcd294faffd1e88af1643a3a8c2359c41713f7c2` |
 | 제안 후보 | C++17, Thrift 0.25.0; 요구 표준과 주요 API는 정적 확인, 실제 build·runtime 채택은 미확정 |
 | 미확인 | 회사 fork·patch·production config·client/store/HDFS 사용, 실측 baseline, 배포판·compiler·dependency matrix |
-| 저장소 상태 | loopback 구현은 PR #2/main `32004a6`에 반영. v10 인계의 당시 Ubuntu raw records를 확인했다. 후속 test-only NetworkStore/ConnPool·명시적 retry와 실제 두-worker relay→FileStore를 포함한 cloud·Ubuntu 각101개 시험 통과(skip0), Ubuntu v11 새 clean build·help·relay 반복50회·loopback/자식 회수는 상위 작업 검증 요약으로 기록, 새 raw files 미수신. 미commit·미push. [최신 relay 기록](relay-contracts-status.md), 이전 [loopback](loopback-rpc-status.md)·[truncate 수정](truncate-fix-status.md) 참조 |
-| 검증 gate | A 기본 cloud·Ubuntu C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B/C는 제한된 API·config/routing·ordinary StdFile component와 실제 FileStore byte/replay와 test-only loopback TCP 및 fixed-host relay/connection pool의 제한된 계약만 완료. production main/startServer와 전체 daemon 동등성은 미검증. 잘못된 truncate mode만 승인 수정; crash/write-failure/unlink 위험은 남음. 두 RPC old/new·10 store·동적 갱신·thriftfile/relay/fault/종료와 D 회사 성능·운영은 미완료 |
+| 저장소 상태 | loopback은 PR #2/main `32004a6`, 후속 test-only relay는 구현 `5594efaae67e214880a31c755c0f5cb86cfc192a`와 PR #3/main `ddca67e6c3485459648e4cbc975d5dae9ddccfc2`에 반영. v13 입력에는 source/doc148개와 Ubuntu relay raw records·request frame43개가 있다. cloud·Ubuntu 각101개 시험과 Ubuntu v11 clean build·help·relay50회·loopback/자식 회수는 이 이전 relay source의 결과다. v12 요약만 보존했던 상태와 구분하며 후속 독립 범위 수정본은 새 clean build·help, 전체124개/skip0과 ASan+UBSan API69개/skip0 및 독립 검토를 통과했다. 차단5건과 미검증 범위는 [review 기록](review-fixes-status.md)에 남긴다. [relay 기록](relay-contracts-status.md), 이전 [loopback](loopback-rpc-status.md)·[truncate 수정](truncate-fix-status.md) 참조 |
+| 검증 gate | A 기본 cloud·Ubuntu C++ lane compile/link는 성공, 전체 platform/feature matrix 미완료. B/C는 제한된 API·config/routing·ordinary StdFile component와 실제 FileStore byte/replay와 test-only loopback TCP 및 fixed-host relay/connection pool의 제한된 계약만 완료. production main/startServer와 전체 daemon 동등성은 미검증. 잘못된 truncate mode의 승인된 최소 수정 이후에도 crash/write-failure/unlink 위험은 남음. 두 RPC old/new·10 store·동적 갱신·thriftfile/relay/fault/종료와 D 회사 성능·운영은 미완료 |
 | 작업 환경·원격·배포 | 클라우드에서 구현, 검증된 변경은 Mac에서 동기화해 승인된 `codex/upstream-baseline` 브랜치로 반영. GitHub `dbwk10317/scribe-next` 비공개 유지. 봉구서버 import 검증 통과. main 반영 상태는 Git 이력 참조. Scribe 서비스 기동·배포 미실행 |
 
 ## upstream 코드 도입 전략
@@ -53,14 +53,15 @@
 재실행 명령은 저장소 root 기준이다.
 
 ```sh
-git rev-parse refs/remotes/upstream/baseline
-git rev-parse 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{tree}'
+git --no-lazy-fetch --no-replace-objects --version
+git --no-lazy-fetch --no-replace-objects rev-parse refs/remotes/upstream/baseline
+git --no-lazy-fetch --no-replace-objects rev-parse 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{tree}'
 git fsck --full
 python3 -B test/verify_upstream_import.py
 python3 -B -m unittest discover -s test -p 'test_verify_upstream_import.py' -v
 ```
 
-검증기는 고정 object만 사용하며 Git replacement와 lazy fetch를 비활성화한다. 기준 object가 없으면 실패하고 명시적 획득 명령을 안내한다. 네트워크 접근을 자체 실행하지 않는다. 아직 upstream ref를 원격에 반영하지 않았으므로 프로젝트만 새로 clone한 환경에 해당 object가 있다고 가정하지 않는다. 아래 명령은 필요할 때 별도로 실행할 **재현 준비 절차**이며 이번 클라우드 작업에서는 실행하지 않았다. 이번 복원은 검증된 로컬 bundle을 사용했다.
+현재 검증기는 object-free `git --no-lazy-fetch --no-replace-objects --version` capability probe를 먼저 수행한다. 두 옵션 미지원은 upstream object 부재와 구분해 실패하며 보호 옵션 제거·자동 fetch fallback은 없다. 고정 object만 사용하며 Git replacement와 lazy fetch를 비활성화한다. 첫 도입의 18개 시험과 후속 probe 회귀를 같은 실행으로 합치지 않는다. 기준 object가 없으면 실패하고 명시적 획득 명령을 안내한다. 네트워크 접근을 자체 실행하지 않는다. 아직 upstream ref를 원격에 반영하지 않았으므로 프로젝트만 새로 clone한 환경에 해당 object가 있다고 가정하지 않는다. 아래 명령은 필요할 때 별도로 실행할 **재현 준비 절차**이며 이번 클라우드 작업에서는 실행하지 않았다. 이번 복원은 검증된 로컬 bundle을 사용했다.
 
 ```sh
 git fetch https://github.com/facebookarchive/scribe.git \
@@ -77,7 +78,7 @@ git fetch https://github.com/facebookarchive/scribe.git \
 | --- | --- |
 | GCC C++ | 14.2.0 (Debian 14.2.0-19) |
 | Python | 3.12.14 |
-| Git | 2.52.0; import 검증은 `--no-lazy-fetch` 지원 필요 |
+| Git | 2.52.0; 현재 import 검증은 `--no-lazy-fetch`·`--no-replace-objects` 지원을 object-free probe로 확인 |
 | GNU Make | 4.4.1 |
 | pkg-config | 1.8.1 |
 | autotools | `autoreconf`, `autoconf`, `automake`, `aclocal`, `libtoolize`가 PATH에 없음 |
@@ -108,8 +109,8 @@ git fetch https://github.com/facebookarchive/scribe.git \
 
 검토 기준일은 2026-10-04다. 공개 upstream `fcd294faffd1e88af1643a3a8c2359c41713f7c2`와 Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6` 전체 tree를 별도 checkout에서 확보했다. 주요 경계의 source 링크와 채택 방향은 [설계의 의존성 전략](design.ko.md#의존성-전략)과 [근거 목록](design.ko.md#근거와-적용한-원칙)에 둔다.
 
-두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [실제 재현·최소 수정·component 비교](contracts-status.md)를 완료했다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 후속 의존성·RPC library build와 초기 compile 실패는 [빌드 기록](build-status.md), 최신 성공과 제한된 시험은 [API 이식 기록](api-compat-status.md)에 구분했다. Scribe daemon 실행, PHP suite, 전체 old/new wire·spool differential, 전체 sanitizer/LeakSanitizer와 성능 시험은 미실행이다. 제한된 StdFile 양방향 비교·ASan/UBSan 및 Ubuntu reader LSan 성공은 [최신 계약 기록](contracts-status.md)의 범위로 한정한다. 이전 단계의 raw logs는 checkpoint의 해당 evidence에 보존한다. v8 loopback 서버 결과는 당시 [별도 기록](loopback-rpc-status.md)에 상위 작업 요약으로 반영했고 이후 v10 인계에서 raw records를 수신·검증했다. 새 relay v11의 서버 실행은 상위 작업 확인 요약으로 반영했으며 그 raw records는 아직 미수신이다. 검증한 archive와 실제 범위는 [최신 기록](relay-contracts-status.md)을 따른다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
+두 번째 RPC와 동적 routing, PHP suite의 build 미연결, 목표 파일 transport·fb303 C++ source의 존재와 API 경계를 정적으로 확인했다. 원본 `StdFile`의 할당·해제 불일치는 [실제 재현·최소 수정·component 비교](contracts-status.md)를 완료했다. 코드 도입과 import 회귀 시험은 위 기록대로 실행했다. 후속 의존성·RPC library build와 초기 compile 실패는 [빌드 기록](build-status.md), 최신 성공과 제한된 시험은 [API 이식 기록](api-compat-status.md)에 구분했다. Scribe daemon 실행, PHP suite, 전체 old/new wire·spool differential, 전체 sanitizer/LeakSanitizer와 성능 시험은 미실행이다. 제한된 StdFile 양방향 비교·ASan/UBSan 및 Ubuntu reader LSan 성공은 [최신 계약 기록](contracts-status.md)의 범위로 한정한다. 이전 단계의 raw logs는 checkpoint의 해당 evidence에 보존한다. v8 loopback 서버 결과는 당시 [별도 기록](loopback-rpc-status.md)에 상위 작업 요약으로 반영했고 이후 v10 인계에서 raw records를 수신·검증했다. relay v11의 서버 실행도 처음에는 상위 작업 요약으로만 기록했으나, 후속 v13 main 인계에서 해당 raw records72개와 request frame43개를 수신하고 archive manifest의 크기·SHA256을 대조했다. 원래 v11 source의 실행 근거이며 새 review source의 서버 검증이 아니다. 검증한 archive와 실제 범위는 [최신 기록](relay-contracts-status.md)을 따른다. 임시 dependency checkout과 빌드 산출물은 저장소에 포함하지 않는다.
 
 ## 라이선스 경계
 
-공개 기준 SHA의 [upstream LICENSE](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)는 Apache License 2.0이다. 현재 저장소에 원본 `LICENSE`와 파일별 copyright·attribution을 포함했다. 고정 전체 tree에 `NOTICE`는 없음을 확인했다. 원본 도입 commit에서는 104개 파일의 bytes와 Git mode가 동일하고 `.gitignore`만 원본 bytes 뒤에 명시된 프로젝트 규칙을 추가했다. 후속 네 build 파일 변경은 [빌드 기록](build-status.md)에 별도로 남겼으며 이후 C++ API 경계의 변경은 [API 이식 기록](api-compat-status.md)에 남긴다. IDL과 기존 시험 소스는 동일하며 queue/store/spool 로직은 유지한다. 향후 변경·배포 시 고지를 유지하며 변경 파일에 변경 사실을 표시한다. 의존성 고지도 검토한다. 이 기록은 개인·회사 저작권의 새 주장이나 회사 fork 공개 권한을 부여하지 않는다.
+공개 기준 SHA의 [upstream LICENSE](https://raw.githubusercontent.com/facebookarchive/scribe/fcd294faffd1e88af1643a3a8c2359c41713f7c2/LICENSE)는 Apache License 2.0이다. 현재 저장소에 원본 `LICENSE`와 파일별 copyright·attribution을 포함했다. 고정 전체 tree에 `NOTICE`는 없음을 확인했다. 원본 도입 commit에서는 104개 파일의 bytes와 Git mode가 동일하고 `.gitignore`만 원본 bytes 뒤에 명시된 프로젝트 규칙을 추가했다. 후속 네 build 파일 변경은 [빌드 기록](build-status.md)에 별도로 남겼으며 이후 C++ API 경계의 변경은 [API 이식 기록](api-compat-status.md)에 남긴다. IDL·wire/spool 형식과 기존 upstream 시험 소스를 유지하며 승인된 production 변경은 단계별 기록으로 분리한다. 향후 변경·배포 시 고지를 유지하며 변경 파일에 변경 사실을 표시한다. 의존성 고지도 검토한다. 이 기록은 개인·회사 저작권의 새 주장이나 회사 fork 공개 권한을 부여하지 않는다.

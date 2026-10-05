@@ -6,7 +6,7 @@
 
 ## 개요
 
-설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 첫 upstream 도입과 제한된 빌드·Thrift API 경계를 수행했다. 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04), 의존성·초기 실패는 [빌드 기록](build-status.md), scribed clean compile/link 이력은 [API 이식 기록](api-compat-status.md), 이후 ordinary spool·config/routing 55개 시험과 메모리 수정은 [계약 검증 기록](contracts-status.md)을 따른다. IDL·queue/store/spool 알고리즘과 기존 시험 소스는 그대로다. 운영 daemon 기동·배포·회사 baseline 동등성 판정은 수행하지 않았다.
+설계 문서의 호환성 계약을 고정한 뒤, 빌드 복구와 리팩토링을 분리한다. 첫 upstream 도입과 제한된 빌드·Thrift API 경계를 수행했다. 도입 검증은 [출처 기록](source-status.md#첫-소스-도입-검증-2026-10-04), 의존성·초기 실패는 [빌드 기록](build-status.md), scribed clean compile/link 이력은 [API 이식 기록](api-compat-status.md), 이후 ordinary spool·config/routing 55개 시험과 메모리 수정은 [계약 검증 기록](contracts-status.md)을 따른다. 초기 build/API 단계에서 IDL·queue/store/spool 알고리즘과 기존 시험 소스를 유지했으며 후속 승인된 production 수정은 각 단계의 전후 검증과 구분한다. 운영 daemon 기동·배포·회사 baseline 동등성 판정은 수행하지 않았다.
 
 기준 SHA는 `fcd294faffd1e88af1643a3a8c2359c41713f7c2`다. 제안 후보는 C++17과 Thrift 0.25.0이며 목표 OS는 Linux다. 클라우드 Debian 13·GCC 14와 봉구서버 Ubuntu 26.04.1·GCC 15.2에서 Boost 1.83·Thrift 0.25의 기본 비-HDFS C++17 build와 당시 계약 시험 55개를 통과했다. 후속 loopback suite는 cloud·Ubuntu 각89개 통과이고, 최신 fixed-host relay suite는 cloud·Ubuntu 각101개 통과이며 아래 실행 기록을 따른다. 회사 승인 배포판·toolchain·feature matrix는 미확정이다. 프로젝트 이름 scribe-next와 기존 실행 바이너리·서비스·설정 이름을 구분하고, 호환성에 영향을 주는 이름 변경은 하지 않는다. 각 단계는 작은 review 단위로 진행하고 앞 단계의 완료 조건을 통과한 뒤 다음으로 넘어간다.
 
@@ -36,7 +36,7 @@ old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 �
 
 대상은 `configure.ac`, `bootstrap.sh`, `Makefile.am`, `src/Makefile.am`, dependency 탐지 m4 및 generated code 생성 규칙이다. 확인한 configure.ac는 Boost system/filesystem과 Thrift·fb303 경로 및 optional HDFS 설정을 가지고 있다. 실제 link 목록과 bootstrap 도구는 구현 전에 해당 파일 원문에서 확인한다.
 
-먼저 공식 Thrift 0.25.0 release와 checksum을 고정하고, 목표 Linux에서 compiler와 필요한 C++ runtime을 빌드·검증한다. 이 의존성 build가 통과한 뒤 Scribe build를 연결한다. compiler/runtime 버전을 일치시키고 prefix와 include/link 경로를 명시한다. libthriftnb와 libevent 포함 여부, pthread linkage, fb303 header/library, HDFS feature off/on을 각각 확인한다. compiler flag는 C++17 후보로 고정하고 target Thrift의 요구 표준과 충돌하면 문서의 결정을 갱신한다. compiler warning은 기록하되 모든 경고를 한번에 수정하지 않는다.
+먼저 공식 Thrift 0.25.0 release와 checksum을 고정하고, 목표 Linux에서 compiler와 필요한 C++ runtime을 빌드·검증한다. 이 의존성 build가 통과한 뒤 Scribe build를 연결한다. compiler/runtime 버전을 일치시키고 prefix와 include/link 경로를 명시한다. libthriftnb와 libevent 포함 여부, pthread linkage, fb303 header/library, HDFS feature off/on을 각각 확인한다. [검증된 Linux recipe](../README.md#검증된-linux-c-빌드-recipe)의 명시적 Boost library 이름과 dependency/include/link prefix를 사용하고 CFLAGS/CXXFLAGS의 사용자 값·빈 값을 보존한다. constants가 없는 두 IDL의 생성 결과에 없는 빈 constants source만 build 목록에서 제외하며 생성 파일을 손으로 만들지 않는다. compiler flag는 C++17 후보로 고정하고 target Thrift의 요구 표준과 충돌하면 문서의 결정을 갱신한다. compiler warning은 기록하되 모든 경고를 한번에 수정하지 않는다.
 
 두 IDL의 field와 method를 변경하지 않고 목표 compiler로 다시 생성한다. v0.25.0의 `cpp:pure_enums`로 두 IDL을 실제 생성했고, Thrift/fb303 및 두 RPC 정적 library의 C++17 build·링크 smoke를 통과했다. 이후 기본 비-HDFS C++ lane의 scribed clean compile/link도 통과했으며 old/new wire·runtime 동등성은 미검증이다. 기존 generator option과 generated signature를 비교하며 generated files를 손으로 고치지 않는다. old language client가 의존하는 설치·패키지 위치도 보존한다.
 
@@ -46,7 +46,7 @@ old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 �
 
 대상은 `src/common.h`, `src/env_default.h/.cpp`, `src/scribe_server.cpp`, `src/conn_pool.cpp`, `src/dynamic_bucket_updater.h/.cpp`, `src/network_dynamic_config.h/.cpp`, generated interface를 사용하는 `src/store.cpp` 및 각 모듈의 관련 header다. 고정 SHA의 include graph를 따라 수정 범위를 좁히고 선언과 구현을 함께 검토한다.
 
-목표 release의 TProcessor, protocol factory, socket/server transport, TNonblockingServer, ThreadManager와 thread factory constructor를 대조한다. port를 직접 받던 서버 생성부를 목표 server transport 객체 경계에 맞춘다. Boost shared_ptr에서 std::shared_ptr로 바뀐 boundary와 Boost를 사용하는 fb303 `setServer()`의 소유권을 함께 이식하고 중복 control block을 만들지 않는다. framed binary와 서버·mapping client의 명시적 strict=false/false를 보존한다. relay client도 원본의 `setStrict(false, false)`를 그대로 유지한다. 기본값 의존이라는 이전 기록은 실제 source와 달라 정정했다. 목표 release의 frame/message limit, timeout과 예외 default도 목록화한다.
+목표 release의 TProcessor, protocol factory, socket/server transport, TNonblockingServer, ThreadManager와 thread factory constructor를 대조한다. port를 직접 받던 서버 생성부를 목표 server transport 객체 경계에 맞춘다. Boost shared_ptr에서 std::shared_ptr로 바뀐 boundary와 Boost를 사용하는 fb303 `setServer()`의 소유권을 함께 이식하고 중복 control block을 만들지 않는다. framed binary와 서버·mapping client의 명시적 strict=false/false를 보존한다. relay client도 원본의 `setStrict(false, false)`를 그대로 유지한다. 기본값 의존이라는 이전 기록은 실제 source와 달라 정정했다. 목표 release의 frame/message limit, timeout과 예외 default도 목록화한다. 후속 review 작업 트리의 전역 `thrift_max_frame_size`·`thrift_max_message_size`는 각각 기본 256 MiB의 양의 십진수 startup-only 한도로 server/socket/input-memory와 두 client에 일관되게 적용한다. outgoing relay 초과 batch는 preflight에서 transient failure로 반환하고 자동 분할·drop하지 않는다. 회사 동등성과 oversized spool 정책은 미확정이다. Thrift 0.9.0의 명시적 1 MiB thread stack과 0.25 std::thread의 OS/runtime 기본값을 구분하며 8 MiB라고 가정하지 않는다. 후속 수정본의 최종 검증을 완료한 것으로 세지 않는다.
 
 fb303는 동일 0.25.0 release로 실제 build·workspace 설치를 통과했다. 운영 method·lifecycle과 기존 client 대비 호환성은 아직 별도 확인 항목이다. 현재 FacebookBase 사용, status/details/counters, reinitialize/shutdown 및 기타 상속 method를 mapping한다. 기존 라이브러리가 목표 runtime에서 동작하면 유지한다. 기존 `PosixThreadFactory`·`ReadWriteMutex` 사용부는 현재 concurrency wrapper 안에서 필요한 부분만 대체하고 lock 순서·scope를 비교한다. worker queue의 pthread 동작은 그대로 둔다.
 
@@ -78,7 +78,7 @@ main `24692d6` 이후 native Thrift server에 127.0.0.1 전용 test transport를
 
 ### Relay·connection pool 실행 경계
 
-main `32004a6` 이후 production 변경 없이 실제 NetworkStore/ConnPool의 fixed-loopback bytes·응답·pool 수명·명시적 retry를 시험했다. 응답 유실 뒤 peer6개 수신/sent3, 모의 downstream prefix 처리 뒤 A,A,B,C를 기록하며 의미를 바꾸지 않았다. 정상 두-worker relay→FileStore와 기존89개를 포함한 cloud·Ubuntu 각101개 시험을 통과했다. Ubuntu v11은 새 clean build·help와 relay 반복50회·loopback/자식 회수도 통과했으며 상위 작업 검증 요약으로 기록한다. 새 raw files는 미수신이다. 새 Mac 검증, 실제 worker 실패 scheduler·service/list/dynamic failover·동시 pool race·full old/new runtime과 성능은 미검증이다. 상세 근거는 [relay 기록](relay-contracts-status.md)을 따른다.
+main `32004a6` 이후 production 변경 없이 실제 NetworkStore/ConnPool의 fixed-loopback bytes·응답·pool 수명·명시적 retry를 시험했다. 응답 유실 뒤 peer6개 수신/sent3, 모의 downstream prefix 처리 뒤 A,A,B,C를 기록하며 의미를 바꾸지 않았다. 정상 두-worker relay→FileStore와 기존89개를 포함한 cloud·Ubuntu 각101개 시험을 통과했다. Ubuntu v11은 새 clean build·help와 relay 반복50회·loopback/자식 회수도 통과했다. 당시 v12는 상위 작업 요약만 보존했으며 이후 v13에서 raw records·request frame43개를 수신·검증했다. relay 구현 `5594efaae67e214880a31c755c0f5cb86cfc192a`는 PR #3/main `ddca67e6c3485459648e4cbc975d5dae9ddccfc2`에 반영됐다. 이 101개는 그 이전 relay 단계의 수이며 현재 review의 최종 시험 수가 아니다. 새 Mac 검증, 실제 worker 실패 scheduler·service/list/dynamic failover·동시 pool race·full old/new runtime과 성능은 미검증이다. 상세 근거는 [relay 기록](relay-contracts-status.md)을 따른다.
 
 ## 작업 5 제한된 현대 C++ 정리
 

@@ -1,6 +1,8 @@
 # NetworkStore·connection pool relay 계약 검증
 
-2026-10-04 · base/main `32004a6a627723e081cedf7143323f3769cac220` · 후속 test-only 작업 트리, 미commit·미push
+2026-10-04 · 아래 실행은 base/main `32004a6a627723e081cedf7143323f3769cac220` 위의 당시 test-only 작업 트리 기준
+
+이 relay 단계는 이후 구현 commit `5594efaae67e214880a31c755c0f5cb86cfc192a`와 [PR #3](https://github.com/dbwk10317/scribe-next/pull/3)를 거쳐 main `ddca67e6c3485459648e4cbc975d5dae9ddccfc2`에 반영됐다. 현재 review의 입력은 v13 main 인계이며 raw Ubuntu 기록도 포함한다. 아래 101개 시험과 production 무수정·static byte-identical 설명은 이전 relay 단계의 사실이다. 후속 review 수정본의 최종 clean build·sanitizer·전체 회귀·독립 검토 완료를 뜻하지 않는다.
 
 관련 문서: [README](../README.md) · [manifest](relay-contracts-manifest.json) · [이전 loopback 검증](loopback-rpc-status.md)
 
@@ -12,7 +14,7 @@ production 코드·IDL·build 규칙은 변경하지 않았다. 승인된 trunca
 
 ## 실행 결과
 
-전체 최신 suite는 기존89개와 새 relay10개·helper2개로 클라우드에서 **101개 통과, 실패0, skip0, 31.879초**다. 독립 검토에서도 relay10개(5.900초)와 helper2개가 통과했고, 기존 API Python 함수49개가 그대로이며 기존 다른 test modules도 바뀌지 않았음을 확인했다.
+당시 전체 relay suite는 기존89개와 새 relay10개·helper2개로 클라우드에서 **101개 통과, 실패0, skip0, 31.879초**다. 독립 검토에서도 relay10개(5.900초)와 helper2개가 통과했고, 기존 API Python 함수49개가 그대로이며 기존 다른 test modules도 바뀌지 않았음을 확인했다.
 
 초기 focused 실행은 직접 relay9개를 통과했으나 새 worker fixture의 pre-validation에서 global handler를 준비하지 않은 setup 오류1개가 있었다. 시험 fixture의 초기화 순서만 고친 뒤 최종 focused10개(5.480초)와 위 전체 suite를 통과했다. 실패 로그도 증거에 보존한다. production 결함을 고친 단계가 아니다. 후속 Ubuntu 검증은 아래와 같이 완료했고 새 Mac suite는 아직 수행하지 않았다.
 
@@ -29,7 +31,11 @@ production 코드·IDL·build 규칙은 변경하지 않았다. 승인된 trunca
 - 응답 유실 후 peer6/sent3, 모의 prefix AABC, pool 수명, dummy4096/4097 및 정상 two-worker 파일 bytes 확인
 - source/doc148개, 기존 checkpoint, dpkg/APT 상태와 boot ID 불변. Mac main `32004a6` clean 유지
 
-**이 기록은 상위 작업이 검증한 요약이며 새 서버 raw files는 이 클라우드에서 수신하거나 직접 읽지 않았다.** 보고된 Mac 근거는 `ubuntu-results/records/ubuntu-relay-results.json`, `project-101-tests.log`, `relay-runtime-observations.json`이다. 보고된 evidence tar는 45,173 bytes, SHA256 `b9b8f647bcde1ad8da1da2a1a70813a28c94460650afc90aad5383c6fe3dfe59`이며 request frame43개가 포함돼 있다. 이 새 tar/raw records·43개 frame은 현재 checkpoint에 포함하지 않고, 검증된 요약과 보고된 식별 정보만 보존한다. 기존 cloud frame6개 및 과거 Ubuntu raw records와 구분한다.
+당시 v12 기록은 상위 작업이 검증한 요약만 보존했고 raw files를 받거나 직접 읽지 않은 상태였다. 보고된 evidence tar는 45,173 bytes, SHA256 `b9b8f647bcde1ad8da1da2a1a70813a28c94460650afc90aad5383c6fe3dfe59`다. 이 과거 tar 식별 정보와 v13에서 직접 확인한 unpacked records를 구분한다.
+
+후속 **v13 main 인계에는 `ubuntu-relay-evidence/records/`의 raw files가 포함됐다**. archive `manifest.json`의 해당 72개 record를 실제 크기·SHA256과 대조했고 `ubuntu-relay-results.json`, `project-101-tests.log`, `relay-runtime-observations.json`, `timings.jsonl` 및 clean build/help log를 읽었다. 위 101PASS/0FAIL/0error/0skip(21.889초), clean build5.980초/help0, relay50회·listener115개·자식165개 결과를 확인했다. raw request frame43개도 포함돼 있으며 cloud frame6개와 별도다. `parent-verified-summary.json`과 저장소의 기존 relay manifest에 남은 raw 미수신 표시는 v12 기록 시점의 이력이지 v13의 현재 파일 유무가 아니다.
+
+v13 입력은 `scribe-next-main-20261004.tar.gz`, 1,417,479 bytes, SHA256 `4a1dfa7e2e0a580870e15a15d4fe39599b48c7ad8d5260befd462e33149de7e4`이며 source/doc148개·archive manifest604개·로컬 bundle6 refs와 main을 검증했다. raw records는 v11 source의 서버 실행 근거다. v13 archive 전체나 이후 review source를 서버에서 다시 실행한 것으로 설명하지 않는다.
 
 후속 checkpoint는 문서·evidence 갱신만 포함하고 구현·시험 bytes와 mode는 실제 검증한 v11과 같다. 문서 갱신 archive 전체를 서버에서 다시 실행한 것으로 설명하지 않는다. 실패 worker scheduler·공유 pool 동시 race·구 runtime/회사 동등성·성능·durability와 production main/startServer listener 기동은 여전히 미검증이다.
 
@@ -63,9 +69,9 @@ Python peer는 `127.0.0.1:0`에 bind한 socket을 계속 보유하며 실제 주
 
 ## 공개 원본 근거와 이전 검증
 
-고정 upstream `fcd294faffd1e88af1643a3a8c2359c41713f7c2`의 `scribeConn::send` 본문은 현재와 byte-identical이다. 비교한 1813 bytes의 SHA256은 `4463a5a66e6f7e06a55ed37471d5681a187798ee243d7d930a3e4628c45cb0bc`다. 이 정적 비교는 원본의 결과 분기·counter·close 정책이 유지됐다는 근거이며, 구 Thrift runtime으로 원본 binary를 실행한 differential은 아니다.
+고정 upstream `fcd294faffd1e88af1643a3a8c2359c41713f7c2`의 `scribeConn::send` 본문은 당시 relay 단계 구현과 byte-identical이었다. 후속 review의 wire-size preflight가 추가된 현재 본문에 이 동일성 판정을 적용하지 않는다. 비교한 1813 bytes의 SHA256은 `4463a5a66e6f7e06a55ed37471d5681a187798ee243d7d930a3e4628c45cb0bc`다. 이 정적 비교는 원본의 결과 분기·counter·close 정책이 유지됐다는 근거이며, 구 Thrift runtime으로 원본 binary를 실행한 differential은 아니다.
 
-이번 입력은 Library v10, 1,234,290 bytes, SHA256 `3a4974f176412c98f78f6113b11a905c40a49972c9d794f9ab7562836737ba0f`다. source/doc142개·manifest485개·credential-free bundle5 refs와 main/bytes/mode/fsck를 확인했다. 이전 loopback 구현은 `cdf21648550c47e68626a90bab2ebf11a9c8cd9f`, [PR #2](https://github.com/dbwk10317/scribe-next/pull/2)를 거쳐 현재 main에 반영됐다.
+이 relay 구현 단계의 입력은 Library v10, 1,234,290 bytes, SHA256 `3a4974f176412c98f78f6113b11a905c40a49972c9d794f9ab7562836737ba0f`다. source/doc142개·manifest485개·credential-free bundle5 refs와 main/bytes/mode/fsck를 확인했다. 이전 loopback 구현은 `cdf21648550c47e68626a90bab2ebf11a9c8cd9f`, [PR #2](https://github.com/dbwk10317/scribe-next/pull/2)를 거쳐 현재 main에 반영됐다.
 
 v10에는 이전에 요약만 받은 v8 Ubuntu raw records도 들어 있다. 해당 hashes를 검증하고 89PASS/0FAIL/0skip(20.857초), clean build5.972초/help0, TCP50회·listener50개·자식55개 관측 기록을 읽었다. 이 raw evidence는 새 relay suite 실행 결과가 아니다. 이전 Mac 실행은 통과 method31개, unittest reported run32, skip5, error0이며 Linux integration pass89개와 합치지 않는다. 보고된 GitHub CI workflow/check/status는 없고 CI pass로 세지 않는다.
 
@@ -81,4 +87,4 @@ python3 -B -m unittest discover -s test -p 'test_*.py' -v
 git diff --check
 ```
 
-실제 실행 수·시간·source/test/log hashes는 manifest에 기록한다. prerequisite/platform skip은 통과로 세지 않는다. source가 달라지면 새 build가 필요하며 기존 objects를 무검사 재사용하지 않는다. 엄격한 import 검사는 기존 의도된 15개 build/API 차이를 계속 실패로 표시한다. 원본 도입 commit `00826b8`의 별도105-path pass와 혼합하지 않는다.
+당시 실행 수·시간·source/test/log hashes는 relay manifest에 기록한다. 이후 v13 raw server records의 파일 크기·SHA256은 인계 archive manifest와 구분한다. prerequisite/platform skip은 통과로 세지 않는다. source가 달라지면 새 build가 필요하며 기존 objects를 무검사 재사용하지 않는다. 엄격한 import 검사는 기존 의도된 15개 build/API 차이를 계속 실패로 표시한다. 원본 도입 commit `00826b8`의 별도105-path pass와 혼합하지 않는다.

@@ -1,0 +1,50 @@
+"""Mixin for the existing real API fixture; no duplicate test discovery/build."""
+
+
+class ReviewQueueContracts:
+    @staticmethod
+    def review_queue_config(newlines=1, category=False, interval=3600):
+        return (
+            "port=1463\nmax_queue_size=0\n<store>\ncategory=accepted\ntype=file\n"
+            "file_path=@DIRECTORY@/data\nbase_filename=fixture\nrotate_period=never\n"
+            "create_symlink=no\nfs_type=std\nmax_size=0\nmax_write_size=7\n"
+            f"target_write_size=16384\nmax_write_interval={interval}\n"
+            f"add_newlines={newlines}\nwrite_category={'yes' if category else 'no'}\n"
+            "</store>\n"
+        )
+
+    def check_review_queue_counters(self, directory, received=3):
+        self.assertEqual((directory / "states.txt").read_text(),
+                         f"ack=0\nreceived={received}\nlost=0\nrequeue=0\nbytes-lost=0\n")
+
+    def test_review_queue_shutdown_drains_empty_payloads(self):
+        for newlines, category in ((1, False), (0, True), (1, True)):
+            with self.subTest(newlines=newlines, category=category):
+                directory = self.run_fixture("review-queue-stop", self.review_queue_config(
+                    newlines=newlines, category=category))
+                self.check_review_queue_counters(directory)
+                self.assertEqual((directory / "data/fixture_00000").read_bytes(),
+                                 ((b"accepted\n" if category else b"") +
+                                  (b"\n" if newlines else b"")) * 3)
+
+    def test_review_queue_periodic_flush_drains_empty_payloads(self):
+        directory = self.run_fixture("review-queue-periodic", self.review_queue_config(interval=1))
+        self.check_review_queue_counters(directory)
+        self.assertEqual((directory / "before-stop.bin").read_bytes(), b"\n\n\n")
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), b"\n\n\n")
+
+    def test_review_queue_mixed_payload_bytes_and_newline_options(self):
+        for newlines in (0, 1):
+            for category in (False, True):
+                with self.subTest(newlines=newlines, category=category):
+                    directory = self.run_fixture("review-queue-mixed", self.review_queue_config(
+                        newlines=newlines, category=category))
+                    self.check_review_queue_counters(directory)
+                    self.assertEqual((directory / "data/fixture_00000").read_bytes(), b"".join(
+                        (b"accepted\n" if category else b"") + payload +
+                        (b"\n" if newlines else b"") for payload in (b"", b"A\x00B\n\xff", b"ends\n")))
+
+    def test_review_queue_empty_batch_has_no_output(self):
+        directory = self.run_fixture("review-queue-empty-batch", self.review_queue_config())
+        self.check_review_queue_counters(directory, received=0)
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), b"")

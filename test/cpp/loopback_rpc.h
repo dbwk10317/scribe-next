@@ -1,4 +1,4 @@
-// Test-only loopback RPC fixture; no production server construction changes.
+// Loopback transport fixture using the production server construction path.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 // Included after the common fixture helpers in scribe_api_compat.cpp.
 #ifndef SCRIBE_TEST_LOOPBACK_RPC_H
@@ -39,10 +39,6 @@ class LoopbackReady : public apache::thrift::server::TServerEventHandler {
 
 static void runLoopbackServer(const std::string& config,
                               const std::string& directory) {
-  using apache::thrift::concurrency::ThreadFactory;
-  using apache::thrift::concurrency::ThreadManager;
-  using apache::thrift::protocol::TBinaryProtocolFactory;
-  using apache::thrift::server::TNonblockingServer;
   using apache::thrift::transport::TNonblockingServerSocket;
 
   struct stat info;
@@ -60,28 +56,20 @@ static void runLoopbackServer(const std::string& config,
     throw std::runtime_error("loopback handler initialization failed: " + details);
   }
 
-  auto processor = std::make_shared<scribeProcessor>(handler);
-  auto protocolFactory = std::make_shared<TBinaryProtocolFactory>(0, 0, false, false);
-  std::shared_ptr<ThreadManager> threadManager;
-  // Match both current startServer branches without calling the production
-  // entry point, whose transport does not explicitly restrict the bind address.
-  if (handler->numThriftServerThreads > 1) {
-    threadManager = ThreadManager::newSimpleThreadManager(handler->numThriftServerThreads);
-    auto threadFactory = std::make_shared<ThreadFactory>();
-    threadManager->threadFactory(threadFactory);
-    threadManager->start();
-  }
-
   // initialize() requires a positive config port, but this test-only native
   // transport always binds an OS-assigned ephemeral port on IPv4 loopback.
   auto transport = std::make_shared<TNonblockingServerSocket>("127.0.0.1", 0);
-  auto server = std::make_shared<TNonblockingServer>(
-      processor, protocolFactory, transport, threadManager);
-  handler->setServer(server);
-  const unsigned long maxConnections = handler->getMaxConn();
-  if (maxConnections > 0) {
-    server->setMaxConnections(maxConnections);
-    server->setOverloadAction(apache::thrift::server::T_OVERLOAD_CLOSE_ON_ACCEPT);
+  // Exercise the same processor/protocol/thread/max_conn construction as the
+  // real startServer entry point; only the listener transport is supplied here.
+  auto server = scribe::createServer(transport);
+  require(static_cast<bool>(server->getThreadManager()) ==
+              (handler->numThriftServerThreads > 1),
+          "production factory selected the wrong thread manager branch");
+  if (handler->getMaxConn() > 0) {
+    require(server->getMaxConnections() == handler->getMaxConn() &&
+                server->getOverloadAction() ==
+                    apache::thrift::server::T_OVERLOAD_CLOSE_ON_ACCEPT,
+            "production factory did not apply max_conn");
   }
   server->setServerEventHandler(std::make_shared<LoopbackReady>(transport));
   server->serve();

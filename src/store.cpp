@@ -1,4 +1,5 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
+// scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1691,7 +1692,9 @@ void BufferStore::setNewRetryInterval(bool success) {
     }
     else {
       retryInterval = static_cast <time_t> (retryInterval*MULT_INC_FACTOR);
-      retryInterval += (rand() % maxRandomOffset);
+      if (maxRandomOffset) {
+        retryInterval += (rand() % maxRandomOffset);
+      }
       if (retryInterval > maxRetryInterval) {
         retryInterval = maxRetryInterval;
       }
@@ -1704,7 +1707,7 @@ void BufferStore::setNewRetryInterval(bool success) {
   }
   else {
     retryInterval = avgRetryInterval - retryIntervalRange/2
-                    + rand() % retryIntervalRange;
+                    + (retryIntervalRange ? rand() % retryIntervalRange : 0);
   }
   LOG_OPER("[%s] choosing new retry interval <%lu> seconds",
            categoryHandled.c_str(),
@@ -2383,7 +2386,13 @@ void BucketStore::periodicCheck() {
   for (uint32_t i = 0; i < sz; ++i) {
     storeIndex[i] = i;
   }
-  random_shuffle(storeIndex.begin(), storeIndex.end());
+  // Preserve the old GNU forward shuffle's order and rand() consumption.
+  for (uint32_t i = 1; i < sz; ++i) {
+    uint32_t j = rand() % (i + 1);
+    if (i != j) {
+      swap(storeIndex[i], storeIndex[j]);
+    }
+  }
 
   for (uint32_t i = 0; i < sz; ++i) {
     uint32_t idx = storeIndex[i];

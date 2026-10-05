@@ -421,6 +421,9 @@ static void testRouting(const std::string& filename) {
 #include "filestore_contracts.h"
 #include "loopback_rpc.h"
 #include "relay_contracts.h"
+#include "review_queue_contracts.h"
+#include "review_limits_contracts.h"
+#include "review_retry_shuffle_contracts.h"
 
 int main(int argc, char** argv) {
   try {
@@ -435,6 +438,19 @@ int main(int argc, char** argv) {
       alarm(20);
       runRelayLoopbackServer(argv[2], argv[3]);
       return 0;
+    } else if (std::string(argv[1]) == "limit-relay") {
+      alarm(20);
+      runLimitRelay(argv[2]);
+    } else if (std::string(argv[1]) == "limit-spool-relay") {
+      alarm(20);
+      runLimitSpoolRelay(argv[2]);
+    } else if (std::string(argv[1]) == "limit-mapping") {
+      alarm(20);
+      runLimitMapping(argv[2]);
+    } else if (std::string(argv[1]) == "limits-valid") {
+      testThriftLimits(argv[2], false);
+    } else if (std::string(argv[1]) == "limits-invalid") {
+      testThriftLimits(argv[2], true);
     } else if (std::string(argv[1]) == "wire") {
       testWire(argv[2], argv[3]);
     } else if (std::string(argv[1]) == "handler") {
@@ -457,6 +473,10 @@ int main(int argc, char** argv) {
       testRouting(argv[2]);
     } else if (dispatchFileStore(argv[1], argv[2], argv[3])) {
       // Actual filesystem contract mode completed.
+    } else if (dispatchReviewQueue(argv[1], argv[2], argv[3])) {
+      // Actual queue regression mode completed.
+    } else if (dispatchReviewRetryShuffle(argv[1], argv[2], argv[3])) {
+      // Actual zero-jitter and C++17 portability contracts completed.
     } else {
       throw std::runtime_error("unknown fixture mode");
     }

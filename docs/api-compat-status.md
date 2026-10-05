@@ -54,9 +54,13 @@ sh -n bootstrap.sh
 git diff --check
 ```
 
-Scribe configure recipe는 manifest의 scribe_configure를 사용하며 이후 `make -C "$SCRIBE_BUILD/src" clean`과 `make -C "$SCRIBE_BUILD/src" -j2`를 실행했다. 실제 command와 초기 실패/최종 성공 log는 checkpoint에 포함한다. 의존성 caches·binaries·test keys·인증 정보는 포함하지 않는다.
+Scribe configure recipe는 [README의 명시적 Linux recipe](../README.md#검증된-linux-c-빌드-recipe)와 manifest의 scribe_configure를 사용하며 이후 `make -C "$SCRIBE_BUILD/src" clean`과 `make -C "$SCRIBE_BUILD/src" -j2`를 실행했다. 실제 command와 초기 실패/최종 성공 log는 checkpoint에 포함한다. 의존성 caches·binaries·test keys·인증 정보는 포함하지 않는다.
 
 ## 명시적으로 남은 동등성 위험
+
+아래 1–4는 최초 API 이식 단계의 결과와 위험을 보존한 기록이다. 당시 Thrift 기본 한도를 그대로 쓰던 상태와 후속 review 작업 트리의 명시적 전역 한도를 혼동하지 않는다. review에서는 `thrift_max_frame_size`·`thrift_max_message_size` 각각 기본 256 MiB, 양의 십진수 1–2147483647 bytes, startup-only 정책을 server·socket·input-memory·relay/mapping client에 일관되게 적용했다. outgoing relay는 직렬화 Log 전체 크기를 preflight해 초과 시 transient failure를 반환하고 batch를 분할·drop하지 않는다. 이 설정과 최종 검증 상태는 [README의 현재 경계](../README.md#thrift-입력-한도와-thread-경계)를 따른다. recursion depth 보호를 무조건 해제하지 않았다.
+
+추가로 정확한 Thrift 0.9.0 공개 source를 대조했다. 해당 PosixThreadFactory의 기본 stack은 명시적 1 MiB지만 0.25.0은 std::thread를 생성해 OS/runtime 기본 stack을 사용한다. 8 MiB를 고정값으로 가정하지 않는다. [0.9.0 factory](https://github.com/apache/thrift/blob/0.9.0/lib/cpp/src/thrift/concurrency/PosixThreadFactory.h)와 [0.25.0 thread 생성](https://github.com/apache/thrift/blob/v0.25.0/lib/cpp/src/thrift/concurrency/Thread.h)을 근거로 구분하며 footprint·scheduler·shutdown 동등성은 여전히 미확인이다. 회사 0.9.0 사용은 잠정 기억이며 배포 기록 확인이 필요하다.
 
 1. Thrift 0.25의 기본 frame=16,384,000 bytes, message=104,857,600 bytes, recursion depth=64 보호 한도는 그대로다. 0.5.0 framed reader에는 같은 configurable frame ceiling이 없었으므로 큰 batch/mapping reply는 다른 결과가 가능하다. 보호를 무조건 해제하지 않는다. Scribe README는 Thrift >=0.5.0만 요구하므로 0.5.0은 역사적 비교점이지 회사의 확정 old runtime이 아니다
 2. 현재 ThreadFactory의 detached=true와 worker 수는 맞지만 std::thread에는 구 PosixThreadFactory의 1 MiB stack/policy/priority 설정 API가 없다. 0.5.0은 scheduling inheritance를 명시하지 않아 실제 실행 정책도 baseline 확인이 필요하다. 메모리 footprint·scheduler·종료 동등성을 선언하지 않는다
