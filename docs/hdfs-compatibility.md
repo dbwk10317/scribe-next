@@ -196,3 +196,11 @@ with the explicitly seeded directory precondition. It does not establish
 historical libhdfs binary equivalence, distributed fault recovery, permissions/
 replication matrix, durable ACK or performance. No host service/system/security/
 power settings changed. Raw evidence includes the failed preparation attempt.
+
+## Rocky 8/9 후속 소스 검증
+
+[Rocky HDFS 기록](rocky-hdfs.md)은 공식 native client를 각 배포판 ABI로 재빌드하고
+정상 NSS 비특권 계정으로 전체 HDFS build/220 tests/local JNI와 동일한 기존 single-DN
+daemon/독립 reader/restart append를 확인한다. IDL·production C++·이 runner의 UID65534
+및 network-none guard는 변경하지 않았다. HDFS RPM·historical binary differential·
+권한/복제/장애 matrix와 운영 배포는 미검증이다.

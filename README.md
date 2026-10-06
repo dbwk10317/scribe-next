@@ -47,7 +47,8 @@ Rocky의 기본 비-HDFS/static 검증은 각 218개 시험과 임시 설치까�
 [Rocky 빌드 안내](docs/rocky-build.md)의 별도 준비 조건을 따르세요.
 Rocky의 daemon 전용 [개발 RPM](docs/rocky-rpm.md)은 격리 설치·송수신·정상 종료·동일 RPM 재설치·제거까지 확인했습니다.
 Rocky shared RPC는 source 빌드·218개 회귀·임시 설치 loader까지 확인했습니다.
-Rocky HDFS, 서로 다른 RPM 버전 간 upgrade와 운영 배포는 아직 검증하지 않았습니다.
+Rocky [HDFS 소스 검증](docs/rocky-hdfs.md)은 각 220개 회귀·local JNI와 격리 single-DataNode 저장·독립 reader·재시작 append까지 확인했습니다.
+HDFS/shared RPM, 서로 다른 RPM 버전 간 upgrade와 운영 배포는 아직 검증하지 않았습니다.
 
 HDFS는 하나의 DataNode로 구성한 테스트에서 파일 쓰기·다시 열어 추가 쓰기와
 Hadoop client로 저장 내용을 읽는 것을 확인했습니다.
