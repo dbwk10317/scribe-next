@@ -1,0 +1,15 @@
+ARG BASE=scribe-next-rocky-validation:8-20261006
+FROM ${BASE}
+# Build/install only in a new project image; retain the canonical release tree.
+USER 0
+COPY prepare_fb303.py /project/tools/prepare_fb303.py
+COPY fb303-0.25.0-counter-lock.patch /project/dependencies/fb303-0.25.0-counter-lock.patch
+RUN python3.12 -B /project/tools/prepare_fb303.py \
+      --source /sources/thrift-0.25.0/contrib/fb303 --output /sources/scribe-next-fb303-safe && \
+    cd /sources/scribe-next-fb303-safe && aclocal -I ./aclocal && automake -a --copy && autoconf && \
+    ./configure --prefix="$FB303_PREFIX" --with-thriftpath="$THRIFT_PREFIX" \
+      --with-boost="$TOOLS_PREFIX" --without-java --without-php --without-python && \
+    make clean && make -j2 CXXFLAGS='-O2 -std=c++17' \
+      CPPFLAGS="-I$THRIFT_PREFIX/include -I$TOOLS_PREFIX/include" && make install && \
+    mkdir -p "$FB303_PREFIX/share/scribe-next" && \
+    cp scribe-next-fb303-safety.json "$FB303_PREFIX/share/scribe-next/fb303-safety.json"

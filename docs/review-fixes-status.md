@@ -353,3 +353,12 @@ DESTDIR/help가 통과했다. 제한된 actual Queue/component ASan/UBSan/LSan�
 - fixture의 실패 조건은 LogEntry allocation size로 제한했다. 기존 updater 실패 주입은 그대로 유지하며 test 호출 thread 외 할당은 실패시키지 않는다. 새 clean 기본 Linux validator **228개, 실패0/error0/skip0, 8단계와 install/help 통과**. 별도 실제 server·fixture ASan/UBSan/LSan(`detect_leaks=1`)의 read/write 두 경우 exit0. 다른 production/dependency objects는 비계측이다.
 - 추가 발견은 분리한다: 처음 사용한 무차별 next-allocation 주입은 최적화된 sanitizer 경로에서 fb303 `FacebookBase::incrementCounter`의 map node allocation에 도달했다. 실제 handler 잠금은 `RUWU`로 해제되고 재초기화도 완료했으나, fb303의 수동 counter-map 잠금이 남아 후속 Log이 30초 timeout했다. stack을 같은 diagnostic binary의 symbols로 확인했다. 이 의존성의 할당 예외 안전성은 이번 Scribe handler 수정으로 해결됐다고 주장하지 않으며 미수정 후속 항목이다. sanitizer flag나 보안 설정은 완화하지 않았다.
 - 로컬 근거: `evidence/log-lock-targeted-after`, `evidence/astra-review/log-lock-targeted-before.log`, `log-lock-targeted-sanitizer-after.log`; 최초 실패와 원인 근거 `log-lock-sanitizer-diagnostic.log`, `log-lock-sanitizer-stack.log`, `log-lock-allocation-stack-symbols.txt`도 보존했다.
+
+## fb303 counter-map 예외 안전성 후속 (2026-10-06)
+
+- 위 Log batch에서 남긴 의존성 잠금 결함을 별도 source copy의 프로젝트 patch로 처리했다. Thrift/fb303 0.25.0 version, canonical source cpp/header와 system package를 변경하지 않았다. 공식 master `50bbda109593a0b5c7634ac21c5d98eee97fe7ec`의 cpp hash도 고정 release와 같아 해당 구현에는 공식 RAII 수정이 없다. 좁은 공식 issue 검색은 결과0이었으나 모든 issue/PR의 부재로 확대하지 않는다.
+- increment/set/getCounters/getCounter의 기존 map → value 획득과 역순 해제만 Guard로 소유한다. 정상 반환·signed value·default amount·snapshot partial output 계약과 공개 정의 심볼13개, 헤더가 동일하다. 상세 준비 경로는 [fb303 안내](fb303-counter-safety.md)를 따른다.
+- 기존 실제 archive는 increment/set/snapshot 할당 예외 후 counter 접근이 모두 막혔다. 새 archive의 실제4개 시험은 세 예외 복구와 정상 동시2,000회 증가를 통과했다. 새 전체 기본 Linux **232개, 실패0/error0/skip0, 8단계와 install/help PASS**. 실제 patched FacebookBase·fixture ASan/UBSan/LSan 네 경우 exit0. 최초 loader 경로 누락(exit127)은 원시 실패로 보존했고 matching Thrift runtime 경로만 정상 지정했다.
+- 앞서 timeout했던 무차별 할당 실패의 actual Log/counter fixture도 같은 최적화/sanitizer 옵션으로 재초기화·후속 Log/counter를 완료했다. Thrift/other dependency objects는 비계측이며 전체 daemon sanitizer 보장은 아니다.
+- 새 준비 source 첫 configure는 aux files 부재, 다음 autoreconf는 기존 aclocal include 누락으로 실패했다. 기존 fb303 recipe의 `aclocal -I ./aclocal`, `automake -a --copy`, `autoconf` 정상 경로를 사용해 별도 copy를 빌드했으며 실패를 성공으로 세지 않았다.
+- 근거는 기존 `evidence/astra-review/fb303-*` 아래에 보관한다. 이 patch 병합 후 최종 main의 Rocky 기본/shared/HDFS 및 private dev RPM artifacts는 별도로 다시 생성·검증하고 그 exact source revision과 hash를 결과 manifest에 기록해야 한다. 이전 RPM/DC0E327과 PR39 HDFS 근거를 이번 HEAD의 artifacts로 부르지 않는다.

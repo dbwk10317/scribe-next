@@ -225,7 +225,7 @@ sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
                                      if p.is_file() and p.suffix in (".cpp", ".h", ".py", ".php", ".java")]
         result["dependency_files"] = []
         for root, patterns in ((thrift, ("bin/thrift", "lib/libthrift*")),
-                               (fb303, ("lib/libfb303*",)),
+                               (fb303, ("lib/libfb303*", "share/scribe-next/fb303-safety.json")),
                                (tools, tuple(directory + "/" + library
                                              for directory in ("lib/x86_64-linux-gnu", "lib64", "lib")
                                              for library in ("libboost_system*", "libboost_filesystem*",
