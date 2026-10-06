@@ -5,6 +5,65 @@
 
 #include <chrono>
 #include <thread>
+#include <atomic>
+
+static std::atomic<time_t> reviewFixedTime{0};
+extern "C" time_t __real_time(time_t* value);
+extern "C" time_t __wrap_time(time_t* value) {
+  const time_t fixed = reviewFixedTime.load();
+  if (!fixed) return __real_time(value);
+  if (value) *value = fixed;
+  return fixed;
+}
+
+static void testReviewConcurrentThrottle(const std::string& config) {
+  reviewFixedTime = 123456;
+  HandlerFixture fixture(config);
+  const auto handler = fixture.handler;
+  handler->initialize();
+  require(handler->getStatus() == facebook::fb303::ALIVE, "throttle fixture not alive");
+  unsigned long limit = 0;
+  require(handler->getConfig().getUnsigned("max_msg_per_second", limit) &&
+              (limit == 0 || limit == 100), "throttle fixture limit");
+  const std::vector<LogEntry> message{entry("accepted", "payload")};
+  std::atomic<unsigned> ready{0}, accepted{0};
+  std::atomic<bool> start{false};
+  std::vector<std::thread> callers;
+  for (unsigned i = 0; i < 16; ++i) {
+    callers.emplace_back([&] {
+      ++ready;
+      while (!start.load()) std::this_thread::yield();
+      for (unsigned attempt = 0; attempt < 64; ++attempt) {
+        // Bypass the fixture's single-caller received-vector spy, not production Log.
+        if (handler->scribeHandler::Log(message) == scribe::thrift::OK) ++accepted;
+      }
+    });
+  }
+  while (ready.load() != 16) std::this_thread::yield();
+  start = true;
+  for (auto& caller : callers) caller.join();
+  const unsigned expected = limit ? 100 : 1024;
+  require(accepted == expected, "concurrent throttle quota changed");
+  require(handler->getCounter("accepted:received good") == expected,
+          "concurrent throttle received counter changed");
+  require(handler->getCounter("scribe_overall:denied for rate") == 1024 - expected,
+          "concurrent throttle denied counter changed");
+  if (limit) {
+    // Original half-limit boundary, huge-batch exemption and next-second reset.
+    require(handler->scribeHandler::Log(std::vector<LogEntry>(51, message[0])) == scribe::thrift::OK,
+            "legacy huge-batch exemption changed");
+    require(handler->scribeHandler::Log(message) == scribe::thrift::TRY_LATER,
+            "huge batch changed exhausted quota");
+    ++reviewFixedTime;
+    const std::vector<LogEntry> half(50, message[0]);
+    require(handler->scribeHandler::Log(half) == scribe::thrift::OK &&
+                handler->scribeHandler::Log(half) == scribe::thrift::OK &&
+                handler->scribeHandler::Log(message) == scribe::thrift::TRY_LATER,
+            "next-second reset or exact quota boundary changed");
+  }
+  handler->stopForTest();
+  reviewFixedTime = 0;
+}
 
 static std::string reviewQueueOutput(const std::string& directory) {
   std::ifstream input((directory + "/data/fixture_00000").c_str(), std::ios::binary);

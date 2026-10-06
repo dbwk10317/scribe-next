@@ -442,6 +442,9 @@ int main(int argc, char** argv) {
     } else if (std::string(argv[1]) == "review-updater-driver") {
       alarm(20);
       runUpdaterReviewDriver(argv[2]);
+    } else if (std::string(argv[1]) == "review-throttle-concurrent") {
+      alarm(20);
+      testReviewConcurrentThrottle(argv[2]);
     } else if (std::string(argv[1]) == "review-store-defaults") {
       testStoreReviewDefaults(argv[2]);
     } else if (std::string(argv[1]) == "review-store-bucket") {
