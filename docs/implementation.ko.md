@@ -63,9 +63,11 @@ fb303는 동일 0.25.0 release로 실제 build·workspace 설치를 통과했다
 
 완료 조건은 old-write/new-read 및 new-write/old-read가 ordinary spool과 thriftfile 모두에서 통과하는 것이다. 같은 spool 동시 writer는 테스트에서도 금지한다. reader가 corruption을 다르게 처리하면 호환성 이슈로 남기고 배포 gate를 열지 않는다.
 
-### 제한된 ThriftFileStore 현재 관찰
+### 제한된 ThriftFileStore 이전 관찰
 
-main `c3f3459` 이후 test-only 관찰은 default TFileTransport와 use_simple_file의 bytes, chunk padding, 실제 reader, close/reopen/suffix와 copy 설정을9개 시험으로 확인했고 cloud·Ubuntu146개/skip0과 focused ASan+UBSan9개/skip0을 통과했다. 후속 승인된 copy의 useSimpleFile 한 필드 수정과 legacy 파일 보존 회귀를 추가한 작업 트리는 새 cloud clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0을 통과했다. 기존 framed 파일은 유지하고 새 suffix에 설정된 raw mode를 기록한다. chunk 초과와 empty의 기존 transport 처리·반환·성공 집계는 사용자 결정대로 유지한다. 같은 production·test 소스는 새 Ubuntu clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0도 통과했다. 위 old/new 양방향 완료 조건은 미통과다. [현재 기록](thriftfile-contracts-status.md)과 [승인 범위·동작 보존 결정](thriftfile-fix-options.md)을 따른다.
+아래 raw-copy 수정은 당시 검증 이력이며 PR #25에서 되돌렸다. 현재 clone은 원본 framed 형식이고 직접 설정 simple store만 raw다.
+
+main `c3f3459` 이후 test-only 관찰은 default TFileTransport와 use_simple_file의 bytes, chunk padding, 실제 reader, close/reopen/suffix와 copy 설정을9개 시험으로 확인했고 cloud·Ubuntu146개/skip0과 focused ASan+UBSan9개/skip0을 통과했다. 후속 승인된 copy의 useSimpleFile 한 필드 수정과 legacy 파일 보존 회귀를 추가한 작업 트리는 새 cloud clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0을 통과했다. 기존 framed 파일은 유지하고 새 suffix에 설정된 raw mode를 기록한다. chunk 초과와 empty의 기존 transport 처리·반환·성공 집계는 사용자 결정대로 유지한다. 같은 production·test 소스는 새 Ubuntu clean build/help·전체147개/skip0·focused ASan+UBSan10개/skip0도 통과했다. 위 old/new 양방향 완료 조건은 미통과다. [당시 기록](thriftfile-contracts-status.md)과 [당시 승인 범위·동작 보존 결정](thriftfile-fix-options.md)을 참고한다.
 
 ### 원본 메모리 결함의 별도 검증
 
@@ -75,9 +77,9 @@ main `c3f3459` 이후 test-only 관찰은 default TFileTransport와 use_simple_f
 
 main `ffc73ee` 이후 실제 FileStore의 write_category/add_newlines bytes, readOldest·deleteOldest·replaceOldest와 제한된 BufferStore replay를 검증했다. 전체 cloud 70개 시험이 통과했지만, 기존 app|trunc 실패 및 partial replay의 lost/delete 경로도 재현됐다. 시험 통과를 결함 해결로 해석하지 않으며 production 수정은 별도 승인·전후 검증으로 분리한다. [최신 FileStore 기록](filestore-contracts-status.md)을 따른다.
 
-### 승인된 truncate 최소 수정
+### 당시 승인된 truncate 최소 수정
 
-사용자가 재현된 부분 replay 손실을 예외적으로 수정하도록 승인한 뒤 StdFile openTruncate에서 app flag만 제거했다. cloud·Ubuntu의 새 clean build와 각 74개 시험에서 남은 2개 보존·다음 replay를 확인했다. 추가 LF 재적용은 기존 옵션 의미대로 남겨 검증했고, 원자적 교체·crash/write-failure 보장을 추가하지 않았다. 최신 근거와 남은 위험은 [수정 기록](truncate-fix-status.md)을 따른다.
+당시 사용자가 부분 replay 손실 수정을 승인한 뒤 StdFile openTruncate에서 app flag만 제거했다. cloud·Ubuntu의 새 clean build와 각 74개 시험에서 남은 2개 보존·다음 replay를 확인했다. 추가 LF 재적용은 기존 옵션 의미대로 검증했고 원자적 교체·crash/write-failure 보장은 추가하지 않았다. [수정 기록](truncate-fix-status.md)은 당시 근거다. PR #25는 이 변경을 되돌렸으며 현재는 원본의 실패·손실 집계를 유지한다.
 
 ### Loopback RPC 실행 경계
 

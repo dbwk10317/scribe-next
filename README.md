@@ -48,6 +48,8 @@ Hadoop client로 저장 내용을 읽는 것을 확인했습니다.
 과거 libhdfs와의 완전한 동등성이나 권한·복제·여러 DataNode의 장애 처리는 확인하지 않았습니다.
 Mac과 Windows를 Scribe 서버의 지원 환경으로 확인한 것은 아닙니다.
 다른 compiler·의존성 조합과 상세 성능 비교도 별도 확인이 필요합니다.
+랜덤 재시도·서버 후보 shuffle 순서는 GNU 구현을 기준으로 확인했습니다.
+다른 C++ 표준 라이브러리에서 같은 순서를 보장한 것은 아닙니다.
 
 ## 빠른 시작
 
@@ -56,8 +58,22 @@ Mac과 Windows를 Scribe 서버의 지원 환경으로 확인한 것은 아닙�
 위 빌드 도구와 Thrift/fb303를 먼저 준비해야 합니다. 프로젝트가 자동으로 설치하지는 않습니다.
 검증기는 Git 이력과 원본 비교용 커밋을 사용하므로 ZIP 대신 Git checkout을 준비하세요.
 필요한 원본 이력과 Git 옵션은 [Git 준비 안내](docs/linux-build-mvp.md#검증용-git-이력-준비)를 참고하세요.
+일반 clone에는 원본 commit object가 없을 수 있습니다. 프로젝트 폴더에서 먼저 확인하고,
+없을 때만 공식 원본을 명시적으로 가져옵니다. 첫 명령이 실패하면 두 보호 옵션을 지원하는 Git을 준비하세요.
+
+```sh
+git --no-replace-objects --no-lazy-fetch --version && \
+{ git --no-replace-objects --no-lazy-fetch cat-file -e 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{commit}' || \
+  git fetch https://github.com/facebookarchive/scribe.git fcd294faffd1e88af1643a3a8c2359c41713f7c2:refs/remotes/upstream/baseline; } && \
+git --no-replace-objects --no-lazy-fetch cat-file -e 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{commit}'
+```
+
+이미 원본 object가 있으면 fetch를 생략합니다. 검증기는 보호 옵션과 필요한 원본 object를
+빌드 전에 검사하며 자동으로 fetch하지 않습니다.
 **Thrift compiler와 C++ runtime은 같은 버전을 사용하세요.**
 fb303도 해당 compiler로 생성하고 빌드한 것을 사용해야 합니다.
+Python 설치 전에는 autotools로 Makefile을 만들고 matching compiler로 Python package를 재생성해야 합니다.
+수동 configure는 명시적 `PYTHON`을 보존하며, 지정하지 않으면 `python3`, `python` 순서로 찾습니다.
 
 아래 경로를 이미 준비한 의존성의 실제 위치로 바꿉니다.
 `TOOLS_PREFIX`에는 Boost와 libevent 등이 들어 있는 공통 설치 경로를 지정합니다.
@@ -147,6 +163,13 @@ fb303 상태·상세 설명·수신 카운터와 실제 저장 파일을 함께 
 기존 `<store>` 설정을 출발점으로 쓸 수 있습니다.
 [원본 설정 예제](examples/example1.conf)의 파일·임시 보관 경로와 포트를 본인 환경에 맞게 바꾸세요.
 기존 보조 스크립트에 들어 있는 공유 `/tmp` 경로나 root 실행 가정을 그대로 따라갈 필요는 없습니다.
+원본 [README](README)와 [examples 안내](examples/README)는 역사적 자료입니다.
+없는 `example2.conf`·`README.BUILD` 안내 대신 실제 `example2client.conf`·`example2central.conf`와
+현재 빌드 안내를 따르세요. 구 Python/PHP 스크립트의 현대 runtime 호환성을 보장하지 않습니다.
+
+원본 시험 설정도 그대로 보존합니다. `test/scribe.conf.bucketupdater.central`은 `<bucket3>`를
+`</bucket2>`로 닫고, `scribehtest`의 `lzo_compression`·`lzo_block_size`·`sync_interval`과
+`simpletest`의 `send_buffer`는 현재 코드가 읽지 않습니다. 예제를 그대로 운영 설정으로 쓰지 마세요.
 
 원본 IDL과 framed binary 통신을 유지하며 구 서버→새 서버와 새 서버→구 서버 전송을 비교했습니다.
 원본 버그 때문에 로그의 분배·내용·형식·전달 결과가 달라지던 수정은 되돌렸습니다.

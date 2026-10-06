@@ -106,7 +106,9 @@ git diff --check
 checkpoint에는 credential-free Git bundle·source files/modes·tracked diff·이번 및 이전 raw evidence·복원/재검증 명령을 포함한다. dependency caches·executables·objects·runtime spool·인증 값·개인 Git 설정은 제외한다. 승인된 push/merge는 Mac executor의 source/hash/diff/test 확인 뒤 수행하며 cloud checkpoint 생성 자체를 원격 반영으로 설명하지 않는다.
 
 
-## P1 dynamic-copy global-lock stall regression (2026-10-06)
+## P1 dynamic-copy global-lock stall regression — 이전 수정 기록 (2026-10-06)
+
+PR #25는 아래 copy-setting 수정과 one-shot lookup을 되돌렸다. 현재 clone은 원본 fields만 복사하며 초기 mapping 조회를 추가하지 않는다. 아래 재현·측정은 그 이전 수정본의 이력이다.
 
 Base main `b0bfc89`. The approved NetworkStore copy-setting fix resolved the new
 category synchronously while `createCategoryFromModel` held the handler write
@@ -118,11 +120,11 @@ post-fix checks require both Log calls to finish beforehand and keep OK queue
 acceptance. This is an actual handler/worker fixture with a scripted resolver,
 not a production-daemon outage or a latency benchmark.
 
-`NetworkStore::copy` now preserves the approved configuration fields and static
+At that stage, `NetworkStore::copy` preserved the approved configuration fields and static
 fallback, marking a one-shot initial lookup. The worker's first open or preceding
 periodic check performs it; failure keeps fallback without repeated lookup on
 reopen, and ordinary periodic refresh remains. No compatibility-default decision,
-previous copy/data-preservation fix or wire/ACK/retry policy is reverted.
+previous copy/data-preservation fix or wire/ACK/retry policy was reverted at that stage.
 
 Cloud and server each passed focused6 and full203 with failures/errors/skips0.
 Server `/workspace/scribe-next-dynamic-copy-validation-20261005-NdPAFz` used fresh

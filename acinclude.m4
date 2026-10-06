@@ -17,7 +17,8 @@ AC_PROG_CXX
 AC_PROG_RANLIB(RANLIB, ranlib)
 AC_PATH_PROGS(BASH, bash)
 AC_PATH_PROGS(PERL, perl)
-AC_PATH_PROGS(PYTHON, python)
+# scribe-next modification: prefer Python 3; retain explicit PYTHON and legacy fallback.
+AC_PATH_PROGS(PYTHON, python3 python)
 AC_PATH_PROGS(AR, ar)
 AC_PATH_PROGS(ANT, ant)
 PRODUCT_MK=""
