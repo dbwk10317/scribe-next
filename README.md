@@ -45,7 +45,7 @@ Scribe의 로그 수집 구조, 설정 형식, Thrift 통신과 저장 파일 �
 
 Rocky의 기본 비-HDFS/static 검증은 각 218개 시험과 임시 설치까지 확인했습니다.
 [Rocky 빌드 안내](docs/rocky-build.md)의 별도 준비 조건을 따르세요.
-Rocky의 daemon 전용 [개발 RPM](docs/rocky-rpm.md)은 격리 설치·제거까지 확인했습니다.
+Rocky의 daemon 전용 [개발 RPM](docs/rocky-rpm.md)은 격리 설치·송수신·정상 종료·동일 RPM 재설치·제거까지 확인했습니다.
 Rocky HDFS/shared RPC, RPM upgrade와 운영 배포는 아직 검증하지 않았습니다.
 
 HDFS는 하나의 DataNode로 구성한 테스트에서 파일 쓰기·다시 열어 추가 쓰기와
