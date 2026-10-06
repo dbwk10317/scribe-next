@@ -14,6 +14,9 @@ class QueuePublicationTests(unittest.TestCase):
     def test_concurrent_byte_size_and_configured_target_snapshots(self):
         self.run_component("queue_snapshots.cpp", "snapshot_bounds=1 final_bytes=0")
 
+    def test_worker_init_failures_reject_publication_and_release_partial_resources(self):
+        self.run_component("queue_init_failures.cpp", "PASS init failure matrix")
+
     def run_component(self, source, expected):
         tools = os.environ.get("TOOLS_PREFIX")
         if not tools:
@@ -28,6 +31,9 @@ class QueuePublicationTests(unittest.TestCase):
                        "-I", str(Path(tools) / "include"), str(work / "store_queue.cpp"),
                        str(ROOT / "test/cpp" / source),
                        *(["-Wl,--wrap=pthread_mutex_lock"] if source=="queue_publication.cpp" else []),
+                       *(["-Wl,--wrap="+name for name in ("pthread_mutex_init", "pthread_mutex_destroy",
+                          "pthread_cond_init", "pthread_cond_destroy", "pthread_create", "pthread_join")]
+                         if source=="queue_init_failures.cpp" else []),
                        "-o", str(work / "probe")]
             compile_result = subprocess.run(command, capture_output=True, text=True, timeout=60)
             self.assertEqual(compile_result.returncode, 0, compile_result.stdout+compile_result.stderr)

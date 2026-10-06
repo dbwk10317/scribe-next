@@ -25,6 +25,7 @@
 #include "common.h"
 #include "scribe_server.h"
 #include <memory>
+#include <system_error>
 
 using namespace std;
 using namespace boost;
@@ -338,12 +339,27 @@ void StoreQueue::storeInitCommon() {
   // model store doesn't need this stuff
   if (!isModel) {
     msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);
-    pthread_mutex_init(&cmdMutex, NULL);
-    pthread_mutex_init(&msgMutex, NULL);
-    pthread_mutex_init(&hasWorkMutex, NULL);
-    pthread_cond_init(&hasWorkCond, NULL);
-
-    pthread_create(&storeThread, NULL, threadStatic, (void*) this);
+    bool cmd_ready = false, msg_ready = false, work_ready = false, cond_ready = false;
+    const auto check = [](int result, const char* operation) {
+      if (result) throw std::system_error(result, std::generic_category(), operation);
+    };
+    try {
+      check(pthread_mutex_init(&cmdMutex, NULL), "queue cmdMutex init");
+      cmd_ready = true;
+      check(pthread_mutex_init(&msgMutex, NULL), "queue msgMutex init");
+      msg_ready = true;
+      check(pthread_mutex_init(&hasWorkMutex, NULL), "queue hasWorkMutex init");
+      work_ready = true;
+      check(pthread_cond_init(&hasWorkCond, NULL), "queue hasWorkCond init");
+      cond_ready = true;
+      check(pthread_create(&storeThread, NULL, threadStatic, (void*) this), "queue worker create");
+    } catch (...) {
+      if (cond_ready) pthread_cond_destroy(&hasWorkCond);
+      if (work_ready) pthread_mutex_destroy(&hasWorkMutex);
+      if (msg_ready) pthread_mutex_destroy(&msgMutex);
+      if (cmd_ready) pthread_mutex_destroy(&cmdMutex);
+      throw;
+    }
   }
 }
 

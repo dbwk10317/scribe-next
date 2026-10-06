@@ -315,3 +315,19 @@ queue vector와 기존 mutex 순서, payload byte 합·unsigned 계산·limit �
 통과했다. fresh default 전체8단계·224 tests·failure/error/skip0·DESTDIR/help가
 통과했다. 기존 legacy queue/spool/relay 계약 시험을 포함한다. 전체 daemon TSan이나
 성능 결과가 아니며 raw는 astra-review/queue-snapshots-* 및 queue-snapshots-after에 있다.
+
+## Queue worker/同期 자원 초기화 실패
+
+2026-10-06, base main `7bc1d440ac74ae2ca112ca0551d8b438b2d53711`.
+actual Queue와 pthread failure wrapper에서 create EAGAIN을 무시한 객체 생성과
+worker 없는 join을 재현했다. 반환값을 검사하고 성공한 mutex/cond만 역순 정리한
+뒤 system_error를 던진다. 기존 handler의 생성 실패 처리에 연결되며 worker 없는
+큐를 공개하지 않는다. 정상 worker, queue 순서와 thread 구조는 그대로다.
+
+정상 생성 및 cmd/msg/hasWork mutex, cond, worker create의 5개 실패 subcase가
+하나의 새 regression으로 통과했다. 각 실패에서 초기화 자원 잔존0, 잘못된
+destroy/join0을 확인했다. fresh default 전체8단계·225 tests·failure/error/skip0·
+DESTDIR/help가 통과했다. 제한된 actual Queue/component ASan/UBSan/LSan도 정상
+실행 경로에서 exit0이었다. 기본 traced runner의 최초 LSan fatal/exit23은 별도로
+보존했고 보안·ptrace 설정이나 leak 검사를 끄지 않았다. 전체 daemon sanitizer
+성공은 아니다. raw는 astra-review/worker-init-* 및 worker-init-after에 있다.
