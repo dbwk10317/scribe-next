@@ -83,6 +83,19 @@ int ConnPool::send(const string &service,
   return sendCommon(service, messages);
 }
 
+// Keep one connection locked through status inspection or a send, including exceptions.
+namespace {
+class ConnectionGuard {
+ public:
+  explicit ConnectionGuard(scribeConn& connection) : connection(connection) { connection.lock(); }
+  ~ConnectionGuard() { connection.unlock(); }
+  ConnectionGuard(const ConnectionGuard&) = delete;
+  ConnectionGuard& operator=(const ConnectionGuard&) = delete;
+ private:
+  scribeConn& connection;
+};
+}
+
 bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn) {
 
 #define RETURN(x) {pthread_mutex_unlock(&mapMutex); return(x);}
@@ -98,6 +111,7 @@ bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn)
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
     boost::shared_ptr<scribeConn> old_conn = (*iter).second;
+    ConnectionGuard connection_guard(*old_conn);
     if (old_conn->isOpen()) {
       old_conn->addRef();
       RETURN(true);
@@ -147,11 +161,10 @@ int ConnPool::sendCommon(const string &key,
   pthread_mutex_lock(&mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
-    (*iter).second->lock();
+    boost::shared_ptr<scribeConn> connection = iter->second;
+    ConnectionGuard connection_guard(*connection);
     pthread_mutex_unlock(&mapMutex);
-    int result = (*iter).second->send(messages);
-    (*iter).second->unlock();
-    return result;
+    return connection->send(messages);
   } else {
     LOG_OPER("send failed. No connection pool entry for <%s>", key.c_str());
     pthread_mutex_unlock(&mapMutex);
