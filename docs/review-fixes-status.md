@@ -244,3 +244,23 @@ installed help 및 같은 TSan local peer 회귀(exit 0/경고 없음)가 통과
 TSan instrument 범위는 앞선 handler/updater source와 같으며 모든 dependency나
 daemon 경로를 검사한 것은 아니다. raw evidence는 checkout 밖 `batch6-before`,
 `batch6-after`, `batch6-before-tsan.log`, `batch6-after-tsan.log`다.
+
+## HDFS emulated-link 임시 객체 수명 (2026-10-06)
+
+Base main `6cff5e9`(PR #33)의 createSymlink는 new HdfsFile을 삭제하지 않았으며
+open 실패/short write에서는 native handle도 닫지 않았다. 실제 file.cpp/HdfsFile.cpp를
+기존 최소 include 경계와 scripted C API에 연결했다. 새 회귀 한 개의 8개 subcase 중
+수정 전 6개가 실패했다. 실패 경로의 남은 연결/file handle과 성공 경로의 80-byte
+HdfsFile 직접 누수를 확인했으며 후자는 LSan exit 23이었다. 이 C API는 모의이며
+JNI, Hadoop ABI/runtime 또는 실제 filesystem/server를 사용하는 시험은 아니다.
+
+임시 객체를 stack 수명으로 바꾸고 두 실패 반환 전에 기존 close를 호출했다.
+정상 성공 경로의 close는 유지한다. 실제 symlink를 도입하거나 기존 파일을
+지우지 않으며 기존 O_WRONLY/O_APPEND 선택, C API에 전달한 NUL/LF/non-ASCII bytes와
+성공/short-write/open-failure 반환값을 보존한다.
+
+수정 후 새 configure·clean/build·전체 218개(failure/error/skip 0)·DESTDIR install·
+installed help가 통과했다. component의 일반 및 ASan+UBSan+LSan 8개 subcase도
+모두 통과했다. 이번 LSan 결과는 실제 서버의 이 제한된 component이며 이전 cloud
+lane의 LSan 미실행이나 전체 daemon/HDFS 검증으로 합산하지 않는다. raw evidence는
+checkout 밖 `batch7-before.log`와 `batch7-after`에 보관했다.

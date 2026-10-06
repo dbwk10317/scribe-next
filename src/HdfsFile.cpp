@@ -1,4 +1,5 @@
 // scribe-next modification: adapt libhdfs delete API arity; preserve recursive behavior.
+// scribe-next modification: bound the emulated symlink object's lifetime and close failed output handles.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -201,17 +202,19 @@ bool HdfsFile::createDirectory(std::string path) {
 bool HdfsFile::createSymlink(std::string oldpath, std::string newpath) {
   LOG_OPER("[hdfs] Creating symlink oldpath %s newpath %s",
            oldpath.c_str(), newpath.c_str());
-  HdfsFile* link = new HdfsFile(newpath);
-  if (link->openWrite() == false) {
+  HdfsFile link(newpath);
+  if (link.openWrite() == false) {
     LOG_OPER("[hdfs] Creating symlink failed because %s already exists.",
              newpath.c_str());
+    link.close();
     return false;
   }
-  if (link->write(oldpath) == false) {
+  if (link.write(oldpath) == false) {
     LOG_OPER("[hdfs] Writing symlink %s failed", newpath.c_str());
+    link.close();
     return false;
   }
-  link->close();
+  link.close();
   return true;
 }
 
