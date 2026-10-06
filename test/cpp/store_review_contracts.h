@@ -46,6 +46,37 @@ static void runUpdaterReviewDriver(const std::string& filename) {
   }
 }
 
+static void runConcurrentUpdaterReview(const std::string& filename) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "concurrent updater config");
+  unsigned long remotePort = 0;
+  require(fixture.handler->getConfig().getUnsigned("remote_port", remotePort) &&
+              remotePort > 0 && remotePort <= 65535, "concurrent updater loopback port");
+  std::atomic<unsigned> ready{0}, successes{0};
+  std::atomic<bool> start{false};
+  std::vector<std::thread> callers;
+  std::cout << "READY review-updater-concurrent" << std::endl;
+  for (unsigned i = 0; i < 16; ++i) {
+    callers.emplace_back([&] {
+      ++ready;
+      while (!start.load()) std::this_thread::yield();
+      std::string host = "keep";
+      uint32_t port = 19;
+      if (DynamicBucketUpdater::getHost(fixture.handler.get(), "reviewmapping", 60, 42,
+          host, port, "127.0.0.1", static_cast<uint32_t>(remotePort), 500, 500, 500)
+          && host == "resolved" && port == 1234) ++successes;
+    });
+  }
+  while (ready.load() != 16) std::this_thread::yield();
+  start = true;
+  for (auto& caller : callers) caller.join();
+  require(successes == 16, "concurrent updater changed mapping results");
+  std::cout << "CONCURRENT 16 resolved 1234" << std::endl;
+  std::string command;
+  require(std::getline(std::cin, command) && command == "QUIT", "concurrent updater termination");
+}
+
 class ReviewNetworkStore : public NetworkStore {
  public:
   explicit ReviewNetworkStore(const std::string& category)
