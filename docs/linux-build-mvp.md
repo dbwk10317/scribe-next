@@ -1,5 +1,8 @@
 # 제한 Linux build MVP와 재사용 검증
 
+> 현재 상태(2026-10-06): 원본 계약 복원 [PR #25](https://github.com/dbwk10317/scribe-next/pull/25)는 병합됐으며 확인한 main은 `87b3ab3342715f8f831ad4bbef8d1b39420ee74a`이다.
+> 아래의 미반영·실패·승인 예외·시험 수는 각 단계의 당시 기록이다. 현재 정책과 지원 범위는 [README](../README.md)와 [호환성 정책](legacy-compatibility-policy.md)을 따른다.
+
 2026-10-05 · 단계별 검증 이력, 최초 base `621dfd1`
 
 현재 사용법과 완료 경계는 [README](../README.md)와
@@ -251,3 +254,51 @@ The [first modern-version boundary](first-modern-version.md) records the closed
 named dynamic-mapping/config scope separately from optional deeper matrices.
 The modern single-DN HDFS case is now recorded PASS; historical HDFS binary
 comparison, delete/fault/permission/replication coverage remain declared limits.
+
+## 검증용 Git 이력 준비
+
+검증기는 현재 Git checkout과 고정 원본의 commit object를 함께 사용한다.
+ZIP 다운로드나 현재 파일만 복사한 폴더로는 전체 검증을 실행할 수 없다.
+원본 object가 없는 일반 checkout은 최초 준비 시 공식 upstream에서 명시적으로 가져온다.
+검증기 자체는 보호 옵션을 제거하거나 원본 이력을 자동으로 fetch하지 않는다.
+
+```sh
+git --no-replace-objects --no-lazy-fetch --version && \
+git fetch https://github.com/facebookarchive/scribe.git fcd294faffd1e88af1643a3a8c2359c41713f7c2:refs/remotes/upstream/baseline && \
+git --no-replace-objects --no-lazy-fetch cat-file -e 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{commit}'
+```
+
+이미 원본 object가 있는 작업 사본은 fetch할 필요가 없다.
+첫 명령이 옵션 미지원으로 실패하면 두 보호 옵션을 지원하는 Git을 준비하고 진행한다.
+GitHub 프로젝트 checkout만으로 원본 object가 항상 포함된다고 가정하지 않는다.
+
+## 수동 빌드 예제
+
+자동 검증 대신 기존 autotools를 직접 실행할 때의 예제다. 아래 의존성 경로는
+README의 빠른 시작과 같이 이미 준비한 실제 설치 위치를 사용한다.
+설치는 별도 `DESTDIR`에서 확인하며 공유 RPC·HDFS는 해당 옵션과 라이브러리를 따로 준비한다.
+
+```sh
+export SCRIBE_BUILD=/absolute/fresh/source-copy
+export TOOLS_LIBDIR="$TOOLS_PREFIX/lib/x86_64-linux-gnu"
+cd "$SCRIBE_BUILD"
+CPPFLAGS="-I$TOOLS_PREFIX/include -I$TOOLS_PREFIX/include/x86_64-linux-gnu" \
+CXXFLAGS="-O2 -std=c++17 -D_GLIBCXX_USE_DEPRECATED=0" \
+LDFLAGS="-L$TOOLS_LIBDIR -L$THRIFT_PREFIX/lib -L$FB303_PREFIX/lib -Wl,-rpath,$TOOLS_LIBDIR -Wl,-rpath,$THRIFT_PREFIX/lib -Wl,-rpath,$FB303_PREFIX/lib" \
+sh ./bootstrap.sh --prefix=/opt/scribe \
+  --with-thriftpath="$THRIFT_PREFIX" --with-fb303path="$FB303_PREFIX" \
+  --with-boost="$TOOLS_PREFIX" --with-boost-system=boost_system \
+  --with-boost-filesystem=boost_filesystem
+make clean
+make -C src thriftstyle
+make -j2
+src/scribed --help
+```
+
+이 예제에서 flags는 호출자가 정하는 값이다. bootstrap은 이미 지정한
+`CFLAGS`/`CXXFLAGS`의 값과 빈 값을 덮어쓰지 않는다.
+shared RPC는 기존 `--disable-static` 선택을 사용하며 설치된 두 RPC `.so`와
+그 의존성을 실행 프로세스에서 찾을 수 있게 해야 한다. 기본 static RPC 빌드도
+모든 의존성을 포함하는 완전 정적 실행 파일은 아니다.
+HDFS의 `--enable-hdfs --with-hadooppath=...`, libhdfs/libjvm와 classpath는
+[HDFS 안내](hdfs-compatibility.md)를 따른다.

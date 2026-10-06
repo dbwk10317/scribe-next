@@ -1,6 +1,9 @@
 # ThriftFileStore의 제한된 transport 관찰
 
-2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 되돌린다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+> 현재 상태(2026-10-06): 원본 계약 복원 [PR #25](https://github.com/dbwk10317/scribe-next/pull/25)는 병합됐으며 확인한 main은 `87b3ab3342715f8f831ad4bbef8d1b39420ee74a`이다.
+> 아래의 미반영·실패·승인 예외·시험 수는 각 단계의 당시 기록이다. 현재 정책과 지원 범위는 [README](../README.md)와 [호환성 정책](legacy-compatibility-policy.md)을 따른다.
+
+2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 PR #25에서 되돌렸다. 과거 raw 결과는 현재 검증으로 세지 않는다.
 
 2026-10-05 · base/main `c3f3459b5d42672e7a8c21cc56bdd6cf94d97b76` · copy 최소 수정 작업 트리
 
@@ -85,7 +88,7 @@ ThriftFileStore::flush는 production no-op이다. default close는 TFileTranspor
 
 ## 서버 재현과 인계
 
-기존 승인된 matched Thrift/fb3030.25/Boost/libevent/Autotools prefixes를 사용해 새 source copy에서 [README recipe](../README.md#검증된-linux-c-빌드-recipe)를 실행한다. source/generated code/object freshness 검사를 유지하며 cloud objects/binaries를 복사하지 않는다.
+기존 승인된 matched Thrift/fb3030.25/Boost/libevent/Autotools prefixes를 사용해 새 source copy에서 [수동 빌드 예제](linux-build-mvp.md#수동-빌드-예제)를 실행한다. source/generated code/object freshness 검사를 유지하며 cloud objects/binaries를 복사하지 않는다.
 
 ```sh
 export THRIFT_PREFIX=/absolute/existing/thrift-0.25.0
