@@ -1,5 +1,6 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: release the updater lock on unwind and handle Thrift RPC exceptions.
+// scribe-next modification: keep every singleton pointer access under its existing mutex.
 #include <strstream>
 #include <iostream>
 #include "dynamic_bucket_updater.h"
@@ -412,10 +413,6 @@ bool DynamicBucketUpdater::updateInternal(
 
 DynamicBucketUpdater* DynamicBucketUpdater::getInstance(
                                         FacebookBase *fbBase) {
-  if (DynamicBucketUpdater::instance_) {
-    return DynamicBucketUpdater::instance_;
-  }
-
   Guard g(DynamicBucketUpdater::instanceLock_);
   if (!DynamicBucketUpdater::instance_) {
     DynamicBucketUpdater::instance_ = new DynamicBucketUpdater(fbBase);

@@ -79,6 +79,14 @@ class StoreReviewContracts:
             self.assertEqual(peer.read_line(), "MAPPING 1 resolved 1234")
             peer.no_pending_connections()
 
+    def test_review_updater_concurrent_first_lookup_shares_one_cached_mapping(self):
+        peer = self.updater_review_peer()
+        peer.mode = "review-updater-concurrent"
+        with peer:
+            peer.success()
+            self.assertEqual(peer.read_line(), "CONCURRENT 16 resolved 1234")
+            peer.no_pending_connections()
+
     def test_review_updater_protocol_and_application_errors_recover(self):
         # Independent framed-binary responses from the owned loopback fixture.
         protocol_error = struct.pack(">i", -1)

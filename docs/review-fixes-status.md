@@ -228,3 +228,19 @@ installed help가 통과했다. 같은 local ThreadSanitizer fixture도 exit 0/�
 production objects와 dependency는 instrument하지 않았다. 전체 daemon race 부재,
 old/new production 동등성이나 benchmark 결과가 아니다. raw evidence는 checkout 밖
 `batch5-before`, `batch5-after`, `batch5-before-tsan.log`, `batch5-after-tsan.log`다.
+
+## Updater singleton pointer 동기화 (2026-10-06)
+
+Base main `e40ea3d`(PR #32)의 getInstance는 기존 Mutex 획득 전에 instance_를
+읽어 조기 반환했다. 16개의 첫 조회가 같은 local mapping peer/cache를 공유하는
+회귀를 추가했다. 수정 전 일반 clean build·전체 217개는 통과했지만 제한된
+ThreadSanitizer 실행은 global instance_의 읽기/쓰기 경쟁을 보고하고 exit 66이었다.
+일반 시험 성공을 경쟁 부재의 증거로 사용하지 않는다.
+
+잠금 밖 조기 반환만 제거해 기존 instanceLock_ 아래에서 생성·조회·반환한다.
+singleton 수명·첫 fb303 소유자, mapping 조회 범위·TTL/cache와 반환값은 유지한다.
+수정 후 새 configure·clean/build·전체 217개(failure/error/skip 0)·DESTDIR install·
+installed help 및 같은 TSan local peer 회귀(exit 0/경고 없음)가 통과했다.
+TSan instrument 범위는 앞선 handler/updater source와 같으며 모든 dependency나
+daemon 경로를 검사한 것은 아니다. raw evidence는 checkout 밖 `batch6-before`,
+`batch6-after`, `batch6-before-tsan.log`, `batch6-after-tsan.log`다.
