@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #include "common.h"
 #include "scribe_server.h"
+#include <cstring>
 
 using apache::thrift::protocol::TBinaryProtocol;
 using apache::thrift::protocol::TProtocol;
@@ -459,6 +460,8 @@ int main(int argc, char** argv) {
       testBufferStatusPublication();
     } else if (std::string(argv[1]) == "review-conf-parent") {
       testConfigParentOwnership(argv[2]);
+    } else if (std::string(argv[1]) == "review-multi-report") {
+      testMultiReportDefault();
     } else if (std::string(argv[1]) == "loopback-server") {
       runLoopbackServer(argv[2], argv[3]);
       return 0;

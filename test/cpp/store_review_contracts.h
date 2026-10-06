@@ -42,6 +42,49 @@ static void testConfigParentOwnership(const std::string& filename) {
 }
 
 
+class ResultNullStore : public NullStore {
+ public:
+  explicit ResultNullStore(bool result) : NullStore(nullptr, "fixture", false), result_(result) {}
+  bool open() override { return result_; }
+  bool isOpen() override { return result_; }
+  bool handleMessages(boost::shared_ptr<logentry_vector_t>) override { return result_; }
+  boost::shared_ptr<Store> copy(const std::string&) override {
+    return boost::shared_ptr<Store>(new ResultNullStore(result_));
+  }
+ private:
+  bool result_;
+};
+class ReportMultiStore : public MultiStore {
+ public:
+  ReportMultiStore() : MultiStore(nullptr, "fixture", false) {}
+  void addResult(bool result) { stores.push_back(boost::shared_ptr<Store>(new ResultNullStore(result))); }
+};
+static void testMultiReportDefault() {
+  alignas(MultiStore) unsigned char memory[sizeof(MultiStore)];
+  std::memset(memory, 0xa5, sizeof(memory));
+  MultiStore* invalid = new(memory) MultiStore(nullptr, "fixture", false);
+  pStoreConf config(new StoreConf);
+  config->setString("report_success", "invalid");
+  invalid->configure(config, pStoreConf());
+  require(invalid->getStatus() == "MULTI: Invalid report_success value.", "invalid report diagnostic changed");
+  require(invalid->isOpen(), "invalid initial configuration has indeterminate report mode");
+  require(invalid->open(), "empty all-mode open changed");
+  boost::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
+  require(invalid->handleMessages(messages), "empty all-mode aggregation changed");
+  invalid->~MultiStore();
+  for (const char* mode : {"all", "any"}) {
+    ReportMultiStore store;
+    config->setString("report_success", mode);
+    store.configure(config, pStoreConf());
+    store.addResult(false); store.addResult(true);
+    const bool expected = std::string(mode) == "any";
+    require(store.open() == expected && store.isOpen() == expected &&
+            store.handleMessages(messages) == expected, "valid all/any aggregation changed");
+    boost::shared_ptr<Store> copy = store.copy("copied");
+    require(copy->isOpen() == expected, "copy lost report mode");
+  }
+}
+
 // GNU link wrapping injects one local allocation failure; every other allocation
 // uses the real operator new. Only the single-threaded updater driver arms it.
 static bool reviewFailNextAllocation = false;

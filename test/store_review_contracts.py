@@ -64,6 +64,9 @@ class StoreReviewPeer(relay.RelayPeer):
 
 
 class StoreReviewContracts:
+    def test_review_multi_invalid_initial_report_and_valid_all_any_copy(self):
+        self.run_fixture("review-multi-report")
+
     def test_review_nested_configuration_inherits_and_releases_with_store_owner(self):
         self.run_fixture("review-conf-parent", "port=1463\n<store>\ntype=multi\n"
                          "null::local=parent\nnull::nearest=parent\nnull::outer=parent\n"
