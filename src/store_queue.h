@@ -25,6 +25,7 @@
 #define SCRIBE_STORE_QUEUE_H
 
 #include "common.h"
+#include <atomic>
 
 class Store;
 
@@ -58,7 +59,7 @@ class StoreQueue {
   // WARNING: don't expect this to be exact, because it could change after you check.
   //          This is only for hueristics to decide when we're overloaded.
   inline unsigned long long getSize() {
-    return msgQueueSize;
+    return msgQueueSize.load(std::memory_order_relaxed);
   }
  private:
   void storeInitCommon();
@@ -90,7 +91,7 @@ class StoreQueue {
   cmd_queue_t cmdQueue;
   boost::shared_ptr<logentry_vector_t> msgQueue;
   boost::shared_ptr<logentry_vector_t> failedMessages;
-  unsigned long long msgQueueSize;   // in bytes
+  std::atomic<unsigned long long> msgQueueSize;   // in bytes
   pthread_t storeThread;
 
   // Mutexes
@@ -110,7 +111,7 @@ class StoreQueue {
   // configuration
   std::string        categoryHandled;  // what category this store is handling
   time_t             checkPeriod;      // how often to call periodicCheck in seconds
-  unsigned long long targetWriteSize;  // in bytes
+  std::atomic<unsigned long long> targetWriteSize;  // in bytes
   time_t             maxWriteInterval; // in seconds
   bool               mustSucceed;      // Always retry even if secondary fails
 
