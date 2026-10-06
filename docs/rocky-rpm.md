@@ -71,7 +71,9 @@ read-only, network none, cap-drop ALL, no-new-privileges를 유지한다. `/veri
 `/expected-licenses.json`에 고정 기대값, `/packages`에 RPM 폴더를 read-only bind하고
 matching runtime image의 `/usr/libexec/platform-python -B /verify.py /packages/<rpm>`을 호출한다.
 script는 Requires/Provides, 빈 scriptlet, `rpm -V`, 7개 license hash, loader closure,
-설치된 help와 제거 후 package 디렉터리 및 6개 build-id 링크 삭제를 확인한다.
+설치된 help와 실제 daemon RPC·동일 RPM 재설치, 제거 후 package 디렉터리 및
+6개 build-id 링크 삭제를 확인한다. 기존 `test/loopback_rpc.py`도 `/loopback_rpc.py`에
+read-only bind한다. 설치된 Python Thrift client 대신 기존 독립 IDL wire helper를 사용한다.
 RPM의 표준 build-id metadata는 payload를 가리키는 symlink인지 검사한다.
 다른 패키지와 공유하는 시스템 디렉터리 전체를 지우도록 요구하지 않는다.
 
@@ -86,6 +88,27 @@ RPM의 표준 build-id metadata는 payload를 가리키는 symlink인지 검사�
 생성하는 build-id 경로를 예상하지 못해 실패했다. 기대 경로를 바로잡고 새 컨테이너에서
 payload 안으로 향하는 링크 및 제거 후 삭제까지 확인했다. 실패 기록을 성공으로 세지 않는다.
 
-각 major의 기본 userland 패키지 검증이며, 패키지 안 실제 daemon의 송수신, upgrade,
-reinstall, 비정상 중단, HDFS/shared RPC와 production kernel/service 배포는 미검증이다.
+각 major의 기본 userland 패키지 검증이며, 서로 다른 버전 간 upgrade, 비정상 중단,
+HDFS/shared RPC와 production kernel/service 배포는 미검증이다.
 기존 core 218 tests/skip 0과 actual old/new 검증 범위를 이 RPM help 결과로 넓히지 않는다.
+
+## 설치된 daemon과 동일 RPM 재설치
+
+위 두 개발 RPM을 새 Rocky 8/9 runtime 컨테이너에 실제 설치한 뒤 각 2회 daemon을
+실행했다. namespace는 network none이며 source/RPM/script mounts는 read-only다.
+고정 포트 1463은 이 전용 namespace 안에서만 사용하며 포트를 publish하지 않는다.
+client의 127.0.0.1 peer와 실제 child가 소유하는 listener socket inode도 검사한다.
+
+각 실행에서 ALIVE status, framed binary `Log`의 OK, `accepted:received good` counter,
+기존 fb303 oneway `shutdown`과 exit 0을 확인한다. `add_newlines=0`·rotation never의
+file fixture를 사용하며 queue 수락 ACK와 실제 파일 완료를 구분한다. shutdown 뒤
+정확한 bytes를 비교하므로 정상 종료의 worker flush도 검증한다. timeout이 나면 owned
+child만 terminate/kill/reap하고 해당 실행을 실패로 처리한다.
+
+첫 종료 후 파일은 `4100420affc3a96265666f72650a`이고 수신 count는 2다.
+`rpm -U --replacepkgs`로 **같은 RPM**을 재설치하며 `rpm -V`, 고정 설정·로그의
+bytes/hash·mode·uid/gid 보존을 검사한다. 재시작해 메시지 1개를 더 보내고 정상
+shutdown 후 같은 파일은 `4100420affc3a96265666f72650a7461696c00ff0a`다.
+재시작한 프로세스의 수신 count는 1이다. 두 Rocky에서 모든 단계가 성공했다.
+fixture는 컨테이너 안 새 임시 폴더이며 사용자 데이터가 아니다. 이를 다른 원본 버전의
+upgrade·downgrade 안전성이나 durable ACK·exactly-once 보장으로 확대하지 않는다.
