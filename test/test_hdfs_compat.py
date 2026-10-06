@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise both official libhdfs delete API shapes without a Hadoop install."""
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -51,6 +52,43 @@ int main() {
 
     def test_modern_three_argument_api_preserves_recursive_delete(self):
         self.check_api(True)
+
+
+class HdfsLinkLifetimeTests(unittest.TestCase):
+    def test_temporary_link_releases_object_and_native_handles(self):
+        prefix = os.environ.get("TOOLS_PREFIX")
+        compiler = shutil.which("g++")
+        if not prefix or not compiler:
+            self.skipTest("actual HdfsFile component unrun; set TOOLS_PREFIX and provide g++")
+        tools = Path(prefix).resolve()
+        libraries = [tools / "lib", *sorted((tools / "lib").glob("*-linux-gnu"))]
+        env = dict(os.environ)
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(map(str, libraries))
+        env["ASAN_OPTIONS"] = "halt_on_error=1:alloc_dealloc_mismatch=1:detect_leaks=1"
+        env["LSAN_OPTIONS"] = "exitcode=23"
+        env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"
+        with tempfile.TemporaryDirectory(prefix="scribe-hdfs-lifetime-") as directory:
+            work = Path(directory)
+            for name in ("file.cpp", "file.h", "HdfsFile.cpp", "HdfsFile.h", "compat_hdfs.h"):
+                shutil.copyfile(ROOT / "src" / name, work / name)
+            shutil.copyfile(ROOT / "test/cpp/spool_component_common.h", work / "common.h")
+            for sanitized in (False, True):
+                binary = work / ("sanitized" if sanitized else "ordinary")
+                flags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if sanitized else []
+                command = [compiler, "-std=c++17", "-O1", "-g", "-DUSE_SCRIBE_HDFS", *flags,
+                           "-I", str(work), "-I", str(ROOT / "test/fixtures/hdfs_mock"),
+                           "-I", str(tools / "include"), str(work / "file.cpp"),
+                           str(work / "HdfsFile.cpp"), str(ROOT / "test/cpp/hdfs_link_lifetime.cpp"),
+                           *("-L" + str(path) for path in libraries), "-lboost_filesystem", "-o", str(binary)]
+                compiled = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE,
+                                          stderr=subprocess.STDOUT, timeout=90)
+                self.assertEqual(compiled.returncode, 0, compiled.stdout)
+                for mode in ("success", "existing", "open-failure", "short-write"):
+                    with self.subTest(sanitized=sanitized, mode=mode):
+                        executed = subprocess.run([binary, mode], env=env, text=True,
+                                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=15)
+                        self.assertEqual(executed.returncode, 0, executed.stdout)
+                        self.assertIn("PASS " + mode, executed.stdout)
 
 
 if __name__ == "__main__":
