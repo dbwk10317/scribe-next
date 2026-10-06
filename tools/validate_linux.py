@@ -195,9 +195,10 @@ sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
         result["dependency_files"] = []
         for root, patterns in ((thrift, ("bin/thrift", "lib/libthrift*")),
                                (fb303, ("lib/libfb303*",)),
-                               (tools, ("lib/x86_64-linux-gnu/libboost_system*",
-                                        "lib/x86_64-linux-gnu/libboost_filesystem*",
-                                        "lib/x86_64-linux-gnu/libevent*"))):
+                               (tools, tuple(directory + "/" + library
+                                             for directory in ("lib/x86_64-linux-gnu", "lib64", "lib")
+                                             for library in ("libboost_system*", "libboost_filesystem*",
+                                                             "libboost_atomic*", "libevent*")))):
             for pattern in patterns:
                 for p in sorted(root.glob(pattern)):
                     if p.is_file():

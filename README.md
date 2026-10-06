@@ -36,12 +36,16 @@ Scribe의 로그 수집 구조, 설정 형식, Thrift 통신과 저장 파일 �
 
 | 항목 | 확인한 환경 |
 | --- | --- |
-| 운영체제 | Linux x86_64: Debian 13, Ubuntu 26.04.1 |
-| C++ | C++17, GCC 14.2 / 15.2 |
+| 운영체제 | Linux x86_64: Debian 13, Ubuntu 26.04.1; Rocky 8.10 / 9.8 기본 빌드·임시 설치 |
+| C++ | C++17, GCC 8.5 / 11.5 / 14.2 / 15.2 |
 | 통신 라이브러리 | Thrift compiler와 C++ runtime 0.25.0, 이에 맞춰 준비한 fb303 |
 | 기타 빌드 도구 | Boost 1.83의 system/filesystem, libevent, pthread, make, autoconf, automake, libtool, Git |
 | Python 설치 검사 | Python 3.12 / 3.14, setuptools와 해당 Thrift/fb303 Python runtime |
 | 선택 기능 | 공유 RPC 라이브러리, Hadoop 3.5/libhdfs와 JDK 17을 사용하는 HDFS |
+
+Rocky의 기본 비-HDFS/static 검증은 각 218개 시험과 임시 설치까지 확인했습니다.
+[Rocky 빌드 안내](docs/rocky-build.md)의 별도 준비 조건을 따르세요.
+Rocky의 HDFS/shared RPC와 RPM 패키지는 아직 검증하지 않았습니다.
 
 HDFS는 하나의 DataNode로 구성한 테스트에서 파일 쓰기·다시 열어 추가 쓰기와
 Hadoop client로 저장 내용을 읽는 것을 확인했습니다.
