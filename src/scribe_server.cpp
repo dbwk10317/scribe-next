@@ -419,7 +419,7 @@ void scribeHandler::addMessage(
 ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
   ResultCode result = TRY_LATER;
 
-  scribeHandlerLock->acquireRead();
+  RWGuard monitor(*scribeHandlerLock);
   if(status == STOPPING) {
     result = TRY_LATER;
     goto end;
@@ -452,8 +452,7 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
     // Try creating a new store for this category if we didn't find one
     if (store_list == NULL) {
       // Need write lock to create a new category
-      scribeHandlerLock->release();
-      scribeHandlerLock->acquireWrite();
+      monitor.releaseAndAcquireWrite();
 
       // This may cause some duplicate messages if some messages in this batch
       // were already added to queues
@@ -484,7 +483,6 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
   result = OK;
 
  end:
-  scribeHandlerLock->release();
   return result;
 }
 

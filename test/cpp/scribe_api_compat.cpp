@@ -462,6 +462,8 @@ int main(int argc, char** argv) {
       testConfigParentOwnership(argv[2]);
     } else if (std::string(argv[1]) == "review-multi-report") {
       testMultiReportDefault();
+    } else if (std::string(argv[1]) == "review-log-read" || std::string(argv[1]) == "review-log-write") {
+      testLogExceptionLock(argv[2], std::string(argv[1]) == "review-log-write");
     } else if (std::string(argv[1]) == "loopback-server") {
       runLoopbackServer(argv[2], argv[3]);
       return 0;
