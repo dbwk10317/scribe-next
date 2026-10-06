@@ -8,7 +8,7 @@
 
 ## 범위와 결과
 
-production 코드·IDL·build 규칙을 바꾸지 않고, 실제 TCP framing부터 generated processor·현재 scribeHandler·StoreQueue/FileStore worker까지 이어지는 **test-only loopback server**를 추가했다. 승인된 truncate 수정과 기존 LF·ACK·loss/retry 의미는 그대로다. 고정 원본 Scribe/Thrift daemon과의 differential이나 회사 운영 동등성을 완료한 것은 아니다.
+production 코드·IDL·build 규칙을 바꾸지 않고, 실제 TCP framing부터 generated processor·당시 scribeHandler·StoreQueue/FileStore worker까지 이어지는 **test-only loopback server**를 추가했다. 당시 승인된 truncate 수정과 LF·ACK·loss/retry 의미를 유지했다. 현재 truncate 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따른다. 고정 원본 Scribe/Thrift daemon과의 differential이나 회사 운영 동등성을 완료한 것은 아니다.
 
 클라우드에서는 기존 승인된 Debian 13·GCC 14.2·Boost 1.83·Thrift/fb303 0.25.0 도구만 사용한다. 기존 source-matched production objects를 재사용하되 각 실행에서 source·generated code·object dependency freshness를 검사하고 새 C++ fixture를 컴파일한다. 이번 클라우드 단계에서 전체 scribed clean build·패키지 설치는 수행하지 않았다. 별도 Ubuntu clean build 결과는 아래에 구분한다.
 

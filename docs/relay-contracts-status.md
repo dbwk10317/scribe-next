@@ -10,7 +10,7 @@
 
 이전 수신 RPC fixture에서 outbound 경로로 범위를 확장했다. 실제 `NetworkStore`, `ConnPool`, `scribeConn`과 현재 generated client를 사용한다. 실패·재시도 시험은 단일 thread의 Python 표준 라이브러리 peer와 직접 `handleMessages()` 호출로 제어하며, 별도 정상 사례 하나에서 실제 handler→StoreQueue/network worker→다른 handler→FileStore worker까지 연결한다.
 
-production 코드·IDL·build 규칙은 변경하지 않았다. 승인된 truncate 수정과 기존 ACK·retry·손실·중복 의미를 유지한다. 클라우드에서는 새 의존성을 설치하지 않고 기존 Debian 13·GCC 14.2·Boost 1.83·Thrift/fb303 0.25.0 도구와 source-matched production objects를 사용한다. fixture는 새로 컴파일하며 source·generated code·compiler dependency freshness 검사를 유지한다. 이 클라우드 단계의 새 full scribed clean build는 수행하지 않았다. 별도 Ubuntu v11 clean build는 아래에 구분한다.
+production 코드·IDL·build 규칙은 변경하지 않았다. 당시 승인된 truncate 수정과 ACK·retry·손실·중복 의미를 유지했다. 현재 truncate 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따른다. 클라우드에서는 새 의존성을 설치하지 않고 기존 Debian 13·GCC 14.2·Boost 1.83·Thrift/fb303 0.25.0 도구와 source-matched production objects를 사용했다. fixture는 새로 컴파일하며 source·generated code·compiler dependency freshness 검사를 유지했다. 이 클라우드 단계의 새 full scribed clean build는 수행하지 않았다. 별도 Ubuntu v11 clean build는 아래에 구분한다.
 
 ## 실행 결과
 

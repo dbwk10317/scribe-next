@@ -20,6 +20,29 @@ import sys
 
 SOURCE = Path(__file__).resolve().parents[1]
 PREFIXES = ("THRIFT_PREFIX", "FB303_PREFIX", "TOOLS_PREFIX", "THRIFT_PYTHON_SOURCE")
+UPSTREAM = "fcd294faffd1e88af1643a3a8c2359c41713f7c2"
+
+
+def require_upstream(parser):
+    git = ["git", "--no-lazy-fetch", "--no-replace-objects"]
+    try:
+        capability = subprocess.run(git + ["--version"], cwd=SOURCE,
+                                    capture_output=True, text=True, timeout=30)
+        if capability.returncode:
+            parser.error("Git cannot use required --no-lazy-fetch/--no-replace-objects "
+                         "options; upstream objects were not read: " + capability.stderr.strip())
+        for object_name in (UPSTREAM + "^{commit}",
+                            *(UPSTREAM + ":src/" + name
+                              for name in ("file.cpp", "file.h", "HdfsFile.h"))):
+            result = subprocess.run(git + ["cat-file", "-e", object_name], cwd=SOURCE,
+                                    capture_output=True, text=True, timeout=30)
+            if result.returncode:
+                parser.error("required local upstream object is unavailable: " + object_name
+                             + "; prepare the pinned upstream explicitly as described in "
+                             "README.md. No fetch was attempted: " + result.stderr.strip())
+    except (OSError, subprocess.TimeoutExpired) as error:
+        parser.error("Git preflight failed before creating output or running build tools: "
+                     + str(error))
 
 
 def file_record(path, root):
@@ -51,7 +74,10 @@ def main():
     missing = [name for name in PREFIXES if not env.get(name) or not Path(env[name]).is_dir()]
     if missing:
         parser.error("provide existing directories for " + ", ".join(missing))
-    for tool in ("git", "make", "autoreconf") + (("readelf",) if args.shared_rpc else ()):
+    if not shutil.which("git"):
+        parser.error("missing existing tool: git")
+    require_upstream(parser)
+    for tool in ("make", "autoreconf") + (("readelf",) if args.shared_rpc else ()):
         if not shutil.which(tool):
             parser.error("missing existing tool: " + tool)
     thrift, fb303, tools, python_source = (Path(env[n]).resolve() for n in PREFIXES)

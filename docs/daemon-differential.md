@@ -2,6 +2,8 @@
 
 2026-10-05 · base main `fc3767bc4b44646e3eb232d65aa77ae47447d5fa`
 
+아래 단계별 binary·source·승인 설명은 당시 이력이다. 현재 empty-only drain·truncate·copy의 동작은 PR #25 이후 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따른다. 과거 성공을 현재 검증으로 합산하지 않는다.
+
 ## 실제 선행 결과와 이번 범위
 
 공개 원본 `fcd294f` + Thrift/fb3030.9.0 daemon과 현재0.25 daemon을 각각의
@@ -85,7 +87,7 @@ received9/ignored6, 네 파일 bytes/네 symlink와 양쪽 shutdown exit0이 일
 고정2초 settle을 변경하지 않았고 새 clean build는 수행하지 않았다.
 전체 suite는 기존160+새2=162, focused는 기존7+새2=9다.
 
-기존 승인된 empty-only queue drain 수정은 별도 예외로 유지한다. Null/multi는
+당시 승인된 empty-only queue drain 수정은 별도 예외로 유지했다. Null/multi는
 nonempty 마지막 payload와 함께 전송하고 category도 마지막 정상 payload를
 nonempty로 두어 이 정상 case를 empty-only scheduler 대조로 확대하지 않는다.
 free/truncate, bucket/network 설정·copy, ThriftFileStore copy와 oversized/empty
@@ -148,7 +150,7 @@ socket inode 검사, runtime30개 hash/private loader/help, 실제 networknone/u
 및 기존 resource 제한을 확인했고 운영30개 container ID는 유지됐다. 기존 matching
 compiled production을 재사용했고 새 clean build는 수행하지 않았다. Focused offline
 시험은 기존9+새2=11이며 실제 daemon 실행 횟수와 구분한다.
-승인된 empty-only/truncate/copy 예외와 oversized/empty 정책은 유지한다.
+당시 승인된 empty-only/truncate/copy 예외와 oversized/empty 정책은 유지했다.
 
 
 ## 실제 process crash/restart case
@@ -205,8 +207,8 @@ rand()%1=0으로 양쪽 모두 고정 retry_interval=10을 준다. 최초 실패
 삭제·정규화하지 않는다. 초기 spool은8초, replay/streaming 준비 관찰은 각20초 이내 정확한 bytes/link/delete를
 기다릴 뿐 추가 RPC/input을 보내지 않는다. 느린 환경에서는 기한을 실패로 보고한다.
 
-이 작은 full-success replay는 deleteOldest 경로이며 승인된 partial replay
-replaceOldest/openTruncate 수정은 실행하지 않는다. relay ACK는 queue 수락이며
+이 작은 full-success replay는 deleteOldest 경로이며 당시 승인된 partial replay
+replaceOldest/openTruncate 수정은 실행하지 않았다. relay ACK는 queue 수락이며
 fsync/power-loss 또는 exactly-once 보장은 아니다. empty frame/oversized chunk와
 256MiB 초과 retry 계약도 바꾸거나 검증한 것으로 확대하지 않는다. production과
 dependency 변경은 없다. cloud는 synthetic report/가짜 child 실패 회수와 spool
@@ -236,7 +238,7 @@ bucket0..N의 원본 pointer arithmetic 결함과 BucketStore 외부 copy 설정
 같이 검사한다. aliases는 fan-out이 아니라 CategoryStore 모델의 per-category
 파일 생성이다. wildcard 공유 queue(new_thread_per_category=no) 아래 mfA/mfB와
 tmfA/tmfB를 나누고 child directory/basename과 상대 current link를 대조한다.
-framed thriftmultifile은 use_simple_file=0이므로 승인된 raw-copy 차이가 없다.
+당시 framed thriftmultifile은 use_simple_file=0이므로 raw-copy 수정의 차이가 없었다.
 직접 raw thriftfile은 copy를 호출하지 않는다.
 
 framed binary5/ends\n은 각각 native uint32 length+5 bytes의9바이트 event다.
