@@ -1,3 +1,4 @@
+// scribe-next modification: return an empty string from the unavailable HDFS stub.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -80,7 +81,7 @@ class HdfsFile : public FileInterface {
   long readNext(std::string& _return) { return false; };
   void deleteFile() {};
   void listImpl(const std::string& path, std::vector<std::string>& _return) {};
-  std::string getFrame(unsigned data_size) { return 0; };
+  std::string getFrame(unsigned data_size) { return std::string(); };
   bool createDirectory(std::string path) { return false; };
   bool createSymlink(std::string newpath, std::string oldpath) { return false; };
 };

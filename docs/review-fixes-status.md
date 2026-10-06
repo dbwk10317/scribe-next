@@ -173,3 +173,17 @@ scribed help가 통과했다. raw evidence는 checkout 밖 `batch2-before-ready`
 `ffe7711017077c0457a89f507dc4b5ca9e13596614b757ac884578f1ad487e66`이다.
 이 결과는 비-HDFS/static lane이며 Rocky8/9, actual old/new production daemon 및
 전체 fault matrix의 새 검증으로 확대하지 않는다.
+
+## 비-HDFS stub의 null string 반환 방어 (2026-10-06)
+
+Base main `104d4d0`(PR #29)의 비-HDFS `HdfsFile::getFrame`은 `return 0`으로
+null C string에서 std::string을 생성했다. 실제 component fixture에서 새 회귀 한 개의
+6개 subcase(길이 0/1/UINT_MAX, 일반 및 ASan+UBSan 실행)가 모두 std::logic_error와
+abort로 실패했다. enabled-HDFS 구현을 호출하거나 수정한 결과는 아니다.
+
+빈 std::string을 반환하도록 한 줄을 수정했다. stub의 openWrite/isOpen false와
+HDFS 미지원 상태를 유지하며 프레임이나 저장 기능을 새로 구현하지 않는다.
+수정 후 ordinary-spool component 13개가 failure/error/skip 0으로 통과했다.
+현재 component의 ASan+UBSan 실행과 원본/현재 ordinary-spool 교차 reader 검사를
+포함하며 LSan, 새 full daemon build 및 enabled-HDFS 검증은 포함하지 않는다.
+raw evidence는 checkout 밖 `batch3-before.log`와 `batch3-after.log`에 보관했다.
