@@ -1,5 +1,7 @@
 # 제한 Linux build MVP와 재사용 검증
 
+현재 fb303 dependency는 [고정 0.25.0 counter 안전성 patch](fb303-counter-safety.md)를 별도 build source에 적용해 준비한다. 공식 source와 system package를 수정하지 않는다.
+
 > 현재 상태(2026-10-06): 원본 계약 복원 [PR #25](https://github.com/dbwk10317/scribe-next/pull/25)는 병합됐으며 확인한 main은 `87b3ab3342715f8f831ad4bbef8d1b39420ee74a`이다.
 > 아래의 미반영·실패·승인 예외·시험 수는 각 단계의 당시 기록이다. 현재 정책과 지원 범위는 [README](../README.md)와 [호환성 정책](legacy-compatibility-policy.md)을 따른다.
 

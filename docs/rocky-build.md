@@ -56,7 +56,7 @@ Homebrew bison formula와 대조했다. GNU signature/keyring 다운로드가 ti
 아래 변수는 이미 준비한 절대경로로 바꾸며 새 output 이름을 사용한다.
 
 ```sh
-# CONTEXT: public archives + the two Dockerfiles; CHECKOUT: Git checkout
+# CONTEXT: public archives, two Dockerfiles, prepare_fb303.py and fb303 counter-lock patch; CHECKOUT: Git checkout
 # OUTPUT: existing writable parent outside CHECKOUT
 # BASE: the selected pinned RESF digest above; MAJOR: 8 or 9
 # BUILD_BISON: 1 for Rocky 8, 0 for Rocky 9
