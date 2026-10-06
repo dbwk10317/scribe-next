@@ -264,3 +264,22 @@ installed help가 통과했다. component의 일반 및 ASan+UBSan+LSan 8개 sub
 모두 통과했다. 이번 LSan 결과는 실제 서버의 이 제한된 component이며 이전 cloud
 lane의 LSan 미실행이나 전체 daemon/HDFS 검증으로 합산하지 않는다. raw evidence는
 checkout 밖 `batch7-before.log`와 `batch7-after`에 보관했다.
+
+## ConnPool send/reopen 객체 수명과 상태 lock
+
+2026-10-06, base main `fa0c60415964cd4f28b7b658dd054ecb22caffe5`.
+실제 ConnPool methods와 transport-free connection stub의 barrier 교차에서 send가
+기존 연결을 잠근 동안 reopen이 lock 없이 isOpen을 읽고 map entry를 교체했다.
+send는 교체된 새 객체를 unlock했다. 수정 전 unsafe_isOpen/wrong_unlock이 모두1로
+실패했고, fixture 최초 중첩 lock 작성 오류의 timeout은 별도 실패 기록으로 남겼다.
+
+send는 map lock 아래 strong reference와 connection guard를 획득한 뒤 map lock을
+풀고 같은 객체로 send/unlock한다. reopen의 기존 연결 상태 확인도 map→connection
+순서로 직렬화한다. key·refCount 이전/증가·마지막 close 정책은 그대로다.
+같은 guard는 send 예외 경로에서도 connection lock을 해제한다.
+
+수정 후 deterministic concurrent/exception 두 subcase는 하나의 regression test로
+통과했고, fresh default 전체8단계·221 tests·failure/error/skip0·DESTDIR/help도
+통과했다. 실제 pool methods와 fixture의 제한된 TSan은 exit0/경고 없음이다.
+이 stub 결과는 transport/network daemon의 전체 race 부재나 성능 결과가 아니다.
+raw는 별도 task evidence의 astra-review/pool-* 및 conn-pool-after에 보존한다.
