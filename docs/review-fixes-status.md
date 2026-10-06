@@ -339,3 +339,9 @@ DESTDIR/help가 통과했다. 제한된 actual Queue/component ASan/UBSan/LSan�
 - 실제 3단계 MultiStore 구성은 수정 전 모든 외부 참조 해제 후에도 설정이 남아 회귀 실패했다. 수정 후 부모 Store만 소유한 동안 상속이 유지되고 종료 시 세 설정 모두 weak expiry를 확인했다.
 - 새 clean 기본 Linux validator **226개, 실패0/error0/skip0, 8단계와 install/help 통과**. 별도 실제 `conf.cpp`·API fixture ASan/UBSan과 전역 할당의 LSan(`detect_leaks=1`) 정상 경로 exit0. 다른 production/dependency objects는 비계측이며 전체 daemon sanitizer 성공으로 확대하지 않는다.
 - 로컬 근거: `evidence/conf-parent-after`, `evidence/astra-review/conf-parent-before.log`, `conf-parent-sanitizer.log`.
+
+## MultiStore 초기 report_success 값 (2026-10-06 추가 리뷰)
+
+- 생성자의 `report_success`를 기존 미지정 configure 기본값 `SUCCESS_ALL`로 초기화했다. 최초 잘못된 report_success에서 기존 오류 상태를 유지하고, 유효한 all/any 설정과 copy의 집계 정책을 그대로 둔다.
+- 실제 placement 생성 저장 공간을 0xa5로 채운 뒤 invalid configure → isOpen 경로에서 수정 전 UBSan invalid enum 읽기 exit1을 재현했다. 같은 실제 store.cpp 계측 fixture는 수정 후 ASan/UBSan/LSan(`detect_leaks=1`) exit0이며 invalid 오류 문구, empty-all fold, 혼합 성공/실패 all·any 및 copy를 확인했다. 다른 production/dependency objects는 비계측이다.
+- 새 clean 기본 Linux validator **227개, 실패0/error0/skip0, 8단계와 install/help 통과**. 로컬 근거: `evidence/multi-report-after`, `evidence/astra-review/multi-report-before.log`, `multi-report-sanitizer-after.log`.

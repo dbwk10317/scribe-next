@@ -2654,7 +2654,8 @@ bool NullStore::empty(struct tm* now) {
 MultiStore::MultiStore(StoreQueue* storeq,
                       const std::string& category,
                       bool multi_category)
-  : Store(storeq, category, "multi", multi_category) {
+  : Store(storeq, category, "multi", multi_category),
+    report_success(SUCCESS_ALL) {
 }
 
 MultiStore::~MultiStore() {
