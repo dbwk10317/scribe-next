@@ -1,0 +1,3 @@
+ARG BASE=rockylinux/rockylinux@sha256:e8a49c5403b687db05d4d67333fa45808fbe74f36e683cec7abb1f7d0f2338c6
+FROM ${BASE}
+RUN dnf -y install libevent libstdc++ && dnf clean all
