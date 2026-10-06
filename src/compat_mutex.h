@@ -48,6 +48,13 @@ class RWGuard {
   }
   ~RWGuard() { mutex_.release(); }
 
+  // Preserve the original non-atomic release/reacquire handoff. This also
+  // releases a held write lock before reacquiring it on repeated transitions.
+  void releaseAndAcquireWrite() {
+    mutex_.release();
+    mutex_.acquireWrite();
+  }
+
   RWGuard(const RWGuard&) = delete;
   RWGuard& operator=(const RWGuard&) = delete;
 

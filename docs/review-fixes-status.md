@@ -345,3 +345,11 @@ DESTDIR/help가 통과했다. 제한된 actual Queue/component ASan/UBSan/LSan�
 - 생성자의 `report_success`를 기존 미지정 configure 기본값 `SUCCESS_ALL`로 초기화했다. 최초 잘못된 report_success에서 기존 오류 상태를 유지하고, 유효한 all/any 설정과 copy의 집계 정책을 그대로 둔다.
 - 실제 placement 생성 저장 공간을 0xa5로 채운 뒤 invalid configure → isOpen 경로에서 수정 전 UBSan invalid enum 읽기 exit1을 재현했다. 같은 실제 store.cpp 계측 fixture는 수정 후 ASan/UBSan/LSan(`detect_leaks=1`) exit0이며 invalid 오류 문구, empty-all fold, 혼합 성공/실패 all·any 및 copy를 확인했다. 다른 production/dependency objects는 비계측이다.
 - 새 clean 기본 Linux validator **227개, 실패0/error0/skip0, 8단계와 install/help 통과**. 로컬 근거: `evidence/multi-report-after`, `evidence/astra-review/multi-report-before.log`, `multi-report-sanitizer-after.log`.
+
+## Log 예외의 handler 잠금 해제 (2026-10-06 추가 리뷰)
+
+- `Log`의 기존 read 획득부터 모든 정상·early-return·예외 경로를 `RWGuard`가 소유한다. `releaseAndAcquireWrite()`는 기존 read/write 잠금을 먼저 해제한 뒤 write를 획득하며 atomic upgrade나 downgrade를 도입하지 않는다. 여러 unknown category의 반복 write 해제·재획득과 STOPPING 재확인 위치도 유지한다.
+- 실제 handler의 `new LogEntry` 할당을 호출 thread에서 한 번 실패시켰다. 알려진 category는 read 잠금, 앞선 unknown category 뒤의 알려진 category는 재획득한 write 잠금을 보유한다. 원본 server export(SHA256 `521b1d2cdf97d84a7da42501262bfbb74de92571a13457472557d66c9b793bb6`)와 현재 fixture의 두 before 경우 모두 handler 잠금 잔류로 실패했다. 수정 후 실제 POSIX 호출 순서 `RU`/`RUWU`, 예외 뒤 재초기화·Log/counter 복구를 확인했다.
+- fixture의 실패 조건은 LogEntry allocation size로 제한했다. 기존 updater 실패 주입은 그대로 유지하며 test 호출 thread 외 할당은 실패시키지 않는다. 새 clean 기본 Linux validator **228개, 실패0/error0/skip0, 8단계와 install/help 통과**. 별도 실제 server·fixture ASan/UBSan/LSan(`detect_leaks=1`)의 read/write 두 경우 exit0. 다른 production/dependency objects는 비계측이다.
+- 추가 발견은 분리한다: 처음 사용한 무차별 next-allocation 주입은 최적화된 sanitizer 경로에서 fb303 `FacebookBase::incrementCounter`의 map node allocation에 도달했다. 실제 handler 잠금은 `RUWU`로 해제되고 재초기화도 완료했으나, fb303의 수동 counter-map 잠금이 남아 후속 Log이 30초 timeout했다. stack을 같은 diagnostic binary의 symbols로 확인했다. 이 의존성의 할당 예외 안전성은 이번 Scribe handler 수정으로 해결됐다고 주장하지 않으며 미수정 후속 항목이다. sanitizer flag나 보안 설정은 완화하지 않았다.
+- 로컬 근거: `evidence/log-lock-targeted-after`, `evidence/astra-review/log-lock-targeted-before.log`, `log-lock-targeted-sanitizer-after.log`; 최초 실패와 원인 근거 `log-lock-sanitizer-diagnostic.log`, `log-lock-sanitizer-stack.log`, `log-lock-allocation-stack-symbols.txt`도 보존했다.

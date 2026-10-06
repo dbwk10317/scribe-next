@@ -87,14 +87,80 @@ static void testMultiReportDefault() {
 
 // GNU link wrapping injects one local allocation failure; every other allocation
 // uses the real operator new. Only the single-threaded updater driver arms it.
-static bool reviewFailNextAllocation = false;
+static thread_local bool reviewFailNextAllocation = false;
+static thread_local std::size_t reviewFailAllocationSize = 0;
 extern "C" void* __real__Znwm(std::size_t size);
 extern "C" void* __wrap__Znwm(std::size_t size) {
-  if (reviewFailNextAllocation) {
+  if (reviewFailNextAllocation && (!reviewFailAllocationSize || size == reviewFailAllocationSize)) {
     reviewFailNextAllocation = false;
     throw std::bad_alloc();
   }
   return __real__Znwm(size);
+}
+
+// Observe only the calling thread's actual handler lock; wrappers forward all
+// operations. Failure injection is local to that thread and one allocation.
+static thread_local bool reviewTrackLogLock = false, reviewFailOnWrite = false;
+static thread_local pthread_rwlock_t* reviewLogMutex = nullptr;
+static thread_local int reviewLogBalance = 0, reviewLogEventCount = 0;
+static thread_local char reviewLogEvents[8];
+extern "C" int __real_pthread_rwlock_rdlock(pthread_rwlock_t*);
+extern "C" int __real_pthread_rwlock_wrlock(pthread_rwlock_t*);
+extern "C" int __real_pthread_rwlock_unlock(pthread_rwlock_t*);
+extern "C" int __wrap_pthread_rwlock_rdlock(pthread_rwlock_t* mutex) {
+  const int result = __real_pthread_rwlock_rdlock(mutex);
+  if (reviewTrackLogLock && result == 0) {
+    reviewLogMutex = mutex; ++reviewLogBalance;
+    reviewLogEvents[reviewLogEventCount++] = 'R';
+  }
+  return result;
+}
+extern "C" int __wrap_pthread_rwlock_wrlock(pthread_rwlock_t* mutex) {
+  const int result = __real_pthread_rwlock_wrlock(mutex);
+  if (reviewTrackLogLock && mutex == reviewLogMutex && result == 0) {
+    ++reviewLogBalance; reviewLogEvents[reviewLogEventCount++] = 'W';
+    if (reviewFailOnWrite) { reviewFailOnWrite = false; reviewFailNextAllocation = true; }
+  }
+  return result;
+}
+extern "C" int __wrap_pthread_rwlock_unlock(pthread_rwlock_t* mutex) {
+  const int result = __real_pthread_rwlock_unlock(mutex);
+  if (reviewTrackLogLock && mutex == reviewLogMutex && result == 0) {
+    --reviewLogBalance; reviewLogEvents[reviewLogEventCount++] = 'U';
+  }
+  return result;
+}
+static void testLogExceptionLock(const std::string& filename, bool write) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "Log fixture configuration");
+  std::vector<LogEntry> messages;
+  if (write) messages.push_back(entry(std::string(128, 'x'), "unknown"));
+  messages.push_back(entry("accepted", "payload"));
+  reviewLogMutex = nullptr; reviewLogBalance = 0; reviewLogEventCount = 0;
+  // Fail the explicit new LogEntry, before StoreQueue acquires its lock.
+  // In write mode the earlier unknown category causes the original handoff;
+  // its bad-category counter completes before this selected allocation.
+  reviewFailAllocationSize = sizeof(LogEntry);
+  reviewTrackLogLock = true; reviewFailOnWrite = write; reviewFailNextAllocation = !write;
+  bool threw = false;
+  try { fixture.handler->scribeHandler::Log(messages); }
+  catch (const std::bad_alloc&) { threw = true; }
+  reviewTrackLogLock = false; reviewFailOnWrite = false; reviewFailNextAllocation = false;
+  reviewFailAllocationSize = 0;
+  const int balance = reviewLogBalance;
+  // Clean up the pre-fix witness in the same owning thread before reporting,
+  // so the failed test never strands workers or blocks its teardown.
+  if (balance == 1) __real_pthread_rwlock_unlock(reviewLogMutex);
+  require(threw, "Log allocation exception was not exercised");
+  require(balance == 0, "Log exception retained its handler lock");
+  require(std::string(reviewLogEvents, reviewLogEventCount) == (write ? "RUWU" : "RU"),
+          "Log read-release-write handoff changed");
+  fixture.handler->reinitialize();  // Actual subsequent write lock must succeed.
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "Log exception prevented reinitialize");
+  messages = {entry("accepted", "payload")};
+  require(fixture.handler->scribeHandler::Log(messages) == ResultCode::OK, "Log did not recover");
+  require(fixture.handler->getCounter("accepted:received good") == 1, "recovered Log counter changed");
 }
 
 static void runUpdaterReviewDriver(const std::string& filename) {
