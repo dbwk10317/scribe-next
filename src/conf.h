@@ -22,6 +22,7 @@
 #define SCRIBE_CONF_H
 
 #include "common.h"
+#include <boost/weak_ptr.hpp>
 
 /*
  * This class reads and parses a configuration
@@ -65,7 +66,8 @@ class StoreConf {
  private:
   string_map_t values;
   store_conf_map_t stores;
-  pStoreConf parent;
+  // Store ownership keeps live ancestors available; configs must not own upward.
+  boost::weak_ptr<StoreConf> parent;
   static bool parseStore(/*in,out*/ std::queue<std::string>& raw_config,
                          /*out*/ StoreConf* parsed_config);
   static std::string trimString(const std::string& str);

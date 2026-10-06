@@ -457,6 +457,8 @@ int main(int argc, char** argv) {
     require(argc == 4, "usage: fixture mode config temporary-directory");
     if (std::string(argv[1]) == "review-buffer-status") {
       testBufferStatusPublication();
+    } else if (std::string(argv[1]) == "review-conf-parent") {
+      testConfigParentOwnership(argv[2]);
     } else if (std::string(argv[1]) == "loopback-server") {
       runLoopbackServer(argv[2], argv[3]);
       return 0;

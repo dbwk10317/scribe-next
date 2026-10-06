@@ -64,6 +64,14 @@ class StoreReviewPeer(relay.RelayPeer):
 
 
 class StoreReviewContracts:
+    def test_review_nested_configuration_inherits_and_releases_with_store_owner(self):
+        self.run_fixture("review-conf-parent", "port=1463\n<store>\ntype=multi\n"
+                         "null::local=parent\nnull::nearest=parent\nnull::outer=parent\n"
+                         "category=parent-category\ncategories=parent-categories\n"
+                         "<store0>\ntype=multi\nnull::nearest=middle\n"
+                         "<store0>\ntype=null\nlocal=leaf\nnull::qualified=leaf-qualified\n"
+                         "</store0>\n</store0>\n</store>\n")
+
     def updater_review_peer(self):
         directory = Path(tempfile.mkdtemp(prefix="updater-review-", dir=self.temporary))
         return UpdaterReviewPeer(self.fixture, self.env, directory)

@@ -132,14 +132,16 @@ bool StoreConf::getString(const string& stringName,
   // and descendant stores. E.g.
   // file::fs_type = std
   // can be used by this file store and all descendant file stores.
-  for (const StoreConf* pconf = this; pconf;
-        pconf = const_cast<StoreConf*>(pconf->parent.get())) {
+  pStoreConf ancestor;
+  for (const StoreConf* pconf = this; pconf; pconf = ancestor.get()) {
     string_map_t::const_iterator iter = pconf->values.find(inheritedName);
     if (iter != pconf->values.end()) {
       _return = iter->second;
       found = true;
       break;
     }
+    // Keep each locked ancestor alive throughout its lookup.
+    ancestor = pconf->parent.lock();
   }
   // if we didn't find any.  then try g_Handler's config
   if (!found) {
