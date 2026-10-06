@@ -89,8 +89,8 @@ closure는 설치된 바이너리의 `ldd`와 `rpm -qf`/`rpm -qa`로 별도 기�
 각 `validation.json`, `test-results.json`, logs 및 실제 loader library hash와 RPM package
 version을 기록한 runtime inventory를 포함한다. 기존 36개 컨테이너 ID 보존도 확인했다.
 
-다음 단계는 개발 RPM의 matching runtime dependency와 LICENSE/NOTICE 수록, 격리된
-Rocky 8/9 install/remove 검증이다. source 검증을 release·service 배포 승인으로 해석하지 않는다.
+후속 daemon 전용 개발 RPM의 matching runtime·LICENSE/NOTICE 및 격리 install/remove는
+[개발 RPM 안내](rocky-rpm.md)에 기록했다. source 검증을 release·service 배포 승인으로 해석하지 않는다.
 
 후속 manifest 수정도 양쪽 새 source export에서 각각 218 tests/skip 0과 전체 8단계가
 통과했다. 기존 manifest에서 빠진 `lib/libboost_system`, `libboost_filesystem`,

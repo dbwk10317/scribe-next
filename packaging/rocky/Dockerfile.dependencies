@@ -1,0 +1,27 @@
+ARG BASE=scribe-next-rocky-validation:8
+FROM ${BASE}
+RUN cd /sources && \
+    echo '6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e  boost_1_83_0.tar.bz2' | sha256sum -c - && \
+    echo '66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  thrift-0.25.0.tar.gz' | sha256sum -c - && \
+    cd boost_1_83_0 && ./b2 --build-dir=/sources/rpm-boost-build \
+    --prefix=/opt/scribe-next-dev/deps/tools --with-filesystem --with-system \
+    -j4 variant=release link=shared threading=multi cxxflags=-std=c++17 \
+    linkflags=-Wl,-rpath,/opt/scribe-next-dev/deps/tools/lib install
+RUN cmake -S /sources/thrift-0.25.0 -B /sources/rpm-thrift-build \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/scribe-next-dev/deps/thrift \
+    -DCMAKE_INSTALL_RPATH=/opt/scribe-next-dev/deps/thrift/lib \
+    -DCMAKE_PREFIX_PATH=/opt/scribe-next-dev/deps/tools \
+    -DBUILD_TESTING=OFF -DBUILD_SHARED_LIBS=ON -DWITH_CPP=ON -DWITH_C_GLIB=OFF \
+    -DWITH_JAVA=OFF -DWITH_JAVASCRIPT=OFF -DWITH_NODEJS=OFF -DWITH_PYTHON=OFF \
+    -DWITH_OPENSSL=OFF -DWITH_LIBEVENT=ON -DWITH_ZLIB=OFF && \
+    cmake --build /sources/rpm-thrift-build --parallel 4 && cmake --install /sources/rpm-thrift-build
+RUN cd /sources/thrift-0.25.0/contrib/fb303 && \
+    ./configure --prefix=/opt/scribe-next-dev/deps/fb303 \
+    --with-thriftpath=/opt/scribe-next-dev/deps/thrift \
+    --with-boost=/opt/scribe-next-dev/deps/tools --without-java --without-php --without-python && \
+    make clean && make -j4 CXXFLAGS='-O2 -std=c++17' \
+    CPPFLAGS='-I/opt/scribe-next-dev/deps/thrift/include -I/opt/scribe-next-dev/deps/tools/include' && make install
+ENV THRIFT_PREFIX=/opt/scribe-next-dev/deps/thrift FB303_PREFIX=/opt/scribe-next-dev/deps/fb303 \
+    TOOLS_PREFIX=/opt/scribe-next-dev/deps/tools \
+    LD_LIBRARY_PATH=/opt/scribe-next-dev/deps/thrift/lib:/opt/scribe-next-dev/deps/tools/lib:/opt/scribe-next-dev/deps/fb303/lib \
+    LDFLAGS="-L/opt/scribe-next-dev/deps/tools/lib -L/opt/scribe-next-dev/deps/thrift/lib -L/opt/scribe-next-dev/deps/fb303/lib -Wl,-rpath,/opt/scribe-next-dev/deps/tools/lib -Wl,-rpath,/opt/scribe-next-dev/deps/thrift/lib"
