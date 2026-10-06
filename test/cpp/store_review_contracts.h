@@ -5,6 +5,43 @@
 
 extern ConnPool g_connPool;
 
+#include <boost/weak_ptr.hpp>
+
+static void testConfigParentOwnership(const std::string& filename) {
+  // No workers or sockets: configure the actual nested MultiStore hierarchy.
+  HandlerFixture handler(filename);
+  const_cast<StoreConf&>(handler.handler->getConfig()).setString("null::global", "global");
+  pStoreConf root(new StoreConf);
+  root->parseConfig(filename);
+  pStoreConf parent, middle, leaf;
+  require(root->getStore("store0", parent), "missing top configuration");
+  require(parent->getStore("store0", middle), "missing middle configuration");
+  require(middle->getStore("store0", leaf), "missing leaf configuration");
+  boost::weak_ptr<StoreConf> parentWeak(parent), middleWeak(middle), leafWeak(leaf);
+  {
+    MultiStore store(nullptr, "fixture", false);
+    store.configure(parent, pStoreConf());
+    root.reset();
+    parent.reset();
+    middle.reset();
+    leaf.reset();
+    require(!parentWeak.expired(), "live Store lost its configuration");
+    pStoreConf liveLeaf = leafWeak.lock();
+    std::string value;
+    require(liveLeaf->getString("local", value) && value == "leaf", "direct inheritance priority");
+    require(liveLeaf->getString("qualified", value) && value == "leaf-qualified", "qualified local priority");
+    require(liveLeaf->getString("nearest", value) && value == "middle", "nearest ancestor priority");
+    require(liveLeaf->getString("outer", value) && value == "parent", "grandparent inheritance");
+    require(liveLeaf->getString("global", value) && value == "global", "global fallback");
+    require(!liveLeaf->getString("category", value), "category became inheritable");
+    require(!liveLeaf->getString("categories", value), "categories became inheritable");
+    require(liveLeaf->getString("type", value) && value == "null", "direct type changed");
+  }
+  require(parentWeak.expired() && middleWeak.expired() && leafWeak.expired(),
+          "released Store hierarchy retains cyclic configuration ownership");
+}
+
+
 // GNU link wrapping injects one local allocation failure; every other allocation
 // uses the real operator new. Only the single-threaded updater driver arms it.
 static bool reviewFailNextAllocation = false;

@@ -331,3 +331,11 @@ DESTDIR/help가 통과했다. 제한된 actual Queue/component ASan/UBSan/LSan�
 실행 경로에서 exit0이었다. 기본 traced runner의 최초 LSan fatal/exit23은 별도로
 보존했고 보안·ptrace 설정이나 leak 검사를 끄지 않았다. 전체 daemon sanitizer
 성공은 아니다. raw는 astra-review/worker-init-* 및 worker-init-after에 있다.
+
+## StoreConf 부모 소유권 순환 제거 (2026-10-06 추가 리뷰)
+
+- parsed 부모 설정은 자식 설정을 강하게 소유한다. `Store::configure`의 역방향 강한 부모 참조가 정상 중첩 MultiStore에서도 순환을 만들었다. 부모 Store는 자식 Store와 자기 설정을 보유하며 Buffer/Bucket/Multi의 자식 configure도 그 설정을 부모로 전달한다. Category/model의 기존 부모 전달·copy 동작은 변경하지 않았다. 재초기화는 이전 worker를 종료한 뒤 설정을 다시 읽는다.
+- 설정의 역방향 참조만 `boost::weak_ptr`로 바꾸고, 조회 중에는 `lock()`한 부모를 강하게 유지한다. Store가 살아 있는 정상 경로의 직접 값, 현재 qualified 값, 가까운 부모, 상위 부모, 전역 fallback 및 category/categories/type 비상속 규칙을 유지한다. 별도 Store 소유 없이 설정 자식만 보유한 경우 부모 수명을 연장하지 않는다는 소유권 경계가 명확해졌다.
+- 실제 3단계 MultiStore 구성은 수정 전 모든 외부 참조 해제 후에도 설정이 남아 회귀 실패했다. 수정 후 부모 Store만 소유한 동안 상속이 유지되고 종료 시 세 설정 모두 weak expiry를 확인했다.
+- 새 clean 기본 Linux validator **226개, 실패0/error0/skip0, 8단계와 install/help 통과**. 별도 실제 `conf.cpp`·API fixture ASan/UBSan과 전역 할당의 LSan(`detect_leaks=1`) 정상 경로 exit0. 다른 production/dependency objects는 비계측이며 전체 daemon sanitizer 성공으로 확대하지 않는다.
+- 로컬 근거: `evidence/conf-parent-after`, `evidence/astra-review/conf-parent-before.log`, `conf-parent-sanitizer.log`.
