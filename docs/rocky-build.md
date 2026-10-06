@@ -3,7 +3,7 @@
 2026-10-06, Linux x86_64. 검증한 source main은
 `5be43ecd5210a52fbc59c12973814d8433d9f601`이며 기본 env_default·비-HDFS·static RPC lane이다.
 Rocky userland 컨테이너는 기존 Linux host kernel을 공유한다. Rocky host kernel 자체나
-HDFS/shared RPC, RPM 배포와 전체 운영 동등성의 검증으로 확대하지 않는다.
+HDFS, RPM 배포와 전체 운영 동등성의 검증으로 확대하지 않는다. shared RPC 후속 결과는 아래 별도 범위를 따른다.
 
 | 환경 | 기본 GCC | Python | 결과 |
 | --- | --- | --- | --- |
@@ -95,3 +95,14 @@ version을 기록한 runtime inventory를 포함한다. 기존 36개 컨테이�
 후속 manifest 수정도 양쪽 새 source export에서 각각 218 tests/skip 0과 전체 8단계가
 통과했다. 기존 manifest에서 빠진 `lib/libboost_system`, `libboost_filesystem`,
 `libboost_atomic`의 버전 파일·symlink target hash가 기록됨을 확인했다.
+
+## Rocky shared RPC 후속 확인
+
+Main `4d3aeef2b2c895b8eff53bfd50356c18a5691c13`에서 기존 검증기의
+`--shared-rpc`를 사용해 양쪽 새 source export를 확인했다. Rocky 8.10/GCC 8.5와
+9.8/GCC 11.5 각각 218 tests, failure/error/skip 0, configure·clean build·ELF·DESTDIR·
+설치된 help의 전체 9단계가 통과했다. ELF의 `libscribe.so`·`libdynamicbucketupdater.so`
+DT_NEEDED와 실제 stage loader를 검증했다. 기본 static 선택과 caller flags는 유지한다.
+서버 toolchain 이미지·고정 source·격리 조건은 위 기본 lane과 같다.
+이 결과는 source shared build/staged loader 범위이며 개발 RPM은 여전히 static RPC다.
+패키지 shared daemon, shared old/new differential, HDFS 성공을 주장하지 않는다.
