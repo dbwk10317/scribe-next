@@ -184,7 +184,8 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                  *(cls.build / "src" / (name + ".o") for name in OBJECTS),
                  *(cls.build / "src" / library for library,members in libraries),
                  *(f"-L{path}" for path in libdirs), "-lfb303", "-lthrift", "-lthriftnb",
-                 "-levent", "-lboost_filesystem", "-lboost_system", "-o", cls.fixture], ROOT, cls.env)
+                 "-levent", "-lboost_filesystem", "-lboost_system", "-Wl,--wrap=_Znwm",
+                 "-o", cls.fixture], ROOT, cls.env)
 
     def run_fixture(self, mode, config_text=None, input_files=None):
         directory = Path(tempfile.mkdtemp(prefix=mode + "-", dir=self.temporary))

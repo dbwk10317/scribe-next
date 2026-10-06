@@ -187,3 +187,23 @@ HDFS 미지원 상태를 유지하며 프레임이나 저장 기능을 새로 �
 현재 component의 ASan+UBSan 실행과 원본/현재 ordinary-spool 교차 reader 검사를
 포함하며 LSan, 새 full daemon build 및 enabled-HDFS 검증은 포함하지 않는다.
 raw evidence는 checkout 밖 `batch3-before.log`와 `batch3-after.log`에 보관했다.
+
+## Updater 예외 잠금 해제와 Thrift 오류 처리 (2026-10-06)
+
+Base main `621257e`(PR #30)에서 실제 updater RPC driver에 로컬 allocation 예외를
+한 번 주입했다. 예외를 fixture가 회수한 뒤 cached mapping 조회가 잠금에 막히는
+것을 재현했다. 소유한 IPv4 loopback peer의 protocol/application 오류 응답도
+기존 실패 반환 대신 Thrift 예외가 호출자 밖으로 전달되는 것을 재현했다.
+새 회귀는 2개이며 수정 전 전체 215개 중 3개 실패(한 시험과 다른 시험의 두 subcase),
+error/skip 0이었다. GNU operator-new link wrapper는 이 단일-thread fixture에서만
+한 번 실패를 주입하며 나머지 allocation은 원래 operator new로 전달한다.
+
+수동 lock/unlock을 기존 Thrift Guard로 교체해 같은 scope를 unwind에서도 해제한다.
+기존 transport/mapping 예외 처리는 유지하고 나머지 Thrift TException을 같은 RPC
+실패 경로로 처리한다. bad_alloc 등 비-Thrift 예외는 삼키지 않는다. 정상 요청 bytes,
+TTL·cache 삭제/갱신·counter 이름과 update 순서·routing·retry 정책을 바꾸지 않는다.
+
+새 source copy의 configure·clean/build·전체 215개(failure/error/skip 0)·DESTDIR
+install·installed help가 같은 Ubuntu/native dependency lane에서 통과했다.
+실행은 로컬 fixture이며 새 production-daemon/old-new/HDFS/Rocky 결과가 아니다.
+raw evidence는 checkout 밖 `batch4-before`와 `batch4-after`에 보관했다.

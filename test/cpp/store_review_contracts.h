@@ -5,6 +5,47 @@
 
 extern ConnPool g_connPool;
 
+// GNU link wrapping injects one local allocation failure; every other allocation
+// uses the real operator new. Only the single-threaded updater driver arms it.
+static bool reviewFailNextAllocation = false;
+extern "C" void* __real__Znwm(std::size_t size);
+extern "C" void* __wrap__Znwm(std::size_t size) {
+  if (reviewFailNextAllocation) {
+    reviewFailNextAllocation = false;
+    throw std::bad_alloc();
+  }
+  return __real__Znwm(size);
+}
+
+static void runUpdaterReviewDriver(const std::string& filename) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "updater driver config");
+  unsigned long remotePort = 0;
+  require(fixture.handler->getConfig().getUnsigned("remote_port", remotePort) &&
+              remotePort > 0 && remotePort <= 65535, "updater driver loopback port");
+  std::cout << "READY review-updater-driver" << std::endl;
+  std::string command;
+  while (std::getline(std::cin, command)) {
+    if (command == "QUIT") return;
+    require(command == "GET" || command == "FAIL", "unknown updater command");
+    std::string host = "keep";
+    uint32_t port = 19;
+    const std::string category = command == "FAIL" ? "allocation" : "reviewmapping";
+    try {
+      if (command == "FAIL") reviewFailNextAllocation = true;
+      const bool result = DynamicBucketUpdater::getHost(fixture.handler.get(), category,
+          60, 42, host, port, "127.0.0.1", static_cast<uint32_t>(remotePort), 500, 500, 500);
+      std::cout << "MAPPING " << result << " " << host << " " << port << std::endl;
+    } catch (const std::bad_alloc&) {
+      require(command == "FAIL" && !reviewFailNextAllocation, "allocation failure was not injected");
+      std::cout << "ALLOCATION FAILED" << std::endl;
+    } catch (const apache::thrift::TException&) {
+      std::cout << "MAPPING EXCEPTION" << std::endl;
+    }
+  }
+}
+
 class ReviewNetworkStore : public NetworkStore {
  public:
   explicit ReviewNetworkStore(const std::string& category)

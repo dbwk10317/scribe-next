@@ -3,9 +3,33 @@
 from pathlib import Path
 import select
 import socket
+import struct
 import tempfile
 
 import relay_peer as relay
+import loopback_rpc as tcp
+
+
+class UpdaterReviewPeer(relay.RelayPeer):
+    mode = "review-updater-driver"
+
+    def configuration(self):
+        return (super().configuration() + "port=1463\n"
+                "<store>\ncategory=accepted\ntype=null\n</store>\n")
+
+    def mapping(self, response):
+        connection = self.accept()
+        expected = tcp.message(b"getMapping", 0, tcp.string_argument(b"reviewmapping"))
+        if relay.receive_request(connection, self.deadline) != expected:
+            raise AssertionError("updater request differs from original IDL bytes")
+        connection.sendall(struct.pack(">I", len(response)) + response)
+        self.eof(connection)
+
+    def success(self):
+        fields = (b"\x0d\x00\x00\x08\x0c" + struct.pack(">ii", 1, 42)
+                  + b"\x0b\x00\x02" + tcp.binary_string(b"resolved")
+                  + b"\x08\x00\x03" + struct.pack(">i", 1234) + b"\0\0")
+        self.mapping(tcp.reply(b"getMapping", 0, fields))
 
 
 class StoreReviewPeer(relay.RelayPeer):
@@ -40,6 +64,36 @@ class StoreReviewPeer(relay.RelayPeer):
 
 
 class StoreReviewContracts:
+    def updater_review_peer(self):
+        directory = Path(tempfile.mkdtemp(prefix="updater-review-", dir=self.temporary))
+        return UpdaterReviewPeer(self.fixture, self.env, directory)
+
+    def test_review_updater_exception_unwinding_releases_lock(self):
+        with self.updater_review_peer() as peer:
+            peer.command("GET")
+            peer.success()
+            self.assertEqual(peer.read_line(), "MAPPING 1 resolved 1234")
+            peer.command("FAIL")
+            self.assertEqual(peer.read_line(), "ALLOCATION FAILED")
+            peer.command("GET")
+            self.assertEqual(peer.read_line(), "MAPPING 1 resolved 1234")
+            peer.no_pending_connections()
+
+    def test_review_updater_protocol_and_application_errors_recover(self):
+        # Independent framed-binary responses from the owned loopback fixture.
+        protocol_error = struct.pack(">i", -1)
+        application_error = (tcp.binary_string(b"getMapping") + b"\x03" + struct.pack(">i", 0)
+                             + b"\x0b\x00\x01" + tcp.binary_string(b"local fixture error")
+                             + b"\x08\x00\x02" + struct.pack(">i", 6) + b"\0")
+        for response in (protocol_error, application_error):
+            with self.subTest(response=response), self.updater_review_peer() as peer:
+                peer.command("GET")
+                peer.mapping(response)
+                self.assertEqual(peer.read_line(), "MAPPING 0 keep 19")
+                peer.command("GET")
+                peer.success()
+                self.assertEqual(peer.read_line(), "MAPPING 1 resolved 1234")
+
     def store_review_peer(self, kind, pooled=True):
         directory = Path(tempfile.mkdtemp(prefix="store-review-", dir=self.temporary))
         return StoreReviewPeer(self.fixture, self.env, directory, kind, pooled)

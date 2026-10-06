@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: release the updater lock on unwind and handle Thrift RPC exceptions.
 #include <strstream>
 #include <iostream>
 #include "dynamic_bucket_updater.h"
@@ -133,13 +134,12 @@ bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
                       uint32_t recvTimeout) {
   DynamicBucketUpdater *instance = DynamicBucketUpdater::getInstance(fbBase);
 
-  instance->lock_.lock();
+  Guard guard(instance->lock_);
 
   bool ret = instance->getHostInternal(category, ttl, bid,
                                        host, port, updateHost,
                                        updatePort, connTimeout,
                                        sendTimeout, recvTimeout);
-  instance->lock_.unlock();
   return ret;
 }
 
@@ -304,6 +304,13 @@ bool DynamicBucketUpdater::periodicCheck(string category,
             category.c_str(), host.c_str(), port,
             connTimeout, sendTimeout, recvTimeout,
             bex.message.c_str());
+    addStatValue(DynamicBucketUpdater::FB303_ERR_THRIFTCALL, 1);
+    ret = false;
+  } catch (const apache::thrift::TException& tx) {
+    LOG_OPER("periodicCheck(%s, %s, %u, %d, %d, %d) TException: %s",
+            category.c_str(), host.c_str(), port,
+            connTimeout, sendTimeout, recvTimeout,
+            tx.what());
     addStatValue(DynamicBucketUpdater::FB303_ERR_THRIFTCALL, 1);
     ret = false;
   }
