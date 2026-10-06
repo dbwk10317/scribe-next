@@ -1,6 +1,7 @@
 // Bounded command-line fixture for actual legacy/current StdFile source.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #include "file.h"
+#include "HdfsFile.h"
 #include <iostream>
 #include <iomanip>
 #include <iterator>
@@ -18,6 +19,12 @@ static std::string hex(const std::string& bytes) {
 int main(int argc, char** argv) {
   if (argc < 3) return 2;
   const std::string mode(argv[1]);
+  if (mode == "non-hdfs-frame") {
+    HdfsFile unsupported("unused");
+    std::cout << hex(unsupported.getFrame(static_cast<unsigned>(strtoul(argv[2], NULL, 10))))
+              << ":" << unsupported.openWrite() << ":" << unsupported.isOpen() << std::endl;
+    return 0;
+  }
   if (mode == "frame") {
     StdFile framed("unused", true);
     StdFile unframed("unused", false);

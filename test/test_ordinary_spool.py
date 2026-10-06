@@ -4,7 +4,7 @@
 The legacy file.cpp/file.h/HdfsFile.h are read byte-for-byte from the pinned
 public Git object and built as C++03 with installed Boost. The current component
 is built as C++17. Both use the same minimal include-only common header; neither
-is a legacy Scribe daemon, old Thrift runtime, HDFS or thriftfile transport test.
+is a legacy Scribe daemon, old Thrift runtime, enabled-HDFS or thriftfile transport test.
 Set TOOLS_PREFIX to the approved Boost development prefix. No downloads occur.
 """
 
@@ -122,6 +122,14 @@ class OrdinarySpoolTests(unittest.TestCase):
                     result = run([self.executables[version, False], "frame", length],
                                  cwd=self.work, env=self.env)
                     self.assertEqual(result.stdout, struct.pack("<I", length).hex() + ":\n")
+
+    def test_non_hdfs_stub_frame_is_empty_and_remains_unavailable(self):
+        for sanitizer in (False, True):
+            for length in (0, 1, 0xFFFFFFFF):
+                with self.subTest(sanitizer=sanitizer, length=length):
+                    result = run([self.executables["current", sanitizer], "non-hdfs-frame", length],
+                                 cwd=self.work, env=self.env)
+                    self.assertEqual(result.stdout, ":0:0\n")
 
     def test_legacy_and_current_writes_cross_read_and_match_independent_bytes(self):
         directory = self.directory()
