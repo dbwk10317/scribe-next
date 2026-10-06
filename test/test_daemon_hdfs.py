@@ -57,12 +57,14 @@ class DistributedHdfsRunnerTests(unittest.TestCase):
                 self.assertNotIn('HADOOP_WORKER_MODE', env)
                 self.assertNotIn('HDFS_DFSADMIN_OPTS', env)
                 self.assertNotIn('HADOOP_COMMON_HOME', env)
+                for name in ('JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS'):
+                    self.assertNotIn(name, env)
                 payload = java_version if len(calls) == 1 else ldd_output
                 Path(log).write_bytes(payload)
                 return 0, payload
             arguments = ['daemon_hdfs.py', '--run-isolated-hdfs', '--hadoop', str(hadoop),
                          '--java-home', str(java), '--scribed', str(Path(sys.executable).resolve(strict=True)), '--output', str(output)]
-            with mock.patch.dict(h.os.environ, {'HADOOP_WORKER_MODE': 'true', 'HDFS_DFSADMIN_OPTS': '-javaagent:bad', 'HADOOP_COMMON_HOME': '/wrong-sdk'}), \
+            with mock.patch.dict(h.os.environ, {'HADOOP_WORKER_MODE': 'true', 'HDFS_DFSADMIN_OPTS': '-javaagent:bad', 'HADOOP_COMMON_HOME': '/wrong-sdk'}, clear=True), \
                  mock.patch.object(sys, 'argv', arguments), mock.patch.object(h.c, 'network_check'), \
                  mock.patch.object(h.c, 'port_free'), mock.patch.object(h, 'command', fake_command), \
                  mock.patch.object(h.os, 'listdir', return_value=['lo']), mock.patch.object(h, 'listeners', return_value=[]), \
@@ -75,6 +77,14 @@ class DistributedHdfsRunnerTests(unittest.TestCase):
             self.assertIn(expected, result['error'])
             self.assertFalse(any('namenode' in call for call in calls))
             self.assertFalse((output / 'conf/core-site.xml').exists())
+
+    def test_preflight_fixture_is_independent_of_hostile_java_environment(self):
+        for name in ('JAVA_TOOL_OPTIONS', 'JDK_JAVA_OPTIONS', '_JAVA_OPTIONS'):
+            with self.subTest(variable=name), mock.patch.dict(h.os.environ, {name: '-javaagent:fixture-hostile'}):
+                self.check_preflight_failure(b'openjdk version "21.0.12"\n', b'', 'requires JDK17')
+                self.check_preflight_failure(b'openjdk version "17.0.16"\n', b'libjvm.so => not found\n',
+                                            'native ABI/dependency preflight failed')
+                self.assertEqual(h.os.environ[name], '-javaagent:fixture-hostile')
 
     def test_jdk21_preflight_stops_before_cluster_or_format(self):
         self.check_preflight_failure(b'openjdk version "21.0.12"\n', b'', 'requires JDK17')
