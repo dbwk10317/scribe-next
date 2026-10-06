@@ -24,6 +24,7 @@
 
 #include "common.h"
 #include "scribe_server.h"
+#include <memory>
 
 using namespace std;
 using namespace boost;
@@ -186,6 +187,13 @@ std::string StoreQueue::getCategoryHandled() {
 
 
 std::string StoreQueue::getStatus() {
+  if (isModel) {
+    return store->getStatus();
+  }
+  // Worker configuration already holds cmdMutex; inspect only a complete publication.
+  pthread_mutex_lock(&cmdMutex);
+  std::unique_ptr<pthread_mutex_t, decltype(&pthread_mutex_unlock)>
+      command_guard(&cmdMutex, &pthread_mutex_unlock);
   return store->getStatus();
 }
 
