@@ -151,3 +151,25 @@ settle compatibility-default policy, prove the full fault/config/platform matrix
 or add a benchmark, release/package/tag or service deployment. Input bundle26
 lacked the separate pinned-upstream object; existing verified local baseline
 objects were supplied explicitly without changing import-checker protections.
+
+## Child-store null 방어 (2026-10-06)
+
+Base main `fb310f6`(PR #28)에서 unknown child type이 Buffer primary/secondary,
+Multi child, Category model의 null dereference를 일으키는 것을 실제 C++ fixture로
+재현했다. 모델이 없는 Category의 message 경로도 같은 결함을 재현했다.
+copy의 같은 null 조회는 코드에서 확인했으며 수정 후 clone의 실패·message 보존을 실행했다.
+수정 전 전체 212개 시험은 새 회귀 한 개의 5개 subcase에서 실패했으며 error/skip은 0이었다.
+
+생성 결과가 없으면 configure 호출을 건너뛰고, Buffer는 기존 file fallback을 사용한다.
+Multi/Category는 실패 상태를 남기며 null child를 추가하지 않는다. 모델이 없는
+Category와 그 clone은 기존 실패 경로에서 message bytes와 retry vector를 보존한다.
+정상 설정, empty Multi/Category의 기존 open 결과, copy 설정, queue·loss·routing 정책은 바꾸지 않았다.
+
+Ubuntu 26.04.1/GCC 15.2/Python 3.14.4, 새 Thrift compiler/runtime·fb303 0.25.0와
+Boost 1.83을 task 전용으로 준비했다. 기존 validation driver의 새 source copy에서
+configure·clean/build·전체 212개 시험(failure/error/skip 0)·DESTDIR install·설치된
+scribed help가 통과했다. raw evidence는 checkout 밖 `batch2-before-ready`와
+`batch2-after`에 보관했으며 후자의 validation manifest SHA256은
+`ffe7711017077c0457a89f507dc4b5ca9e13596614b757ac884578f1ad487e66`이다.
+이 결과는 비-HDFS/static lane이며 Rocky8/9, actual old/new production daemon 및
+전체 fault matrix의 새 검증으로 확대하지 않는다.

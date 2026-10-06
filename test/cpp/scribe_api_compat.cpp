@@ -443,6 +443,8 @@ int main(int argc, char** argv) {
       testStoreReviewDefaults(argv[2]);
     } else if (std::string(argv[1]) == "review-store-bucket") {
       testStoreReviewBucket(argv[2]);
+    } else if (std::string(argv[1]) == "review-store-invalid-child") {
+      testStoreReviewInvalidChild(argv[2]);
     } else if (std::string(argv[1]) == "relay-loopback-server") {
       alarm(20);
       runRelayLoopbackServer(argv[2], argv[3]);

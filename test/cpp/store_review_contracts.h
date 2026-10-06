@@ -75,6 +75,56 @@ static void testStoreReviewBucket(const std::string& filename) {
   bucket.close();
 }
 
+class ReviewBufferChildren : public BufferStore {
+ public:
+  ReviewBufferChildren() : BufferStore(nullptr, "model", false) {}
+  const std::string& primaryType() const {
+    require(primaryStore != nullptr, "buffer primary fallback is absent");
+    return primaryStore->getType();
+  }
+  const std::string& secondaryType() const {
+    require(secondaryStore != nullptr, "buffer secondary fallback is absent");
+    return secondaryStore->getType();
+  }
+};
+
+static void testStoreReviewInvalidChild(const std::string& filename) {
+  HandlerFixture fixture(filename);
+  pStoreConf config(new StoreConf);
+  config->parseConfig(filename);
+  std::string kind;
+  require(config->getString("test_kind", kind), "missing invalid-child case");
+  if (kind == "buffer-primary" || kind == "buffer-secondary") {
+    ReviewBufferChildren buffer;
+    buffer.configure(config, pStoreConf());
+    require(buffer.primaryType() == (kind == "buffer-primary" ? "file" : "null"),
+            "buffer primary fallback changed");
+    require(buffer.secondaryType() == (kind == "buffer-secondary" ? "file" : "null"),
+            "buffer secondary fallback changed");
+  } else if (kind == "multi") {
+    MultiStore multi(nullptr, "model", false);
+    multi.configure(config, pStoreConf());
+    require(!multi.getStatus().empty(), "invalid multi child lacks status");
+    multi.close();
+  } else {
+    require(kind == "category" || kind == "category-missing", "unknown invalid-child case");
+    CategoryStore category(nullptr, "model", false);
+    category.configure(config, pStoreConf());
+    require(!category.getStatus().empty(), "invalid category model lacks status");
+    auto messages = fileMessages({entry("category", "retain-this-message")});
+    require(!category.handleMessages(messages), "invalid category accepted a message");
+    require(messages->size() == 1 && messages->front()->message == "retain-this-message",
+            "failed category changed retry input");
+    auto copy = category.copy("copied");
+    require(copy != nullptr, "invalid category copy is absent");
+    require(!copy->handleMessages(messages), "invalid category copy accepted a message");
+    require(messages->size() == 1 && messages->front()->message == "retain-this-message",
+            "failed category copy changed retry input");
+    copy->close();
+    category.close();
+  }
+}
+
 static void runStoreReviewDriver(const std::string& filename) {
   HandlerFixture fixture(filename);
   pStoreConf config(new StoreConf);

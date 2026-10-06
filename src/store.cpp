@@ -1,6 +1,7 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
 // scribe-next modification: retain default-port initialization and bounded legacy bucket checks.
+// scribe-next modification: guard absent child/model stores before dereferencing them.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1352,7 +1353,9 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
       // If replayBuffer is true, then we need to create a readable store
       secondaryStore = createStore(storeQueue, type, categoryHandled,
                                    replayBuffer, multiCategory);
-      secondaryStore->configure(secondary_store_conf, storeConf);
+      if (secondaryStore) {
+        secondaryStore->configure(secondary_store_conf, storeConf);
+      }
     }
   }
 
@@ -1376,7 +1379,9 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
     } else {
       primaryStore = createStore(storeQueue, type, categoryHandled, false,
                                   multiCategory);
-      primaryStore->configure(primary_store_conf, storeConf);
+      if (primaryStore) {
+        primaryStore->configure(primary_store_conf, storeConf);
+      }
     }
   }
 
@@ -2756,6 +2761,10 @@ void MultiStore::configure(pStoreConf configuration, pStoreConf parent) {
         // add it to the list
         cur_store = createStore(storeQueue, cur_type, categoryHandled, false,
                                 multiCategory);
+        if (!cur_store) {
+          setStatus("MULTI: Can't create store of type: " + cur_type);
+          return;
+        }
         LOG_OPER("[%s] MULTI: Configured store of type %s successfully.",
                  categoryHandled.c_str(), cur_type.c_str());
         cur_store->configure(cur_conf, storeConf);
@@ -2831,7 +2840,9 @@ CategoryStore::~CategoryStore() {
 boost::shared_ptr<Store> CategoryStore::copy(const std::string &category) {
   CategoryStore *store = new CategoryStore(storeQueue, category, multiCategory);
 
-  store->modelStore = modelStore->copy(category);
+  if (modelStore) {
+    store->modelStore = modelStore->copy(category);
+  }
 
   return boost::shared_ptr<Store>(store);
 }
@@ -2901,6 +2912,10 @@ void CategoryStore::configureCommon(pStoreConf configuration,
   Store::configure(configuration, parent);
   // initialize model store
   modelStore = createStore(storeQueue, type, categoryHandled, false, false);
+  if (!modelStore) {
+    setStatus("CATEGORYSTORE: Can't create store of type: " + type);
+    return;
+  }
   LOG_OPER("[%s] %s: Configured store of type %s successfully.",
            categoryHandled.c_str(), getType().c_str(), type.c_str());
   modelStore->configure(configuration, parent);
@@ -2930,9 +2945,13 @@ bool CategoryStore::handleMessages(boost::shared_ptr<logentry_vector_t> messages
 
     if (store_iter == stores.end()) {
       // Create new store for this category
-      store = modelStore->copy(category);
-      store->open();
-      stores[category] = store;
+      if (modelStore) {
+        store = modelStore->copy(category);
+      }
+      if (store) {
+        store->open();
+        stores[category] = store;
+      }
     } else {
       store = store_iter->second;
     }

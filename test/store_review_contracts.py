@@ -54,6 +54,18 @@ class StoreReviewContracts:
     def test_review_store_list_default_port_is_initialized(self):
         self.run_fixture("review-store-defaults")
 
+    def test_review_store_invalid_children_do_not_dereference_null(self):
+        cases = {
+            "buffer-primary": "<primary>\ntype=not-a-store\n</primary>\n<secondary>\ntype=null\n</secondary>\nreplay_buffer=no\n",
+            "buffer-secondary": "<primary>\ntype=null\n</primary>\n<secondary>\ntype=not-a-store\n</secondary>\n",
+            "multi": "<store0>\ntype=not-a-store\n</store0>\n",
+            "category": "<model>\ntype=not-a-store\n</model>\n",
+            "category-missing": "",
+        }
+        for kind, children in cases.items():
+            with self.subTest(kind=kind):
+                self.run_fixture("review-store-invalid-child", "test_kind=" + kind + "\n" + children)
+
     def test_review_store_bucket_preserves_small_count_legacy_suffix_rejection(self):
         for count in (1, 2, 3, 4):
             name = "bucket"[count + 1:]
