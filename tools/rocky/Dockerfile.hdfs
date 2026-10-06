@@ -1,0 +1,46 @@
+ARG BASE=scribe-next-rocky-validation:8-20261006
+FROM ${BASE}
+RUN dnf -y install java-17-openjdk-devel cyrus-sasl-devel pkgconf-pkg-config && dnf clean all
+COPY hadoop-3.5.0.tar.gz hadoop-3.5.0-src.tar.gz boost_1_86_0.tar.bz2 abseil-20230802.1.tar.gz protobuf-3.25.5.tar.gz googletest-1.10.0.tar.gz /sources/
+RUN cd /sources && \
+    echo '04ab94496cc00c8b7a28d03f6308eff8d2a4e7f37a9da5e8e086e4d6fc990e7a94d661908f6a6136039536efb362614b8aecdef185b5fb8ed588f0b152c7aa16  hadoop-3.5.0.tar.gz' | sha512sum -c - && \
+    echo '90c4f187af0606443523249a40c9af487bd0bbee7af3ff777492f5b5198e599583d07e4d55f569e39842e3304a605e929babf6bbea7d7683c7fac0523147ab0b  hadoop-3.5.0-src.tar.gz' | sha512sum -c - && \
+    echo '1bed88e40401b2cb7a1f76d4bab499e352fa4d0c5f31c0dbae64e24d34d7513b  boost_1_86_0.tar.bz2' | sha256sum -c - && \
+    echo '0320586856674d16b0b7a4d4afb22151bdc798490bb7f295eddd8f6a62b46fea  abseil-20230802.1.tar.gz' | sha256sum -c - && \
+    echo 'ae90c966e19a8fdc710a0597669c4532d3ddf89143b12b2b0208187c3ac9e769  protobuf-3.25.5.tar.gz' | sha256sum -c - && \
+    echo 'd17b1b83a57b3933565a6d0616fe261107326d47de20288d0949ed038e1c342d  googletest-1.10.0.tar.gz' | sha256sum -c - && \
+    tar -xzf hadoop-3.5.0.tar.gz -C /opt && tar -xzf hadoop-3.5.0-src.tar.gz && \
+    tar -xjf boost_1_86_0.tar.bz2 && tar -xzf abseil-20230802.1.tar.gz && \
+    tar -xzf protobuf-3.25.5.tar.gz && tar -xzf googletest-1.10.0.tar.gz
+RUN cd /sources/boost_1_86_0 && ./bootstrap.sh --prefix=/opt/hadoop-deps --with-libraries=date_time && \
+    ./b2 -j4 variant=release link=shared threading=multi cxxflags=-std=c++17 install
+RUN cmake -S /sources/protobuf-9d0ec0f92b5b5fdeeda11f9dcecc1872ff378014 -B /sources/protobuf-build \
+    -DCMAKE_INSTALL_PREFIX=/opt/hadoop-deps -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF \
+    -DABSL_ROOT_DIR=/sources/abseil-cpp-fb3621f4f897824c0dbe0615fa94543df6192f30 && \
+    cmake --build /sources/protobuf-build --parallel 4 && cmake --install /sources/protobuf-build
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+ARG NATIVE_CXX_LIBS=""
+RUN java -XshowSettings:properties -version 2>&1 | grep -F 'sun.arch.data.model = 64' && \
+    cmake -S /sources/hadoop-3.5.0-src/hadoop-hdfs-project/hadoop-hdfs-native-client/src -B /sources/libhdfs-build \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/hadoop-deps \
+    -DCMAKE_CXX_STANDARD_LIBRARIES="$NATIVE_CXX_LIBS" \
+    -DJVM_ARCH_DATA_MODEL=64 -DHADOOP_BUILD=1 -DGENERATED_JAVAH=/sources/libhdfs-build/javah \
+    -DHDFSPP_LIBRARY_ONLY=ON \
+    -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=/sources/googletest-703bd9caab50b139428cea1aaff9974ebee5742e && \
+    cmake --build /sources/libhdfs-build --target hdfs --parallel 4 && \
+    mkdir -p /opt/hadoop-rocky-3.5.0/lib/native && \
+    ln -s /opt/hadoop-3.5.0/share /opt/hadoop-rocky-3.5.0/share && \
+    ln -s /opt/hadoop-3.5.0/include /opt/hadoop-rocky-3.5.0/include && \
+    cp -a /sources/libhdfs-build/native/target/usr/local/lib/libhdfs.so* /opt/hadoop-rocky-3.5.0/lib/native/ && \
+    cmp /sources/hadoop-3.5.0-src/hadoop-hdfs-project/hadoop-hdfs-native-client/src/main/native/libhdfs/include/hdfs/hdfs.h /opt/hadoop-rocky-3.5.0/include/hdfs.h
+ENV HADOOP_PREFIX=/opt/hadoop-rocky-3.5.0 \
+    LD_LIBRARY_PATH="/opt/hadoop-rocky-3.5.0/lib/native:/usr/lib/jvm/java-17-openjdk/lib/server:${LD_LIBRARY_PATH}"
+RUN java -version && ldd /opt/hadoop-rocky-3.5.0/lib/native/libhdfs.so && \
+    python3.12 -c "import subprocess; r=subprocess.run(['ldd','-r','/opt/hadoop-rocky-3.5.0/lib/native/libhdfs.so'],capture_output=True,text=True); assert r.returncode==0 and 'not found' not in r.stdout+r.stderr and 'undefined symbol' not in r.stdout+r.stderr, r.stdout+r.stderr"
+
+# Normal nonprivileged NSS identity for Hadoop UnixLoginModule; container only.
+RUN groupadd --gid 973 scribe-fixture && useradd --uid 1000 --gid 973 --no-create-home --shell /sbin/nologin scribe-fixture && \
+    for directory in bin sbin libexec etc; do ln -s /opt/hadoop-3.5.0/$directory /opt/hadoop-rocky-3.5.0/$directory; done
+USER 1000:973
+RUN getent passwd 1000 && getent group 973

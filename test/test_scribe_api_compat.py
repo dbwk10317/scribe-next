@@ -82,9 +82,9 @@ def check_fresh_object(build, name):
             raise AssertionError(f"stale build object {obj}; rebuild after changing {path}")
 
 
-def check_fresh_link(build,libraries):
+def check_fresh_link(build,libraries,objects=OBJECTS):
     source=build / 'src';scribed=source / 'scribed'
-    inputs=[source / (name+'.o') for name in (*OBJECTS,'scribe_server')]
+    inputs=[source / (name+'.o') for name in (*objects,'scribe_server')]
     inputs += [source / library for library,members in libraries]
     if any(path.stat().st_mtime_ns>scribed.stat().st_mtime_ns for path in inputs):
         raise AssertionError('scribed is older than its selected objects/libraries; relink before testing')
@@ -110,6 +110,19 @@ class RpcLibraryLayoutTests(unittest.TestCase):
             check_fresh_link(build,libraries)
             os.utime(source/'libscribe.so',ns=(200,200))
             with self.assertRaises(AssertionError):check_fresh_link(build,libraries)
+
+    def test_hdfs_object_is_checked_for_link_freshness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory); source = build / 'src'; source.mkdir()
+            libraries = rpc_layout('LTYPE = .a\n')
+            objects = (*OBJECTS, 'HdfsFile')
+            for name in [*(n + '.o' for n in (*objects, 'scribe_server')),
+                         *(library for library, members in libraries), 'scribed']:
+                path = source / name; path.write_bytes(b'fixture'); os.utime(path, ns=(100, 100))
+            check_fresh_link(build, libraries, objects)
+            os.utime(source / 'HdfsFile.o', ns=(200, 200))
+            with self.assertRaises(AssertionError):
+                check_fresh_link(build, libraries, objects)
 
 
 class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, ReviewRetryShuffleContracts, ReviewLimitsContracts,
@@ -141,9 +154,21 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
 
         libraries=rpc_layout(makefile)
         shared=make_value(makefile,'LTYPE')=='.so'
+        hdfs = "-DUSE_SCRIBE_HDFS=1" in shlex.split(make_value(makefile, "DEFS"))
+        objects = (*OBJECTS, "HdfsFile") if hdfs else OBJECTS
+        hdfs_libs = []
+        hdfs_includes = []
         libdirs = [thrift / "lib", fb303 / "lib", tools / "lib"]
         if shared:libdirs.insert(0,cls.build / 'src')
         libdirs += sorted((tools / "lib").glob("*-linux-gnu"))
+        if hdfs:
+            hadoop = Path(make_value(makefile, "hadoop_home")).resolve(strict=True)
+            if not os.environ.get("JAVA_HOME"):
+                raise AssertionError("HDFS fixture requires matching JAVA_HOME")
+            java = Path(os.environ["JAVA_HOME"]).resolve(strict=True)
+            libdirs += [hadoop / "lib/native", java / "lib/server"]
+            hdfs_includes = [hadoop / "include"]
+            hdfs_libs = ["-lhdfs", "-ljvm"]
         cls.env = dict(os.environ)
         cls.env["LD_LIBRARY_PATH"] = os.pathsep.join(map(str, libdirs))
         if os.environ.get("LD_LIBRARY_PATH"):
@@ -162,7 +187,7 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                     cls.build / "src/gen-cpp" / (name + suffix)
                 ).read_bytes():
                     raise AssertionError(f"stale or modified generated source: {name}{suffix}")
-        for name in (*OBJECTS, *(member for library,members in libraries for member in members), "scribe_server"):
+        for name in (*objects, *(member for library,members in libraries for member in members), "scribe_server"):
             check_fresh_object(cls.build, name)
         for archive,members in libraries:
             path = cls.build / "src" / archive
@@ -170,21 +195,22 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                    > path.stat().st_mtime_ns for name in members):
                 raise AssertionError(f"stale generated RPC library: {path}")
         cls.scribed = cls.build / "src/scribed"
-        check_fresh_link(cls.build,libraries)
+        check_fresh_link(cls.build,libraries,objects)
 
         includes = [ROOT / "src", cls.build, thrift / "include", thrift / "include/thrift",
-                    fb303 / "include/thrift", fb303 / "include/thrift/fb303", tools / "include"]
+                    fb303 / "include/thrift", fb303 / "include/thrift/fb303", tools / "include", *hdfs_includes]
         cxx = shlex.split(make_value(makefile, "CXX"))
         flags = ["-std=c++17", "-O0", "-g", "-pthread", *(f"-I{path}" for path in includes)]
+        if hdfs: flags.append("-DUSE_SCRIBE_HDFS=1")
         server_object = cls.temporary / "scribe_server_test.o"
         checked([*cxx, *flags, "-Dmain=scribe_cli_main", "-c", ROOT / "src/scribe_server.cpp",
                  "-o", server_object], ROOT, cls.env)
         cls.fixture = cls.temporary / "scribe-api-fixture"
         checked([*cxx, *flags, ROOT / "test/cpp/scribe_api_compat.cpp", server_object,
-                 *(cls.build / "src" / (name + ".o") for name in OBJECTS),
+                 *(cls.build / "src" / (name + ".o") for name in objects),
                  *(cls.build / "src" / library for library,members in libraries),
                  *(f"-L{path}" for path in libdirs), "-lfb303", "-lthrift", "-lthriftnb",
-                 "-levent", "-lboost_filesystem", "-lboost_system", "-Wl,--wrap=_Znwm", "-Wl,--wrap=time",
+                 *hdfs_libs, "-levent", "-lboost_filesystem", "-lboost_system", "-Wl,--wrap=_Znwm", "-Wl,--wrap=time",
                  "-o", cls.fixture], ROOT, cls.env)
 
     def run_fixture(self, mode, config_text=None, input_files=None):

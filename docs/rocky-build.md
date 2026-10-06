@@ -105,4 +105,6 @@ Main `4d3aeef2b2c895b8eff53bfd50356c18a5691c13`에서 기존 검증기의
 DT_NEEDED와 실제 stage loader를 검증했다. 기본 static 선택과 caller flags는 유지한다.
 서버 toolchain 이미지·고정 source·격리 조건은 위 기본 lane과 같다.
 이 결과는 source shared build/staged loader 범위이며 개발 RPM은 여전히 static RPC다.
-패키지 shared daemon, shared old/new differential, HDFS 성공을 주장하지 않는다.
+패키지 shared daemon과 shared old/new differential 성공을 주장하지 않는다.
+별도 [Rocky HDFS 소스 검증](rocky-hdfs.md)은 220개 회귀·local JNI 및 격리 single-DN
+저장/독립 reader/restart append를 확인했다. HDFS/shared RPM과 HDFS/shared 조합은 미검증이다.

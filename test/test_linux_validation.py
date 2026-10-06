@@ -57,6 +57,18 @@ class LinuxValidationInputs(unittest.TestCase):
                     self.assertNotIn("fetch", call.args[0])
                 self.assertEqual(run.call_args_list[0].args[0][-1], "--version")
 
+    def test_incomplete_hdfs_inputs_do_not_create_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "new"
+            for options, diagnostic in ((["--hadoop", directory], "provided together"),
+                                        (["--hadoop", directory, "--java-home", directory],
+                                         "missing prepared HDFS dependency")):
+                result = subprocess.run([sys.executable, "-B", SCRIPT, "--output", output, *options],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(diagnostic, result.stderr)
+                self.assertFalse(output.exists())
+
     def test_existing_output_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

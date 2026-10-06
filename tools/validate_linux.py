@@ -55,7 +55,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="new directory outside the checkout")
     parser.add_argument("--shared-rpc",action="store_true",help="validate original --disable-static RPC .so mode; default remains static")
+    parser.add_argument("--hadoop", type=Path, help="prepared optional libhdfs SDK")
+    parser.add_argument("--java-home", type=Path, help="matching prepared JDK for libhdfs")
     args = parser.parse_args()
+    if bool(args.hadoop) != bool(args.java_home):
+        parser.error("--hadoop and --java-home must be provided together")
+    hadoop = args.hadoop.resolve() if args.hadoop else None
+    java = args.java_home.resolve() if args.java_home else None
+    if hadoop:
+        for path in (hadoop / "include/hdfs.h", hadoop / "lib/native/libhdfs.so",
+                     java / "lib/server/libjvm.so", java / "bin/java"):
+            if not path.is_file():
+                parser.error("missing prepared HDFS dependency: " + str(path))
     output = args.output.absolute()
     if output.exists() or output.is_symlink():
         parser.error("output already exists; choose a new directory")
@@ -77,7 +88,7 @@ def main():
     if not shutil.which("git"):
         parser.error("missing existing tool: git")
     require_upstream(parser)
-    for tool in ("make", "autoreconf") + (("readelf",) if args.shared_rpc else ()):
+    for tool in ("make", "autoreconf") + (("readelf",) if args.shared_rpc or hadoop else ()):
         if not shutil.which(tool):
             parser.error("missing existing tool: " + tool)
     thrift, fb303, tools, python_source = (Path(env[n]).resolve() for n in PREFIXES)
@@ -109,6 +120,11 @@ def main():
         shutil.copy2(SOURCE / relative, target)
     multiarch = tools / "lib/x86_64-linux-gnu"
     libraries = (multiarch, thrift / "lib", fb303 / "lib")
+    if hadoop:
+        libraries += (hadoop / "lib/native", java / "lib/server")
+        env["JAVA_HOME"] = str(java)
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(map(str, libraries)) + (
+            os.pathsep + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
     env["PATH"] = str(thrift / "bin") + os.pathsep + env.get("PATH", "")
     env.setdefault("PYTHON", sys.executable)
     env.setdefault("CPPFLAGS", f"-I{tools}/include -I{tools}/include/x86_64-linux-gnu")
@@ -120,6 +136,8 @@ def main():
     result = {"status": "running", "rpc_library_mode":"shared" if args.shared_rpc else "static", "source_head": subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=SOURCE, text=True).strip(),
         "platform": platform.platform(), "thrift_version": version,
+        "hdfs_enabled": bool(hadoop), "hadoop_prefix": str(hadoop) if hadoop else None,
+        "java_home": str(java) if java else None,
         "source_files": records, "steps": [],
         "inputs": {n: env.get(n) for n in (*PREFIXES, "CC", "CXX", "CFLAGS", "CXXFLAGS",
                                                "CPPFLAGS", "LDFLAGS", "PYTHON", "PY_PREFIX",
@@ -139,7 +157,8 @@ def main():
                           "--with-thriftpath=" + str(thrift), "--with-fb303path=" + str(fb303),
                           "--with-boost=" + str(tools), "--with-boost-system=boost_system",
                           "--with-boost-filesystem=boost_filesystem",
-                          *(["--disable-static"] if args.shared_rpc else [])])
+                          *(["--disable-static"] if args.shared_rpc else []),
+                          *(["--enable-hdfs", "--with-hadooppath=" + str(hadoop)] if hadoop else [])])
         makefile = (build / "src/Makefile").read_text()
         configured = dict(line.split(" = ", 1) for line in makefile.splitlines() if " = " in line)
         result["configured"] = {n: configured[n] for n in ("CC", "CXX", "CFLAGS", "CXXFLAGS",
@@ -162,6 +181,18 @@ def main():
             if len(sections)!=1 or any("Shared library: ["+name+"]" not in sections[0]
                                        for name in ("libscribe.so","libdynamicbucketupdater.so")):
                 raise RuntimeError("shared scribed lacks expected RPC DT_NEEDED entries")
+        if hadoop:
+            if "-DUSE_SCRIBE_HDFS=1" not in configured.get("DEFS", ""):
+                raise RuntimeError("HDFS feature was not configured")
+            if not (build / "src/HdfsFile.o").is_file():
+                raise RuntimeError("HDFS production object was not built")
+            run("hdfs-elf", ["readelf", "-W", "-d", build / "src/scribed"])
+            if "Shared library: [libhdfs.so" not in (logs / "hdfs-elf.log").read_text():
+                raise RuntimeError("HDFS scribed lacks libhdfs DT_NEEDED")
+            run("java-version", [java / "bin/java", "-version"])
+            run("hdfs-local", [sys.executable, "-B", SOURCE / "tools/test_hdfs_local.py",
+                              "--build", build, "--hadoop", hadoop, "--java-home", java,
+                              "--thrift", thrift, "--fb303", fb303, "--tools", tools])
         # Existing discovery/runner, with machine-readable counts and explicit skip rejection.
         run("tests", [sys.executable, "-B", "-c", """
 import json, pathlib, sys, unittest
