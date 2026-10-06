@@ -283,3 +283,21 @@ send는 map lock 아래 strong reference와 connection guard를 획득한 뒤 ma
 통과했다. 실제 pool methods와 fixture의 제한된 TSan은 exit0/경고 없음이다.
 이 stub 결과는 transport/network daemon의 전체 race 부재나 성능 결과가 아니다.
 raw는 별도 task evidence의 astra-review/pool-* 및 conn-pool-after에 보존한다.
+
+## Buffer status와 worker configuration publication
+
+2026-10-06, base main `63bfd23f123f40b7a74c22252c9244369c8dc796`.
+구성 전 actual BufferStore status는 null assertion으로 실패했다. 별도 actual
+StoreQueue/barrier-store component는 worker configure 도중 status가 부분 상태를
+읽어 early_status=1로 실패했다. 최초 mock include 준비 오류도 별도 raw에 남겼다.
+
+비-model StoreQueue status 조회는 worker가 configure 동안 이미 보유하는 cmdMutex로
+직렬화하며 예외 시에도 unlock한다. 따라서 조회는 구성 임계 구역 완료까지 기다린다.
+model은 기존 synchronous 구성 경로를 유지한다. Buffer의 아직 없는 child는 기존
+자기 오류 또는 구성 전 상태를 반환한다. 완료 뒤 secondary→self→primary 순서와
+건강한 empty status는 변경하지 않는다. null 검사만으로 publication을 대신하지 않는다.
+
+fresh default 전체8단계·223 tests·failure/error/skip0·DESTDIR/help가 통과했다.
+actual Buffer 상태·우선순위와 barrier publication은 서로 다른 두 regression이다.
+제한된 actual Queue/component TSan도 exit0이며 전체 daemon race 부재의 주장이 아니다.
+raw는 astra-review/publication-* 및 buffer-publication-after에 별도 보존한다.
