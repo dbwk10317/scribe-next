@@ -17,21 +17,19 @@ class ReviewQueueContracts:
         self.assertEqual((directory / "states.txt").read_text(),
                          f"ack=0\nreceived={received}\nlost=0\nrequeue=0\nbytes-lost=0\n")
 
-    def test_review_queue_shutdown_drains_empty_payloads(self):
+    def test_review_queue_shutdown_accepts_empty_payloads_without_delivery_or_loss_count(self):
         for newlines, category in ((1, False), (0, True), (1, True)):
             with self.subTest(newlines=newlines, category=category):
                 directory = self.run_fixture("review-queue-stop", self.review_queue_config(
                     newlines=newlines, category=category))
                 self.check_review_queue_counters(directory)
-                self.assertEqual((directory / "data/fixture_00000").read_bytes(),
-                                 ((b"accepted\n" if category else b"") +
-                                  (b"\n" if newlines else b"")) * 3)
+                self.assertEqual((directory / "data/fixture_00000").read_bytes(), b"")
 
-    def test_review_queue_periodic_flush_drains_empty_payloads(self):
+    def test_review_queue_periodic_flush_leaves_empty_payloads_undelivered(self):
         directory = self.run_fixture("review-queue-periodic", self.review_queue_config(interval=1))
         self.check_review_queue_counters(directory)
-        self.assertEqual((directory / "before-stop.bin").read_bytes(), b"\n\n\n")
-        self.assertEqual((directory / "data/fixture_00000").read_bytes(), b"\n\n\n")
+        self.assertEqual((directory / "before-stop.bin").read_bytes(), b"")
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), b"")
 
     def test_review_queue_mixed_payload_bytes_and_newline_options(self):
         for newlines in (0, 1):

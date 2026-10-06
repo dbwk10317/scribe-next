@@ -1,4 +1,4 @@
-// Regression for zero-byte entries in the real handler/StoreQueue/FileStore path.
+// Original zero-byte behavior in the real handler/StoreQueue/FileStore path.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #ifndef SCRIBE_TEST_REVIEW_QUEUE_CONTRACTS_H
 #define SCRIBE_TEST_REVIEW_QUEUE_CONTRACTS_H
@@ -33,13 +33,14 @@ static void testReviewQueue(const std::string& mode, const std::string& config,
           "queue received-good counter changed");
 
   if (mode == "review-queue-periodic") {
-    // Observe actual file flush before stopping. Polling has a deadline and
-    // does not replace the worker's production max_write_interval scheduling.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
-    while (reviewQueueOutput(directory) != "\n\n\n" &&
+    // Observe the original lack of empty-only delivery across worker intervals.
+    // Polling does not replace production max_write_interval scheduling.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (reviewQueueOutput(directory).empty() &&
            std::chrono::steady_clock::now() < deadline) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    require(reviewQueueOutput(directory).empty(), "empty-only queue was flushed");
     save(directory + "/before-stop.bin", reviewQueueOutput(directory));
   } else {
     // max_write_interval=3600 and target_write_size=16384 keep this small

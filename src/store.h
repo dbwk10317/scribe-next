@@ -1,4 +1,3 @@
-// scribe-next modification: retain one-shot initial lookup state for dynamic copies.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -411,7 +410,6 @@ class NetworkStore : public Store {
 
   // state
   bool opened;
-  bool resolveOnOpen;
   boost::shared_ptr<scribeConn> unpooledConn; // null if useConnPool
 
  private:

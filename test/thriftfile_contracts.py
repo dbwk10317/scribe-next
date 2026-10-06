@@ -2,8 +2,8 @@
 
 Each child has a ten-second C++ alarm and the shared owner has a subprocess
 timeout. Readback is after normal close/join, not a crash/fsync guarantee.
-Copy preserves the configured transport mode. Empty/over-chunk drops retain
-their observed behavior. No old runtime is exercised.
+Copy preserves upstream default framed mode even when its source is raw.
+Empty/over-chunk drops retain their observed behavior. No old runtime is exercised.
 """
 
 import os
@@ -144,7 +144,7 @@ class ThriftFileContracts:
         self.assert_thriftfile_readback(directory, "source-readback", payloads)
         self.assert_thriftfile_readback(directory, "copy-readback", payloads)
 
-    def test_thriftfile_simple_copy_preserves_raw_mode_and_uses_independent_path(self):
+    def test_thriftfile_simple_source_copy_preserves_legacy_framed_reader_contract(self):
         payloads = (b"A\0B\n\xff", b"ends\n")
         for value in (1, 2):
             with self.subTest(use_simple_file=value):
@@ -152,25 +152,27 @@ class ThriftFileContracts:
                     use_simple_file=value, sub_directory="nested", base_symlink_name="active",
                     chunk_size=16, flush_frequency_ms=7, msg_buffer_size=3))
                 self.assertEqual((directory / "data/copied/nested/copied_00000").read_bytes(),
-                                 b"".join(payloads))
+                                 self.thriftfile_bytes(payloads, chunk=16))
                 self.assertEqual((directory / "data/nested/fixture_00000").read_bytes(),
                                  b"".join(payloads))
                 configured = self.thriftfile_state(directory, "copy-configured.txt")
                 self.assertEqual((configured["open"], configured["kind"], configured["filename"],
                                   configured["current_size"], configured["events_written"]),
                                  ("0", "closed", "", "0", "0"))
-                for name in ("written.txt", "copy-written.txt"):
-                    state = self.thriftfile_state(directory, name)
-                    self.assertEqual((state["kind"], state["use_simple_file"],
-                                      state["flush_frequency_ms"], state["msg_buffer_size"]),
-                                     ("simple", str(value), "7", "3"))
-                    self.assertNotIn("transport_chunk_size", state)
+                source = self.thriftfile_state(directory, "written.txt")
+                copied = self.thriftfile_state(directory, "copy-written.txt")
+                self.assertEqual((source["kind"], source["use_simple_file"]),
+                                 ("simple", str(value)))
+                self.assertNotIn("transport_chunk_size", source)
+                self.assertEqual((copied["kind"], copied["use_simple_file"],
+                                  copied["transport_chunk_size"], copied["flush_frequency_ms"],
+                                  copied["msg_buffer_size"]), ("tfile", "0", "16", "7", "3"))
                 self.assertEqual(os.readlink(directory / "data/nested/active_current"),
                                  "fixture_00000")
                 self.assertEqual(os.readlink(directory / "data/copied/nested/active_current"),
                                  "copied_00000")
                 self.assert_thriftfile_readback(directory, "source-readback", payloads, simple=True)
-                self.assert_thriftfile_readback(directory, "copy-readback", payloads, simple=True)
+                self.assert_thriftfile_readback(directory, "copy-readback", payloads)
 
     def test_thriftfile_simple_copy_keeps_existing_framed_files_and_uses_next_suffix(self):
         payloads = (b"A\0B\n\xff", b"ends\n")
@@ -181,7 +183,7 @@ class ThriftFileContracts:
                     use_simple_file=value, chunk_size=16, flush_frequency_ms=7, msg_buffer_size=3),
                     {"data/copied/copied_00000": legacy, "data/copied/copied_00007": legacy})
                 self.assertEqual((directory / "data/copied/copied_00008").read_bytes(),
-                                 b"".join(payloads))
+                                 self.thriftfile_bytes(payloads, chunk=16))
                 for suffix in (0, 7):
                     self.assertEqual((directory / f"data/copied/copied_{suffix:05d}").read_bytes(),
                                      legacy)
@@ -191,7 +193,7 @@ class ThriftFileContracts:
                                  "copied_00008")
                 self.assertEqual(sorted(path.name for path in (directory / "data/copied").iterdir()),
                                  ["copied_00000", "copied_00007", "copied_00008", "copied_current"])
-                self.assert_thriftfile_readback(directory, "copy-readback", payloads, simple=True)
+                self.assert_thriftfile_readback(directory, "copy-readback", payloads)
 
     def test_thriftfile_known_over_chunk_event_is_accepted_but_not_written(self):
         directory = self.run_fixture("thriftfile-chunk-limit", self.thriftfile_config(

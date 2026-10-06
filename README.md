@@ -20,7 +20,8 @@
 | 동적 mapping | 실제 RPC/TTL: A→cache A→B→실패 refresh 중 B 유지→A 회복; 두 missing-key warning/static fallback |
 | 선택 HDFS | 공식 Hadoop 3.5/JDK 17 single-DN의 nonempty seeded-directory에서 binary write·재시작 append·regular marker·block/readback·cleanup; JDK 21 local JNI client도 확인 |
 
-최신 기본 Linux lane 회귀 **201개, failure/error/skip0**이며 실제 daemon 비교와 별도 근거다.
+이전 bc9ba6e 기본 Linux lane 회귀는 **201개, failure/error/skip0**이며 실제 daemon 비교와 별도 근거다.
+원본 계약 되돌림 후보의 최신 결과는 해당 checkpoint를 따르며 이전 숫자를 새 성공으로 세지 않는다.
 Mac에서는 해당 offline fixture만 확인했다. shared actual old/new daemon 전체,
 역사 libhdfs binary, HDFS fault/permission/replication·빈 디렉터리, 전체 config/store
 옵션·다른 platform은 미검증이다. 상세 성능 비교와 tuning은 사용자 결정으로 보류했다.
@@ -112,16 +113,19 @@ static endpoint를 사용하거나, store가 준비되지 않아도 listener/ACK
 - 두 IDL의 field/method/namespace, framed binary와 strict 설정, fb303,
   byte·queue/batch/retry/store 형식을 유지한다. OK는 **메모리 큐 수락**이며
   durable ACK/exactly-once가 아니다. flush를 fsync로 설명하지 않는다
-- 승인된 예외: StdFile 해제 오류, 빈 payload-only queue drain, StdFile truncate의
-  append 제거/partial replay 보존, retry modulo0 방지, bucket/list/pool/config-copy
-  결함과 ThriftFileStore raw-copy 설정 보존. 기존 framed 파일을 변환하지 않는다
+- 최신 보존 기준은 신·구 sender/receiver 혼용과 기존 로그 reader의 계약이다.
+  route·bytes·format·delivery·monitoring을 바꾸던 copy/list/pool/empty-queue/
+  partial-replay 수정은 원본의 정의된 동작으로 되돌린다. 알려진 원본 버그는
+  [호환 결정](docs/legacy-compatibility-policy.md)에 기록하며 새 옵션은 제공하지 않는다
+- malloc/free, retry modulo0, null bucket child, 미초기화 list port와 안전한 bucket
+  이름 경계 같은 UB/crash 방지는 유지한다. 미정의 결과 자체를 재현하지 않는다
 - HDFS delete의 historical/modern API arity는 recursive=1로 연결하고 원래 ignored
   return/logging을 유지한다. HDFS `_current`는 symlink가 아닌 regular marker이며
   unsupported readNext/getFrame·closed-handle truncate의 원래 동작을 새로 바꾸지 않았다
 - C++17 shuffle은 확인한 GNU 순서를 보존한다. Thrift 0.25의 std::thread/ABI는
   구 PosixThreadFactory와 다르므로 stack 크기나 성능 동등성을 가정하지 않는다
 
-[변경 근거](docs/review-fixes-status.md) · [truncate/free](docs/truncate-fix-status.md) ·
+[현재 호환 결정](docs/legacy-compatibility-policy.md) · [이전 변경 이력](docs/review-fixes-status.md) ·
 [ThriftFile copy와 empty/oversized 보존](docs/thriftfile-fix-options.md)
 
 ## Thrift 입력 한도와 thread 경계

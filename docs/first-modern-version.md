@@ -5,7 +5,14 @@
 Current build/run/config/rollback instructions are in [README](../README.md).
 Company inputs are out of scope. Detailed performance remains deferred.
 
-## Named first-version work is closed
+## Current compatibility policy supersedes prior closeout
+
+The 2026-10-06 user decision prioritizes mixed old/new sender/receiver and existing
+log-reader contracts. Semantic corrections are restored to defined upstream
+behavior; harmless UB/crash repairs remain. See [current policy](legacy-compatibility-policy.md).
+The results below describe their recorded source stages, not the reverted candidate.
+
+## Prior named first-version closeout
 
 | Boundary | Evidence |
 | --- | --- |
@@ -31,8 +38,8 @@ fixture results do not turn Mac into a supported daemon/build platform.
 This is a documented, tested **initial modern Linux candidate**, not proof of
 complete original-feature equivalence, production readiness or operational soak.
 No original store is deleted. IDL/wire/config/store architecture is retained;
-approved fixes and explicit finite wire limits are not disguised as identical old
-bug behavior. OK is queue acceptance, flush is not fsync, and no durable/exactly-once
+current preserved UB repairs and explicit finite wire limits are not disguised as
+complete old-runtime equivalence. OK is queue acceptance, flush is not fsync, and no durable/exactly-once
 contract is added. The HDFS lane retains its declared nonempty-directory seed and
 is modern distributed validation, not historical libhdfs binary equivalence.
 
@@ -43,7 +50,7 @@ Any newly discovered functional-policy difference must be reported before fixing
 ## Declared deeper limits
 
 - Full dynamic/config/store-option/fault matrix, response-loss/partial-replay daemon
-  campaigns beyond existing component evidence and the approved replay fix
+  campaigns beyond existing component evidence; original partial-replay loss remains
 - Historical HDFS binaries; empty-directory/delete/permissions/replication,
   multi-DN faults and secure production clusters
 - Actual old/new shared-daemon whole-path comparison, non-Linux/other toolchains
