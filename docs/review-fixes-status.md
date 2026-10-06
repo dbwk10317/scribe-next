@@ -301,3 +301,17 @@ fresh default 전체8단계·223 tests·failure/error/skip0·DESTDIR/help가 통
 actual Buffer 상태·우선순위와 barrier publication은 서로 다른 두 regression이다.
 제한된 actual Queue/component TSan도 exit0이며 전체 daemon race 부재의 주장이 아니다.
 raw는 astra-review/publication-* 및 buffer-publication-after에 별도 보존한다.
+
+## Queue byte/threshold atomic snapshots
+
+2026-10-06, base main `b24e4545855c141d67810bdb09a3f415216c5738`.
+actual StoreQueue component의 size read/enqueue write 및 configure target write/
+enqueue threshold read를 별도 TSan 실행으로 재현했다. 두 경우 모두 exit66이었다.
+msgQueueSize와 targetWriteSize만 relaxed atomic snapshot으로 동기화한다.
+queue vector와 기존 mutex 순서, payload byte 합·unsigned 계산·limit 비교·empty-only
+주기/shutdown 정책은 그대로다. 설정 parser는 지역 값으로 읽은 뒤 target을 publish한다.
+
+수정 후 두 제한된 component TSan은 exit0이고 ordinary snapshot bounds/종료 bytes도
+통과했다. fresh default 전체8단계·224 tests·failure/error/skip0·DESTDIR/help가
+통과했다. 기존 legacy queue/spool/relay 계약 시험을 포함한다. 전체 daemon TSan이나
+성능 결과가 아니며 raw는 astra-review/queue-snapshots-* 및 queue-snapshots-after에 있다.

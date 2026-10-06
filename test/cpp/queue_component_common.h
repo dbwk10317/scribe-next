@@ -15,7 +15,11 @@ namespace scribe { namespace thrift { struct LogEntry {std::string message;}; } 
 typedef boost::shared_ptr<scribe::thrift::LogEntry> logentry_ptr_t;
 typedef std::vector<logentry_ptr_t> logentry_vector_t;
 struct StoreConf {
- bool getUnsignedLongLong(const std::string&,unsigned long long&){return false;}
+ unsigned long long target=16384;
+ bool configuredTarget=false;
+ bool getUnsignedLongLong(const std::string& name,unsigned long long& value){
+  if(configuredTarget && name=="target_write_size"){value=target;return true;}return false;
+ }
  bool getUnsigned(const std::string&,unsigned long&){return false;}
  bool getString(const std::string&,std::string&){return false;}
 };
