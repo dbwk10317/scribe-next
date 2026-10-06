@@ -31,6 +31,16 @@ def run(command, *, cwd, env=None, timeout=60, check=True):
     return result
 
 
+def require_git_safety_options():
+    result = subprocess.run(
+        ["git", "--no-replace-objects", "--no-lazy-fetch", "--version"],
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
+    )
+    if result.returncode:
+        raise RuntimeError("Git cannot use required --no-lazy-fetch/--no-replace-objects safety options; "
+                           "upstream objects were not read and no fetch was attempted: " + result.stderr.strip())
+
+
 class OrdinarySpoolTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -40,6 +50,7 @@ class OrdinarySpoolTests(unittest.TestCase):
         compiler = shutil.which("g++")
         if not compiler:
             raise unittest.SkipTest("ordinary spool component tests unrun; missing g++")
+        require_git_safety_options()
         cls.tools = Path(prefix).resolve()
         temporary = tempfile.TemporaryDirectory(prefix="scribe-spool-contract-")
         cls.addClassCleanup(temporary.cleanup)
