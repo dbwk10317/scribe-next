@@ -1,5 +1,8 @@
 # scribe-next 세부 구현 문서
 
+> 현재 상태(2026-10-06): 원본 계약 복원 [PR #25](https://github.com/dbwk10317/scribe-next/pull/25)는 병합됐으며 확인한 main은 `87b3ab3342715f8f831ad4bbef8d1b39420ee74a`이다.
+> 아래의 미반영·실패·승인 예외·시험 수는 각 단계의 당시 기록이다. 현재 정책과 지원 범위는 [README](../README.md)와 [호환성 정책](legacy-compatibility-policy.md)을 따른다.
+
 2026년 10월 4일 · 개발자 작업 분할 및 검증 계획
 
 관련 문서: [설계와 호환성 계약](design.ko.md) · [저장소 안내](../README.md)
@@ -36,7 +39,7 @@ old binary로 요청·응답 byte fixtures, store 출력 및 spool fixtures를 �
 
 대상은 `configure.ac`, `bootstrap.sh`, `Makefile.am`, `src/Makefile.am`, dependency 탐지 m4 및 generated code 생성 규칙이다. 확인한 configure.ac는 Boost system/filesystem과 Thrift·fb303 경로 및 optional HDFS 설정을 가지고 있다. 실제 link 목록과 bootstrap 도구는 구현 전에 해당 파일 원문에서 확인한다.
 
-먼저 공식 Thrift 0.25.0 release와 checksum을 고정하고, 목표 Linux에서 compiler와 필요한 C++ runtime을 빌드·검증한다. 이 의존성 build가 통과한 뒤 Scribe build를 연결한다. compiler/runtime 버전을 일치시키고 prefix와 include/link 경로를 명시한다. libthriftnb와 libevent 포함 여부, pthread linkage, fb303 header/library, HDFS feature off/on을 각각 확인한다. [검증된 Linux recipe](../README.md#검증된-linux-c-빌드-recipe)의 명시적 Boost library 이름과 dependency/include/link prefix를 사용하고 CFLAGS/CXXFLAGS의 사용자 값·빈 값을 보존한다. constants가 없는 두 IDL의 생성 결과에 없는 빈 constants source만 build 목록에서 제외하며 생성 파일을 손으로 만들지 않는다. compiler flag는 C++17 후보로 고정하고 target Thrift의 요구 표준과 충돌하면 문서의 결정을 갱신한다. compiler warning은 기록하되 모든 경고를 한번에 수정하지 않는다.
+먼저 공식 Thrift 0.25.0 release와 checksum을 고정하고, 목표 Linux에서 compiler와 필요한 C++ runtime을 빌드·검증한다. 이 의존성 build가 통과한 뒤 Scribe build를 연결한다. compiler/runtime 버전을 일치시키고 prefix와 include/link 경로를 명시한다. libthriftnb와 libevent 포함 여부, pthread linkage, fb303 header/library, HDFS feature off/on을 각각 확인한다. [검증된 Linux recipe](linux-build-mvp.md#수동-빌드-예제)의 명시적 Boost library 이름과 dependency/include/link prefix를 사용하고 CFLAGS/CXXFLAGS의 사용자 값·빈 값을 보존한다. constants가 없는 두 IDL의 생성 결과에 없는 빈 constants source만 build 목록에서 제외하며 생성 파일을 손으로 만들지 않는다. compiler flag는 C++17 후보로 고정하고 target Thrift의 요구 표준과 충돌하면 문서의 결정을 갱신한다. compiler warning은 기록하되 모든 경고를 한번에 수정하지 않는다.
 
 두 IDL의 field와 method를 변경하지 않고 목표 compiler로 다시 생성한다. v0.25.0의 `cpp:pure_enums`로 두 IDL을 실제 생성했고, Thrift/fb303 및 두 RPC 정적 library의 C++17 build·링크 smoke를 통과했다. 이후 기본 비-HDFS C++ lane의 scribed clean compile/link도 통과했으며 old/new wire·runtime 동등성은 미검증이다. 기존 generator option과 generated signature를 비교하며 generated files를 손으로 고치지 않는다. old language client가 의존하는 설치·패키지 위치도 보존한다.
 
