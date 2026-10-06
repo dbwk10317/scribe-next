@@ -207,3 +207,24 @@ TTL·cache 삭제/갱신·counter 이름과 update 순서·routing·retry 정책
 install·installed help가 같은 Ubuntu/native dependency lane에서 통과했다.
 실행은 로컬 fixture이며 새 production-daemon/old-new/HDFS/Rocky 결과가 아니다.
 raw evidence는 checkout 밖 `batch4-before`와 `batch4-after`에 보관했다.
+
+## Throttle 공유 상태 동기화 (2026-10-06)
+
+Base main `6b5b270`(PR #31)의 Log는 handler read lock 아래 throttle의
+lastMsgTime/numMsgLastSecond를 갱신했다. 실제 base-handler Log에 16개 local caller를
+동시에 시작하고 test clock을 한 초로 고정했다. 수정 전 새 회귀의 rate=100 quota
+검사가 실패했으며 전체 216개는 failure 1/error 0/skip 0이었다. 별도 ThreadSanitizer
+실행은 throttleDeny의 numMsgLastSecond 접근에서 data race를 보고하고 exit 66이었다.
+
+기존 handler lock을 write lock으로 넓히지 않고 별도 Thrift Mutex/Guard로 throttle
+상태 계산만 보호했다. max_msg_per_second=0은 기존 빠른 경로를 유지한다.
+정상 single-caller 경계, 큰 batch의 원본 half-limit 예외, counter 이름과 다음 초
+reset을 유지한다. test spy의 received vector를 공유하지 않고 production base Log를
+직접 호출하며 고정 clock은 GNU link wrapper/atomic test 값으로만 제공한다.
+
+수정 후 새 configure·clean/build·전체 216개(failure/error/skip 0)·DESTDIR install·
+installed help가 통과했다. 같은 local ThreadSanitizer fixture도 exit 0/경고 없이
+통과했다. TSan은 handler/updater source를 별도 instrument한 제한된 실행이며 다른
+production objects와 dependency는 instrument하지 않았다. 전체 daemon race 부재,
+old/new production 동등성이나 benchmark 결과가 아니다. raw evidence는 checkout 밖
+`batch5-before`, `batch5-after`, `batch5-before-tsan.log`, `batch5-after-tsan.log`다.

@@ -495,6 +495,7 @@ bool scribeHandler::throttleDeny(int num_messages) {
   if (0 == maxMsgPerSecond)
     return false;
 
+  Guard throttle_monitor(throttleLock);
   time(&now);
   if (now != lastMsgTime) {
     lastMsgTime = now;
@@ -918,3 +919,4 @@ void scribeHandler::deleteCategoryMap(category_map_t& cats) {
   } // for each category
   cats.clear();
 }
+// scribe-next modification: protect shared per-second throttle state under concurrent Log calls.

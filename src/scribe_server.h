@@ -97,6 +97,7 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   facebook::fb303::fb_status status;
   std::string statusDetails;
   apache::thrift::concurrency::Mutex statusLock;
+  apache::thrift::concurrency::Mutex throttleLock;
   time_t lastMsgTime;
   unsigned long numMsgLastSecond;
   unsigned long maxMsgPerSecond;
@@ -141,3 +142,4 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
 };
 extern std::shared_ptr<scribeHandler> g_Handler;
 #endif // SCRIBE_SERVER_H
+// scribe-next modification: serialize the per-second throttle state independently of handler read access.

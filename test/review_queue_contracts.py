@@ -2,6 +2,13 @@
 
 
 class ReviewQueueContracts:
+    def test_review_concurrent_throttle_preserves_quota_and_legacy_exemptions(self):
+        for limit in (100, 0):
+            with self.subTest(limit=limit):
+                self.run_fixture("review-throttle-concurrent", "port=1463\n"
+                                 f"max_msg_per_second={limit}\n"
+                                 "<store>\ncategory=accepted\ntype=null\n</store>\n")
+
     @staticmethod
     def review_queue_config(newlines=1, category=False, interval=3600):
         return (
