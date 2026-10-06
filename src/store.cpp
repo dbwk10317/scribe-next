@@ -1,7 +1,6 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
-// scribe-next modification: preserve store-copy policy and close the correct pooled destination.
-// scribe-next modification: defer copied dynamic destination lookup to worker open/check.
+// scribe-next modification: retain default-port initialization and bounded legacy bucket checks.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1067,7 +1066,6 @@ boost::shared_ptr<Store> ThriftFileStore::copy(const std::string &category) {
 
   store->flushFrequencyMs = flushFrequencyMs;
   store->msgBufferSize = msgBufferSize;
-  store->useSimpleFile = useSimpleFile;
   store->copyCommon(this);
   return copied;
 }
@@ -1759,7 +1757,6 @@ NetworkStore::NetworkStore(StoreQueue* storeq,
     ignoreNetworkError(false),
     configmod(NULL),
     opened(false),
-    resolveOnOpen(false),
     lastServiceCheck(0) {
   // we can't open the connection until we get configured
 
@@ -1786,9 +1783,6 @@ void NetworkStore::configure(pStoreConf configuration, pStoreConf parent) {
     // List of host[:port] in 'service_list'
     listBased = true;
     configuration->getUnsigned("list_default_port", serviceListDefaultPort);
-    // Lists have no service name; identify both the list and its default port
-    // so unrelated destinations cannot share the empty pool key.
-    serviceName = "service_list:" + serviceList + ":" + to_string(serviceListDefaultPort);
  } else {
     serviceBased = false;
     configuration->getString("remote_host", remoteHost);
@@ -1842,9 +1836,6 @@ void NetworkStore::configure(pStoreConf configuration, pStoreConf parent) {
 
 void NetworkStore::periodicCheck() {
   if (configmod) {
-    // A check before the first open also satisfies the clone's initial lookup,
-    // including failure: retain its static fallback without a duplicate lookup.
-    resolveOnOpen = false;
     // get the network updater type
     string host;
     uint32_t port;
@@ -1855,16 +1846,15 @@ void NetworkStore::periodicCheck() {
       LOG_OPER("[%s] dynamic configred network store destination changed. old value:<%s:%lu>, new value:<%s:%lu>",
                categoryHandled.c_str(), remoteHost.c_str(), remotePort,
                host.c_str(), (long unsigned)port);
-      close();
       remoteHost = host;
       remotePort = port;
+      close();
     }
   }
 }
 
 bool NetworkStore::loadFromList(const std::string &list, unsigned long defaultPort,
                                 server_vector_t& _return) {
-  _return.clear();
   vector<string> strs;
   boost::split(strs, list, boost::is_any_of("\t "));
   vector<string> split;
@@ -1888,9 +1878,6 @@ bool NetworkStore::open() {
      * it can lead to bad reference counting on g_connpool connections
      */
     return (true);
-  }
-  if (resolveOnOpen) {
-    periodicCheck();
   }
   bool success = true;
   if (serviceBased) {
@@ -1998,22 +1985,6 @@ boost::shared_ptr<Store> NetworkStore::copy(const std::string &category) {
   store->remoteHost = remoteHost;
   store->remotePort = remotePort;
   store->serviceName = serviceName;
-  store->serviceList = serviceList;
-  store->serviceListDefaultPort = serviceListDefaultPort;
-  store->serviceOptions = serviceOptions;
-  store->serviceCacheTimeout = serviceCacheTimeout;
-  store->ignoreNetworkError = ignoreNetworkError;
-  store->configmod = configmod;
-  store->storeConf = storeConf;
-  if (configmod) {
-    // Category creation copies under the handler lock. Keep the static fallback
-    // here, then resolve the new category in the worker before its first open.
-    store->remoteHost.clear();
-    store->remotePort = 0;
-    storeConf->getString("remote_host", store->remoteHost);
-    storeConf->getUnsigned("remote_port", store->remotePort);
-    store->resolveOnOpen = true;
-  }
 
   return copied;
 }
@@ -2227,8 +2198,9 @@ void BucketStore::createBuckets(pStoreConf configuration) {
     bucket->configure(bucket_conf, storeConf);
   }
 
-  // Check if an extra bucket is defined
-  if (configuration->getStore("bucket" + to_string(numBuckets + 1), tmp)) {
+  // Preserve the legacy suffix-name check only within the "bucket" literal.
+  // Larger offsets were undefined; skip them instead of rejecting bucketN+1.
+  if (numBuckets < 6 && configuration->getStore("bucket" + (numBuckets + 1), tmp)) {
     error_msg = "bucket store has too many buckets defined";
     goto handle_error;
   }
@@ -2442,9 +2414,6 @@ boost::shared_ptr<Store> BucketStore::copy(const std::string &category) {
   store->numBuckets = numBuckets;
   store->bucketType = bucketType;
   store->delimiter = delimiter;
-  store->removeKey = removeKey;
-  store->bucketRange = bucketRange;
-  store->storeConf = storeConf;
 
   for (std::vector<boost::shared_ptr<Store> >::iterator iter = buckets.begin();
        iter != buckets.end();

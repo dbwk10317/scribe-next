@@ -1,5 +1,7 @@
 # ThriftFileStore copy 수정과 동작 보존 결정
 
+2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 되돌린다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+
 2026-10-05 · [실측과 범위](thriftfile-contracts-status.md)
 
 ## 승인한 copy 수정

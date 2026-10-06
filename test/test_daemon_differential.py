@@ -21,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("daemon_differential", ROOT / "tools/daemon_differential.py")
 client = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(client)
+SPOOL_SPEC = importlib.util.spec_from_file_location("daemon_spool_case", ROOT / "tools/daemon_spool_case.py")
+spool = importlib.util.module_from_spec(SPOOL_SPEC)
+SPOOL_SPEC.loader.exec_module(spool)
 FIXTURES = ROOT / "test/fixtures/first_daemon_differential"
 
 
@@ -316,6 +319,98 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
                        lambda r:r['records'].__setitem__(7,self.counter_record(8,13))):
             broken=copy.deepcopy(report);mutate(broken)
             with self.assertRaises(ValueError):client.compare_lanes(broken,copy.deepcopy(broken),'file-stores')
+
+    def mixed_spool_report(self,upstream,downstream):
+        report={'case':'mixed-spool','lane':upstream,'downstream_lane':downstream,'status':'passed'}
+        requests={
+            'upstream':[(b'getVersion',None),(b'Log',0),(b'getCounters',spool.upstream_counters(2)),
+                        (b'getStatus',5),(b'getCounters',spool.upstream_counters(2,2)),(b'getStatus',2),
+                        (b'Log',0),(b'getCounters',spool.upstream_counters(3,3)),(b'shutdown',None)],
+            'downstream':[(b'getVersion',None),(b'getStatus',2),(b'getCounters',{}),
+                          (b'getCounters',{'fixture:received good':3,'scribe_overall:received good':3}),
+                          (b'shutdown',None)]}
+        for role,target in (('upstream',upstream),('downstream',downstream)):
+            records=[]
+            for seq,(name,value) in enumerate(requests[role],1):
+                fields=client.log_fields(spool.ENTRIES if seq==2 else [(b'fixture',b'Z')]) if name==b'Log' else b'\0'
+                oneway=name==b'shutdown'
+                record={'method':name.decode(),'sequence':seq,'oneway':oneway,
+                        'request_hex':client.hexbytes(client.framed(name,seq,fields,oneway))}
+                if not oneway:
+                    if name==b'getVersion':
+                        result=b'\x0b\0\0'+client.string(b'2.2');value=client.hexbytes(b'2.2')
+                    elif name==b'getCounters':
+                        result=b'\x0d\0\0\x0b\x0a'+struct.pack('>i',len(value))
+                        for key,count in sorted(value.items()):result+=client.string(key.encode())+struct.pack('>q',count)
+                    else:result=b'\x08\0\0'+struct.pack('>i',value)
+                    body=client.string(name)+b'\x02'+struct.pack('>i',seq)+result+b'\0'
+                    record.update(value=value,reply_hex=client.hexbytes(struct.pack('>I',len(body))+body))
+                records.append(record)
+            report[role]={'target_lane':target,'command':['/unused/'+target,'-c','/unused/'+upstream+'-'+role+'.conf'],
+                          'records':records,'status':'passed','exit':0,'cleanup_exit':0}
+        for phase,data,framed in (('spooled',spool.SPOOL,True),('replayed',spool.PAYLOAD,False),
+                                 ('streamed',spool.PAYLOAD+b'Z',False),('final_downstream',spool.PAYLOAD+b'Z',False)):
+            report[phase]=spool.outputs(client,data,framed)
+        report.update(drained={'files':[],'symlinks':[]},final_spool={'files':[],'symlinks':[]})
+        return report
+
+    def test_mixed_spool_requires_both_directions_commands_and_exact_replay_evidence(self):
+        targets={lane:{'command':['/unused/'+lane]} for lane in ('old','modern')}
+        old=self.mixed_spool_report('old','modern');new=self.mixed_spool_report('modern','old')
+        with patch.object(client,'ROOT','/unused'),patch.object(client,'TARGETS',targets):
+            result=spool.compare_lanes(client,old,new,'mixed-spool')
+            self.assertEqual(result['status'],'passed')
+            self.assertEqual(result['directions'],[{'upstream':'old','downstream':'modern'},
+                                                   {'upstream':'modern','downstream':'old'}])
+            self.assertIn('no cross-version spool-reader',result['scope'])
+            for mutate in (lambda r:r.update(case='spool'),lambda r:r.update(downstream_lane='old'),
+                           lambda r:r['downstream'].update(target_lane='old'),
+                           lambda r:r['downstream']['command'].__setitem__(0,'/unused/old'),
+                           lambda r:r['replayed'].update(files=spool.outputs(client,b'tailA\0B\n\xff')['files']),
+                           lambda r:r['upstream'].pop('cleanup_exit')):
+                broken=copy.deepcopy(old);mutate(broken)
+                with self.assertRaises(ValueError):spool.compare_lanes(client,broken,new,'mixed-spool')
+            with self.assertRaises(ValueError):spool.compare_lanes(client,new,old,'mixed-spool')
+
+    def test_spool_and_opt_in_mixed_spool_dispatch_keep_existing_port_guards(self):
+        for case,downstream_lanes in (('spool',(None,None)),('mixed-spool',('modern','old'))):
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as directory:
+                targets=Path(directory)/'targets.json'
+                targets.write_text(json.dumps({lane:{'command':[sys.executable]} for lane in ('old','modern')}))
+                args=['harness','--run-isolated-daemons','--targets',str(targets),'--output',str(Path(directory)/'new'),'--case',case]
+                with patch.object(sys,'argv',args),patch.dict(sys.modules,{client.__name__:client,'daemon_spool_case':spool}), \
+                        patch.object(client,'network_check') as isolation,patch.object(client,'port_free') as ports, \
+                        patch.object(client,'ROOT'),patch.object(client,'PORT'),patch.object(client,'CASE'),patch.object(client,'TARGETS'), \
+                        patch.object(spool,'run_lane',side_effect=[{'lane':'old'},{'lane':'modern'}]) as run, \
+                        patch.object(spool,'compare_lanes',return_value={'status':'passed'}) as compare, \
+                        patch('builtins.print'),patch.object(client.subprocess,'Popen') as launch:
+                    client.main()
+                    isolation.assert_called_once_with();launch.assert_not_called()
+                    self.assertEqual(ports.call_args_list,[unittest.mock.call(),unittest.mock.call(14631)])
+                    self.assertEqual(run.call_args_list,[unittest.mock.call(client,'old',downstream_lanes[0]),
+                                                        unittest.mock.call(client,'modern',downstream_lanes[1])])
+                    compare.assert_called_once_with(client,{'lane':'old'},{'lane':'modern'},case)
+
+    def test_mixed_downstream_keeps_socket_ownership_and_owned_child_cleanup(self):
+        process=Mock(pid=42);conn=Mock()
+        targets={'old':{'command':['/unused/old']},'modern':{'command':['/unused/modern'],'environment':{'TARGET':'modern'}}}
+        with tempfile.TemporaryDirectory() as directory,patch.object(client,'ROOT',directory),patch.object(client,'TARGETS',targets), \
+                patch.object(client,'network_check') as isolation,patch.object(client,'port_free') as ports, \
+                patch.object(spool.os,'listdir',return_value=['lo']), \
+                patch.object(spool.subprocess,'Popen',return_value=process) as launch, \
+                patch.object(client,'connect_owned',return_value=conn), \
+                patch.object(client,'connection_owner',side_effect=ValueError('ownership')), \
+                patch.object(client,'cleanup_process',return_value=-signal.SIGTERM) as cleanup:
+            with self.assertRaisesRegex(ValueError,'ownership'):
+                with spool.owned_daemon(client,'old','downstream','config',14631,target_lane='modern'):
+                    self.fail('ownership failure must not yield')
+            isolation.assert_called_once_with()
+            self.assertEqual(ports.call_args_list,[unittest.mock.call(14631),unittest.mock.call(14631)])
+            self.assertEqual(launch.call_args.args[0],['/unused/modern','-c',directory+'/old-downstream.conf'])
+            self.assertEqual(launch.call_args.kwargs['env']['TARGET'],'modern')
+            cleanup.assert_called_once_with(process);conn.close.assert_called_once();conn.sendall.assert_not_called()
+            result=json.loads((Path(directory)/'evidence/old/downstream/result.json').read_text())
+            self.assertEqual((result['lane'],result['target_lane'],result['cleanup_exit']),('old','modern',-signal.SIGTERM))
 
 
 if __name__ == "__main__":

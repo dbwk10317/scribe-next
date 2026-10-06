@@ -1,5 +1,7 @@
 # 독립 리뷰 항목 수정과 검증
 
+2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 되돌린다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+
 2026-10-05 · 최신 store 수정의 base/main `da74ec9`; 이전 독립 범위의 base `ddca67e`
 
 관련 문서: [README](../README.md) · [이전 relay 기록](relay-contracts-status.md) · [manifest](review-fixes-manifest.json)

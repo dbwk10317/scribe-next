@@ -266,8 +266,7 @@ void StoreQueue::threadMember() {
         // process any messages we were not able to process last time
         messages = failedMessages;
         failedMessages = boost::shared_ptr<logentry_vector_t>();
-      } else if (!msgQueue->empty()) {
-        // scribe-next: zero-byte payloads are still queued entries to process.
+      } else if (msgQueueSize > 0) {
         // process message in queue
         messages = msgQueue;
         msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);

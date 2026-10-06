@@ -26,16 +26,17 @@ def wait_output(c,path,expected,timeout=20):
         time.sleep(0.05)
 
 @contextmanager
-def owned_daemon(c,lane,role,config,port,readiness_timeout=10):
+def owned_daemon(c,lane,role,config,port,readiness_timeout=10,target_lane=None):
+    target_lane=lane if target_lane is None else target_lane
     c.network_check();c.port_free(port)
     directory=os.path.join(c.ROOT,'evidence',lane,role);os.makedirs(directory)
     config_path=os.path.join(c.ROOT,lane+'-'+role+'.conf')
     with open(config_path,'w') as f:f.write(config)
-    target=c.TARGETS[lane];env=os.environ.copy()
+    target=c.TARGETS[target_lane];env=os.environ.copy()
     for key in ('LD_PRELOAD','LD_AUDIT','LD_LIBRARY_PATH'):env.pop(key,None)
     env.update({'LC_ALL':'C','TZ':'UTC'});env.update(target.get('environment',{}))
     command=target['command']+['-c',config_path]
-    result={'lane':lane,'role':role,'command':command,'uid':os.getuid(),
+    result={'lane':lane,'target_lane':target_lane,'role':role,'command':command,'uid':os.getuid(),
             'interfaces':os.listdir('/sys/class/net'),'records':[],'status':'failed'}
     c.save_json(os.path.join(directory,'start.json'),result)
     process=None;conn=None
@@ -73,7 +74,8 @@ def upstream_counters(count,sent=0):
     if sent:counters['scribe_overall:sent']=sent
     return counters
 
-def run_lane(c,lane):
+def run_lane(c,lane,downstream_lane=None):
+    downstream_lane=lane if downstream_lane is None else downstream_lane
     spool_path=os.path.join(c.ROOT,lane+'-spool');down_path=os.path.join(c.ROOT,lane+'-downstream')
     os.makedirs(spool_path);os.makedirs(down_path)
     with open(os.path.join(os.path.dirname(__file__),'daemon_spool.conf.template')) as f:
@@ -82,7 +84,8 @@ def run_lane(c,lane):
         down_config=f.read().replace('@PORT@',str(c.PORT+1)).replace('@SEPARATE_TEMP_OUTPUT@',down_path)
     # Both ports must be absent before any upstream retry can contact downstream.
     c.port_free(c.PORT);c.port_free(c.PORT+1)
-    result={'case':'spool','lane':lane,'status':'failed'}
+    result={'case':'spool' if downstream_lane==lane else 'mixed-spool',
+            'lane':lane,'downstream_lane':downstream_lane,'status':'failed'}
     result_path=os.path.join(c.ROOT,'evidence',lane,'spool-result.json')
     os.makedirs(os.path.dirname(result_path));c.save_json(result_path,result)
     with owned_daemon(c,lane,'upstream',up_config,c.PORT) as upstream:
@@ -95,7 +98,7 @@ def run_lane(c,lane):
         if c.call(conn,b'getStatus',4,b'\0',directory,records)!=5:raise ValueError('offline relay not WARNING')
         remaining=8-(time.time()-up['started_at'])
         if remaining<=0:raise ValueError('downstream missed first-retry readiness window')
-        with owned_daemon(c,lane,'downstream',down_config,c.PORT+1,remaining) as downstream:
+        with owned_daemon(c,lane,'downstream',down_config,c.PORT+1,remaining,target_lane=downstream_lane) as downstream:
             unused,dc,down,dd=downstream;dr=down['records'];result['downstream']=down
             c.call(dc,b'getVersion',1,b'\0',dd,dr)
             if c.call(dc,b'getStatus',2,b'\0',dd,dr)!=2:raise ValueError('downstream not ALIVE')
@@ -121,7 +124,8 @@ def run_lane(c,lane):
     c.save_json(result_path,result)
     return result
 
-def compare_lanes(c,old,new):
+def compare_lanes(c,old,new,case='spool'):
+    if case not in ('spool','mixed-spool'):raise ValueError('unknown spool comparison case')
     expected={'upstream':[(b'getVersion',b'\0'),(b'Log',c.log_fields(ENTRIES)),(b'getCounters',b'\0'),(b'getStatus',b'\0'),
                           (b'getCounters',b'\0'),(b'getStatus',b'\0'),(b'Log',c.log_fields([(b'fixture',b'Z')])),(b'getCounters',b'\0'),(b'shutdown',b'\0')],
               'downstream':[(b'getVersion',b'\0'),(b'getStatus',b'\0'),(b'getCounters',b'\0'),(b'getCounters',b'\0'),(b'shutdown',b'\0')]}
@@ -129,8 +133,16 @@ def compare_lanes(c,old,new):
             'downstream':[c.hexbytes(b'2.2'),2,{}, {'fixture:received good':3,'scribe_overall:received good':3}]}
     snapshots={'spooled':outputs(c,SPOOL,True),'replayed':outputs(c,PAYLOAD),'drained':{'files':[],'symlinks':[]},'streamed':outputs(c,PAYLOAD+b'Z'),'final_spool':{'files':[],'symlinks':[]},'final_downstream':outputs(c,PAYLOAD+b'Z')}
     checks={}
-    for lane in (old,new):
-        if lane.get('case')!='spool' or lane.get('status')!='passed':raise ValueError('incomplete spool lane')
+    for lane,upstream_lane,downstream_lane in ((old,'old','modern'),(new,'modern','old')):
+        if lane.get('case')!=case or lane.get('status')!='passed':raise ValueError('incomplete spool lane')
+        if case=='mixed-spool':
+            if lane.get('lane')!=upstream_lane or lane.get('downstream_lane')!=downstream_lane:
+                raise ValueError('mixed spool direction differs')
+            for role,target_lane in (('upstream',upstream_lane),('downstream',downstream_lane)):
+                part=lane[role]
+                command=c.TARGETS[target_lane]['command']+['-c',os.path.join(c.ROOT,upstream_lane+'-'+role+'.conf')]
+                if part.get('target_lane')!=target_lane or part.get('command')!=command:
+                    raise ValueError('mixed spool target identity differs')
         for phase,wanted in snapshots.items():
             if lane.get(phase)!=wanted:raise ValueError('missing or wrong spool/replay phase '+phase)
         for role,requests in expected.items():
@@ -151,5 +163,10 @@ def compare_lanes(c,old,new):
             checks[role+'-request-%d'%seq]=a['request_hex']==b['request_hex']
             if name not in (b'getVersion',b'shutdown'):checks[role+'-reply-%d'%seq]=a['reply_hex']==b['reply_hex']
     for phase in snapshots:checks[phase]=old[phase]==new[phase]
-    return {'case':'spool','status':'passed' if all(checks.values()) else 'failed','checks':checks,
+    result={'case':case,'status':'passed' if all(checks.values()) else 'failed','checks':checks,
             'scope':'bounded absent downstream/full ordinary spool replay/streaming; no partial replay or durability claim'}
+    if case=='mixed-spool':
+        result['directions']=[{'upstream':'old','downstream':'modern'},{'upstream':'modern','downstream':'old'}]
+        result['target_commands']={lane:c.TARGETS[lane]['command'] for lane in ('old','modern')}
+        result['scope']='bounded mixed old/modern relay with same-version ordinary spool writer/replay; no cross-version spool-reader, partial replay or durability claim'
+    return result

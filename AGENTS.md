@@ -6,6 +6,14 @@
 
 이 저장소의 실질적인 개발 지침을 `AGENTS.md`에 구성하라는 사용자 요청에 따라 공통 지침을 이 파일에 둔다. [CLAUDE.md](CLAUDE.md)는 이 파일을 읽는 공유 진입점이며 지침 사본을 만들지 않는다. 시작할 때 [README](README.md), [현재 결정과 출처](docs/source-status.md), [설계](docs/design.ko.md), [구현 계획](docs/implementation.ko.md)을 읽는다. 사용자의 명시적 지시가 문서보다 우선한다.
 
+## 최신 사용자 호환 정책
+
+2026-10-06 명시 지시는 이전 예외 승인보다 우선한다. 신·구 송수신과 기존 로그
+reader의 route/byte/format/delivery/monitoring 계약을 바꾸는 semantic 수정은
+원본의 정의된 동작으로 되돌린다. 원본 UB/crash는 재도입하지 않으며 되돌린
+버그는 문서에 남기고 새 옵션을 만들지 않는다. [현재 정책](docs/legacy-compatibility-policy.md)을 따른다.
+아래 승인·시험 수는 각 역사 단계의 기록이며 현재 후보 성공을 뜻하지 않는다.
+
 ## 현재 상태와 근거
 
 - 최신 사용자 목표는 공개 upstream `fcd294f`의 기능 보존이다. 회사 fork/config/성능 자료는 현재 범위 밖이며 요청하거나 완료 조건으로 삼지 않는다. 제한 build MVP와 재사용 검증, 공개 원본 old/new 다음 우선순위는 [현재 범위](docs/linux-build-mvp.md)를 따른다. 과거 회사 gate를 현재 지시로 되살리지 않는다.

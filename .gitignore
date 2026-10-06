@@ -15,6 +15,8 @@ mkinstalldirs
 !/test/resultChecker/makefile
 
 # Local build products
+__pycache__/
+*.py[cod]
 /build/
 /build-*/
 /cmake-build-*/

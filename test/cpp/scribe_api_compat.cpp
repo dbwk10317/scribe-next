@@ -441,11 +441,6 @@ int main(int argc, char** argv) {
       runStoreReviewDriver(argv[2]);
     } else if (std::string(argv[1]) == "review-store-defaults") {
       testStoreReviewDefaults(argv[2]);
-    } else if (std::string(argv[1]) == "review-dynamic-copy-locking") {
-      alarm(20);
-      testDynamicCopyLocking(argv[2]);
-    } else if (std::string(argv[1]) == "review-dynamic-copy-initial-resolution") {
-      testDynamicCopyInitialResolution(argv[2]);
     } else if (std::string(argv[1]) == "review-store-bucket") {
       testStoreReviewBucket(argv[2]);
     } else if (std::string(argv[1]) == "relay-loopback-server") {

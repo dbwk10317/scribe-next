@@ -3,82 +3,7 @@
 #ifndef SCRIBE_TEST_STORE_REVIEW_CONTRACTS_H
 #define SCRIBE_TEST_STORE_REVIEW_CONTRACTS_H
 
-#include <condition_variable>
-#include <future>
-
-// Block the resolver itself, so progress proves lock independence without a
-// latency benchmark or a production daemon. The normal routing tests below
-// separately check resolved destinations and failed-refresh static fallback.
-struct BlockingCopyResolver {
-  static std::mutex mutex;
-  static std::condition_variable changed;
-  static bool released;
-  static unsigned calls;
-  static bool valid(const std::string&, const StoreConf*) { return true; }
-  static bool resolve(const std::string& category, const StoreConf*,
-                      std::string&, uint32_t&) {
-    if (category != "new-category") return false;
-    std::unique_lock<std::mutex> lock(mutex);
-    ++calls;
-    changed.notify_all();
-    // The fixture's process alarm bounds failures; only explicit release can
-    // satisfy the blocker, even if a test thread is heavily descheduled.
-    changed.wait(lock, [] { return released; });
-    return false;
-  }
-};
-std::mutex BlockingCopyResolver::mutex;
-std::condition_variable BlockingCopyResolver::changed;
-bool BlockingCopyResolver::released = false;
-unsigned BlockingCopyResolver::calls = 0;
-
-static void testDynamicCopyLocking(const std::string& filename) {
-  auto* module = getNetworkDynamicConfigMod("thrift_bucket");
-  require(module != nullptr, "missing dynamic module");
-  const auto original = *module;
-  struct Restore {
-    NetworkDynamicConfigMod* module;
-    NetworkDynamicConfigMod original;
-    ~Restore() { *module = original; }
-  } restore{module, original};
-  module->isConfigValidFunc = BlockingCopyResolver::valid;
-  module->getHostFunc = BlockingCopyResolver::resolve;
-  HandlerFixture fixture(filename);
-  fixture.handler->initialize();
-  require(fixture.handler->getStatus() == facebook::fb303::ALIVE,
-          "locking config not alive");
-  auto created = std::async(std::launch::async, [&] {
-    return fixture.handler->scribeHandler::Log({entry("new-category", "payload")});
-  });
-  bool entered;
-  {
-    std::unique_lock<std::mutex> lock(BlockingCopyResolver::mutex);
-    entered = BlockingCopyResolver::changed.wait_for(lock, std::chrono::seconds(2),
-        [] { return BlockingCopyResolver::calls != 0; });
-  }
-  auto existing = std::async(std::launch::async, [&] {
-    return fixture.handler->scribeHandler::Log({entry("accepted", "unrelated")});
-  });
-  const bool createReady = created.wait_for(std::chrono::milliseconds(500)) ==
-      std::future_status::ready;
-  const bool existingReady = existing.wait_for(std::chrono::milliseconds(500)) ==
-      std::future_status::ready;
-  std::cout << "LOCKING resolver_entered=" << entered
-            << " new_log_ready=" << createReady
-            << " existing_log_ready=" << existingReady << std::endl;
-  {
-    std::lock_guard<std::mutex> lock(BlockingCopyResolver::mutex);
-    BlockingCopyResolver::released = true;
-  }
-  BlockingCopyResolver::changed.notify_all();
-  const auto createResult = created.get();
-  const auto existingResult = existing.get();
-  require(entered, "copied store never resolved in worker");
-  require(createReady, "new category Log waited for blocked resolver");
-  require(existingReady, "unrelated category Log blocked behind resolver");
-  require(createResult == scribe::thrift::OK && existingResult == scribe::thrift::OK,
-          "locking regression changed queue acceptance");
-}
+extern ConnPool g_connPool;
 
 class ReviewNetworkStore : public NetworkStore {
  public:
@@ -87,7 +12,6 @@ class ReviewNetworkStore : public NetworkStore {
   unsigned long defaultPort() const { return serviceListDefaultPort; }
   size_t serverCount() const { return servers.size(); }
   void useTestResolver() { configmod = &resolver; }
-  static unsigned resolverCalls;
   void failResolver() {
     storeConf->setUnsigned("test_next_port", 0);
     storeConf->setUnsigned("test_copy_port", 0);
@@ -97,7 +21,6 @@ class ReviewNetworkStore : public NetworkStore {
   // copy and periodicCheck below are the real production implementation.
   static bool getHost(const std::string& category, const StoreConf* config,
                       std::string& host, uint32_t& port) {
-    ++resolverCalls;
     require(config != nullptr, "copied dynamic store lost configuration");
     unsigned long value = 0;
     require(category == "first" || category == "second", "resolver category");
@@ -113,31 +36,6 @@ class ReviewNetworkStore : public NetworkStore {
 
 NetworkDynamicConfigMod ReviewNetworkStore::resolver = {"test-only", nullptr,
                                                        ReviewNetworkStore::getHost};
-unsigned ReviewNetworkStore::resolverCalls = 0;
-
-static void testDynamicCopyInitialResolution(const std::string& filename) {
-  HandlerFixture fixture(filename);
-  pStoreConf config(new StoreConf);
-  config->setString("remote_host", "127.0.0.1");
-  config->setUnsigned("remote_port", 0); // Failed fallback never opens a socket.
-  ReviewNetworkStore source("first");
-  source.configure(config, pStoreConf());
-  source.useTestResolver();
-  for (bool checkBeforeOpen : {false, true}) {
-    ReviewNetworkStore::resolverCalls = 0;
-    auto copy = source.copy("second");
-    require(ReviewNetworkStore::resolverCalls == 0, "copy called resolver inline");
-    if (checkBeforeOpen) copy->periodicCheck();
-    require(!copy->open(), "invalid fallback unexpectedly opened");
-    require(ReviewNetworkStore::resolverCalls == 1,
-            "initial resolution was omitted or repeated after periodic check");
-    require(!copy->open(), "invalid fallback unexpectedly reopened");
-    require(ReviewNetworkStore::resolverCalls == 1,
-            "failed initial resolution repeated on reopen");
-    copy->periodicCheck();
-    require(ReviewNetworkStore::resolverCalls == 2, "ongoing refresh was lost");
-  }
-}
 
 static void testStoreReviewDefaults(const std::string& filename) {
   HandlerFixture fixture(filename);
@@ -165,7 +63,7 @@ static void testStoreReviewBucket(const std::string& filename) {
     return;
   }
   require(bucket.open(), "valid bucket configuration failed");
-  // Model is already open; its clone must retain policy and use new files.
+  // Model is already open; its clone uses legacy constructor policy and new files.
   auto copy = bucket.copy("copied");
   require(!copy->isOpen(), "bucket copy inherited live state");
   require(copy->open(), "copied bucket open failed");
@@ -205,12 +103,17 @@ static void runStoreReviewDriver(const std::string& filename) {
     stores[i]->configure(policy, pStoreConf());
   }
   if (kind == "dynamic" || kind == "dynamic-owned") first->useTestResolver();
+  unsigned firstListOpens = 0;
+  bool retainedSourceReference = false;
   std::cout << "READY review-store-driver" << std::endl;
   std::string line;
   while (std::getline(std::cin, line)) {
     require(line.size() <= 64, "oversized review driver command");
     if (line == "QUIT") {
       for (auto& store : stores) store->close();
+      // Test cleanup only: legacy endpoint-before-close leaves the old pool
+      // reference alive. Release it after all observable results are checked.
+      if (retainedSourceReference) g_connPool.close("127.0.0.1", firstPort);
       return;
     }
     std::istringstream command(line);
@@ -235,16 +138,22 @@ static void runStoreReviewDriver(const std::string& filename) {
       stores[1] = first->copy("second");
       require(!stores[1]->isOpen(), "network copy inherited live state");
     } else if (operation == "CHECK") {
+      const bool wasOpen = stores[index]->isOpen();
       stores[index]->periodicCheck();
+      std::string pooled;
+      config->getString("use_conn_pool", pooled);
+      if (index == 0 && wasOpen && !stores[index]->isOpen() && pooled == "yes")
+        retainedSourceReference = true;
     } else if (operation == "FAILRESOLVE") {
       require(index == 0, "scripted resolver belongs to first store");
       first->failResolver();
     } else if (operation == "OPEN") {
       result = stores[index]->open();
-      if (kind == "list" || kind == "default-list" || kind == "same-list")
-        require(first->serverCount() <= 1, "reopen accumulated service-list servers");
+      if (index == 0 && (kind == "list" || kind == "default-list" || kind == "same-list"))
+        require(first->serverCount() == ++firstListOpens, "legacy service-list accumulation changed");
       if (kind == "copy-error")
-        require(stores[index]->getStatus().empty(), "copy lost ignore_network_error");
+        require(stores[index]->getStatus() == (index == 0 ? "" : "Failed to connect"),
+                "legacy network copy error policy changed");
     } else if (operation == "CLOSE") {
       stores[index]->close();
     } else throw std::runtime_error("unknown review driver operation");

@@ -483,7 +483,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','file-stores','performance','fb303','mapping'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','mixed-spool','file-stores','performance','fb303','mapping'),default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -512,18 +512,18 @@ def main():
             if not isinstance(key,(str,type(u''))) or not isinstance(value,(str,type(u''))) or not key or '=' in key or '\0' in key+value:
                 parser.error('environment requires valid string key/value entries')
     port_free()
-    if CASE=='spool':
+    if CASE in ('spool','mixed-spool'):
         if PORT==65535: parser.error('spool case requires two unprivileged ports')
         port_free(PORT+1)
     if CASE=='mapping':
         if PORT>65532:parser.error('mapping case requires four unprivileged ports')
         for port in (PORT+1,PORT+2,PORT+3):port_free(port)
     os.makedirs(ROOT);os.makedirs(os.path.join(ROOT,'evidence'))
-    if CASE=='spool':
+    if CASE in ('spool','mixed-spool'):
         import daemon_spool_case
-        old=daemon_spool_case.run_lane(sys.modules[__name__],'old')
-        new=daemon_spool_case.run_lane(sys.modules[__name__],'modern')
-        result=daemon_spool_case.compare_lanes(sys.modules[__name__],old,new)
+        old=daemon_spool_case.run_lane(sys.modules[__name__],'old','modern' if CASE=='mixed-spool' else None)
+        new=daemon_spool_case.run_lane(sys.modules[__name__],'modern','old' if CASE=='mixed-spool' else None)
+        result=daemon_spool_case.compare_lanes(sys.modules[__name__],old,new,CASE)
     elif CASE=='fb303':
         import daemon_fb303_case,daemon_spool_case
         old=daemon_fb303_case.run_lane(sys.modules[__name__],daemon_spool_case,'old')

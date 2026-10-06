@@ -327,13 +327,13 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
         self.assertEqual((directory / "data/unrelated_00001").read_bytes(), b"keep")
         self.assertEqual([p.name for p in (directory / "data").iterdir()], ["unrelated_00001"])
 
-    def test_filestore_replace_existing_overwrites_oldest_and_keeps_newest(self):
-        # Approved app-flag correction enables the existing replacement path.
+    def test_filestore_replace_existing_fails_and_preserves_oldest_and_newest(self):
+        # Original out|app|trunc fails; replaceOldest still reopens the writer.
         original = self.file_frame(b"original")
         directory = self.run_fixture("filestore-replace", self.file_config(), {
             "data/fixture_00000": original, "data/fixture_00001": self.file_frame(b"newest")})
-        self.assertEqual((directory / "states.txt").read_text(), "replace=1\nopen=1\n")
-        self.assertEqual((directory / "data/fixture_00000").read_bytes(), self.file_frame(b"remaining"))
+        self.assertEqual((directory / "states.txt").read_text(), "replace=0\nopen=1\n")
+        self.assertEqual((directory / "data/fixture_00000").read_bytes(), original)
         self.assertEqual((directory / "data/fixture_00001").read_bytes(), self.file_frame(b"newest"))
 
     def test_filestore_missing_oldest_preserves_output_and_replace_returns_false(self):
@@ -362,7 +362,7 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                          "lost=0\nbytes-lost=0\nretries=0\ndisconnected=0\nstreaming=1\nempty=1\n")
         self.assertEqual(list((directory / "data").iterdir()), [])
 
-    def test_filestore_buffer_partial_replay_retains_two_unhandled_messages(self):
+    def test_filestore_buffer_partial_replay_loses_two_unhandled_messages_on_rewrite_failure(self):
         directory = self.run_fixture("filestore-buffer-replay", self.file_config(test_partial=1), {
             "data/fixture_00000": b"".join(self.file_frame(x) for x in (b"one", b"two", b"three"))})
         self.assertEqual((directory / "received.txt").read_bytes(), self.file_entries(
@@ -370,42 +370,40 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
         self.assertEqual((directory / "accepted.txt").read_bytes(),
                          self.file_entries([(b"fallback", b"one")]))
         self.assertEqual((directory / "states.txt").read_text(),
-                         "lost=0\nbytes-lost=0\nretries=1\ndisconnected=1\nstreaming=0\nempty=0\n")
-        expected = self.file_frame(b"two") + self.file_frame(b"three")
-        self.assertEqual((directory / "remaining.bin").read_bytes(), expected)
-        self.assertEqual((directory / "data/fixture_00000").read_bytes(), expected)
+                         "lost=2\nbytes-lost=0\nretries=1\ndisconnected=1\nstreaming=0\nempty=1\n")
+        self.assertFalse((directory / "remaining.bin").exists())
+        self.assertEqual(list((directory / "data").iterdir()), [])
 
-    def test_filestore_partial_then_success_replays_only_retained_messages(self):
+    def test_filestore_partial_then_reconnect_cannot_replay_deleted_messages(self):
         directory = self.run_fixture("filestore-buffer-replay", self.file_config(
             test_partial=1, test_resume=1), {"data/fixture_00000": b"".join(
                 self.file_frame(x) for x in (b"one", b"two", b"three"))})
-        self.assertEqual((directory / "remaining.bin").read_bytes(),
-                         self.file_frame(b"two") + self.file_frame(b"three"))
-        self.assertEqual((directory / "received-again.txt").read_bytes(),
-                         self.file_entries([(b"fallback", b"two"), (b"fallback", b"three")]))
-        self.assertEqual((directory / "accepted-again.txt").read_bytes(), self.file_entries(
-            [(b"fallback", x) for x in (b"one", b"two", b"three")]))
+        self.assertFalse((directory / "remaining.bin").exists())
+        self.assertEqual((directory / "received-again.txt").read_bytes(), b"")
+        self.assertEqual((directory / "accepted-again.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"one")]))
         self.assertEqual((directory / "states-again.txt").read_text(),
-                         "lost=0\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
+                         "lost=2\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
         self.assertEqual(list((directory / "data").iterdir()), [])
 
-    def test_filestore_partial_rewrite_preserves_categories_and_reapplies_add_newlines(self):
-        # Input already has the LF added by an earlier write. Existing writer
-        # semantics append another LF on replacement; do not silently normalize.
+    def test_filestore_partial_rewrite_failure_preserves_accepted_category_and_payload(self):
+        # The accepted prefix keeps its exact bytes; the two remaining entries
+        # are deleted after replacement fails, including category/newline data.
         entries = ((b"one\x00\xff", b"one\n"), (b"two", b"two\n"), (b"", b"three\n"))
         directory = self.run_fixture("filestore-buffer-replay", self.file_config(
             test_partial=1, test_resume=1, write_category="yes", add_newlines=1), {
             "data/fixture_00000": b"".join(self.file_frame(cat + b"\n") +
                                           self.file_frame(payload) for cat, payload in entries)})
-        expected = b"".join(self.file_frame(cat + b"\n") + self.file_frame(payload + b"\n")
-                            for cat, payload in entries[1:])
-        self.assertEqual((directory / "remaining.bin").read_bytes(), expected)
-        remaining = [(cat, payload + b"\n") for cat, payload in entries[1:]]
-        self.assertEqual((directory / "received-again.txt").read_bytes(), self.file_entries(remaining))
+        self.assertEqual((directory / "received.txt").read_bytes(), self.file_entries(entries))
+        self.assertEqual((directory / "accepted.txt").read_bytes(), self.file_entries([entries[0]]))
+        self.assertEqual((directory / "states.txt").read_text(),
+                         "lost=2\nbytes-lost=0\nretries=1\ndisconnected=1\nstreaming=0\nempty=1\n")
+        self.assertFalse((directory / "remaining.bin").exists())
+        self.assertEqual((directory / "received-again.txt").read_bytes(), b"")
         self.assertEqual((directory / "accepted-again.txt").read_bytes(),
-                         self.file_entries([entries[0]] + remaining))
+                         self.file_entries([entries[0]]))
         self.assertEqual((directory / "states-again.txt").read_text(),
-                         "lost=0\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
+                         "lost=2\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
         self.assertEqual(list((directory / "data").iterdir()), [])
 
     def loopback_process(self, threads=3, config=None):

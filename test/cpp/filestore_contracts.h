@@ -225,6 +225,7 @@ static void testBufferReplay(const std::string& config,
   fixture.configuration->getUnsigned("test_resume", resume);
   if (resume) {
     primary->acceptAllNext();
+    primary->received.clear();  // Record only this replay attempt's deliveries.
     buffer.reconnectForTest();  // Explicit readiness, not a retry timing test.
     buffer.periodicCheck();
     record("-again");
