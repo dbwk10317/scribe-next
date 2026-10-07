@@ -371,17 +371,12 @@ static void runStoreReviewDriver(const std::string& filename) {
     stores[i]->configure(policy, pStoreConf());
   }
   if (kind == "dynamic" || kind == "dynamic-owned") first->useTestResolver();
-  unsigned firstListOpens = 0;
-  bool retainedSourceReference = false;
   std::cout << "READY review-store-driver" << std::endl;
   std::string line;
   while (std::getline(std::cin, line)) {
     require(line.size() <= 64, "oversized review driver command");
     if (line == "QUIT") {
       for (auto& store : stores) store->close();
-      // Test cleanup only: legacy endpoint-before-close leaves the old pool
-      // reference alive. Release it after all observable results are checked.
-      if (retainedSourceReference) g_connPool.close("127.0.0.1", firstPort);
       return;
     }
     std::istringstream command(line);
@@ -406,19 +401,14 @@ static void runStoreReviewDriver(const std::string& filename) {
       stores[1] = first->copy("second");
       require(!stores[1]->isOpen(), "network copy inherited live state");
     } else if (operation == "CHECK") {
-      const bool wasOpen = stores[index]->isOpen();
       stores[index]->periodicCheck();
-      std::string pooled;
-      config->getString("use_conn_pool", pooled);
-      if (index == 0 && wasOpen && !stores[index]->isOpen() && pooled == "yes")
-        retainedSourceReference = true;
     } else if (operation == "FAILRESOLVE") {
       require(index == 0, "scripted resolver belongs to first store");
       first->failResolver();
     } else if (operation == "OPEN") {
       result = stores[index]->open();
-      if (index == 0 && (kind == "list" || kind == "default-list" || kind == "same-list"))
-        require(first->serverCount() == ++firstListOpens, "legacy service-list accumulation changed");
+      if (kind == "list" || kind == "default-list" || kind == "same-list")
+        require(first->serverCount() <= 1, "reopen accumulated service-list servers");
       if (kind == "copy-error")
         require(stores[index]->getStatus() == (index == 0 ? "" : "Failed to connect"),
                 "legacy network copy error policy changed");

@@ -1,5 +1,6 @@
 // scribe-next modification: adapt libhdfs delete API arity; preserve recursive behavior.
 // scribe-next modification: bound the emulated symlink object's lifetime and close failed output handles.
+// scribe-next modification: C++17 cleanup; strrchr and std::string host, same calls and logs.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -166,7 +167,7 @@ void HdfsFile::listImpl(const std::string& path,
     if (pHdfsFileInfo) {
       for(int i = 0; i < numEntries; i++) {
         char* pathname = pHdfsFileInfo[i].mName;
-        char* filename = rindex(pathname, '/');
+        char* filename = strrchr(pathname, '/');
         if (filename != NULL) {
           _return.push_back(filename+1);
         }
@@ -252,13 +253,10 @@ hdfsFS HdfsFile::connectToPath(const char* uri) {
     return NULL;
   }
  
-  char* const host = (char*) malloc(colon - uri + 1);
-  memcpy((char*) host, uri, colon - uri);
-  host[colon - uri] = '\0';
+  const std::string host(uri, colon - uri);
  
-  LOG_OPER("[hdfs] Before hdfsConnectNewInstance(%s, %li)", host, port);
-  hdfsFS fs = hdfsConnectNewInstance(host, port);
+  LOG_OPER("[hdfs] Before hdfsConnectNewInstance(%s, %li)", host.c_str(), port);
+  hdfsFS fs = hdfsConnectNewInstance(host.c_str(), port);
   LOG_OPER("[hdfs] After hdfsConnectNewInstance");
-  free(host);
   return fs;
 }

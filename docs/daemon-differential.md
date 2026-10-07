@@ -494,3 +494,111 @@ This closes the named direct/unpooled mapping cache/TTL/failure/recovery and two
 static-fallback observations. It does not establish the full dynamic config,
 race, pooling, company fork, platform/feature or malformed-input matrix. No
 production policy, retry/loss/ACK semantics, deployment or performance claim changes.
+
+## 게임 서버 설정 기능 profile
+
+--case game-profile은 운영 게임 서버 배포가 쓰지만 앞의 case가 다루지 않은
+설정 기능을 새 synthetic config 하나(tools/daemon_game_profile.conf.template)에
+모아 같은 opt-in old/new 대조로 실행한다. 실제 운영 config·host·경로·category
+이름은 옮기지 않았고 fixture-*/ext-* 이름만 쓴다. driver는
+tools/daemon_game_profile_case.py이며 spool case의 owned upstream/downstream
+helper, --port/--port+1 비점유 검사, uid65534·lo-only, 첫 RPC 전 socket 소유권
+확인과 owned session cleanup을 그대로 사용한다. production C++/dependency 변경은 없다.
+
+- 최상위 port, max_msg_per_second=2000000, max_queue_size=10000000,
+  check_interval=1. new_thread_per_category는 기본값(yes)으로 둔다. 따라서
+  메시지를 처리하는 모든 store는 StoreQueue(model, category) → Store::copy()로
+  만든 copy다. 명시 category는 시작 시 configureStoreCategory가, prefix/default는
+  첫 Log의 createCategoryFromModel이 copy한다
+- categories=fixture-login fixture-session fixture-metrics-* + type=multi이며
+  report_success를 지정하지 않아 기본 all이다. store0/store1은 모두 buffer
+  (buffer_send_rate=1, retry_interval=10, retry_interval_range=1)다
+- store0: use_conn_pool 없는 network primary(127.0.0.1:--port+1)와
+  add_newlines=1 file secondary. secondary에는 `max_size=1000000 #1M` 행이 있어
+  parseStore의 행 중간 `#` 주석 제거를 거친다
+- store1: rotate_period=1h(ROLL_OTHER)·add_newlines=1 file primary와
+  add_newlines=1 file secondary
+- 단독 prefix model category=ext-*: buffer, use_conn_pool=yes network primary,
+  add_newlines=1 file secondary
+- category=default: buffer, rotate_period=1h file primary, file secondary.
+  모든 file store의 base_filename=thisisoverwritten은 copyCommon이 category
+  이름으로, file_path는 `<file_path>/<category>`로 바꾼다
+
+downstream은 각 lane 자기 binary로 실행하며 기존 ordinary file template의
+category=fixture를 default로, add_newlines=0을 1로만 바꾼다. 받은 category마다
+copy FileStore가 `<category>/<category>_00000`와 current link를 만든다.
+
+upstream만 먼저 실행해 network primary가 열리지 않게 한다. 첫 RPC 전에 read-only
+관찰로 시작 상태를 기다린다: 명시2개 category의 store0 빈 spool, store1 빈 local
+file/current link, 그리고 첫 periodicCheck가 store1 빈 secondary를 지운 상태다.
+이 상태여야 시작 retries가 이미 집계됐고 store1이 STREAMING이다. 요청은
+getName, getVersion, getStatus(ALIVE2), getStatusDetails(빈 값), getCounters,
+빈 Log, batch Log 다음 spool 관찰, getCounters, getStatus(WARNING5)이다.
+downstream을 띄워 getVersion/getStatus/빈 getCounters를 확인하고 replay와
+drain을 관찰한 뒤 upstream getCounters/getStatus(ALIVE2), downstream
+getCounters를 읽고 upstream→downstream 순서로 shutdown한다. 요청 upstream12/
+downstream5, getVersion/shutdown을 뺀 비교 응답은10/3이다.
+
+batch는 fixture-login에 기존 PAYLOADS3개(NUL/LF/0xff와 빈 payload, queue
+bytes9), fixture-session `S1`, prefix fixture-metrics-cpu `cpu=7`,
+ext-alpha `ext\0x`, 미정의 fixture-other `other`(default), 빈 category1개다.
+D를 실행 UTC 날짜라 하면 replay 전 기대 bytes는 다음과 같다.
+
+- relay-spool/fixture-login/fixture-login_00000:
+  `060000004100420aff0a010000000a050000007461696c0a`. buffer file frame은
+  newline까지 센 native little-endian uint32라 빈 payload도 `010000000a`다
+- relay-spool의 session/metrics와 ext-spool/ext-alpha도 같은 frame이며
+  buffer file은 ROLL_NEVER라 날짜와 symlink가 없다
+- local/fixture-login/fixture-login-D_00000: `4100420aff0a0a7461696c0a`,
+  fixture-login_current → fixture-login-D_00000. ROLL_OTHER 이름에는 날짜가
+  붙지만 current 이름에는 붙지 않는다
+- default/fixture-other/fixture-other-D_00000: `6f74686572`와 current link
+
+downstream fixture-login은 `4100420aff0a0a0a0a7461696c0a0a`다. readOldest가
+frame 그대로 `msg\n`을 돌려주고 downstream add_newlines=1이 한 번 더 붙여
+`msg\n\n`이 된다. 빈 payload는 frame이0이 아니므로 버려지지 않고 `0a0a`가 된다.
+replay 성공 뒤 relay-spool/ext-spool 파일은 deleteOldest로 지워지고 local/
+default 파일과 link4개는 그대로다. shutdown 뒤에도 두 tree를 다시 대조한다.
+
+counter는 각 getCounters의 절대값을 비교하며 delta는 그 차이다.
+
+- 시작: fixture-login/fixture-session retries 각1, overall2. network primary가
+  열리지 않은 copy의 BufferStore::open이 changeState(DISCONNECTED)에서 센다.
+  file primary인 store1/default는 세지 않는다
+- batch 후 delta: received good login3/session1/metrics1/ext1/other1,
+  overall7, overall received blank category1, retries metrics1/ext1과 overall+2.
+  default model이 미정의 category를 받으므로 received bad는 없다
+- replay 후: overall sent6(3+1+1+1). downstream received good3/1/1/1, overall6
+- WARNING은 ext copy의 BufferStore가 primary NetworkStore의 "Failed to connect"를
+  보고해서다. MultiStore는 getStatus override가 없어 store0 실패를 드러내지 않는다
+
+결정성 조건도 기대값의 일부다. retry_interval=10/range=1은 1/2=0과
+rand()%1=0으로 양쪽 모두 고정10초다. 재시도는 `now-lastOpenAttempt>10`이므로
+upstream launch 후8초 안에 downstream status/counter가 준비돼야 하며 넘으면
+실패한다. 2초 같은 짧은 간격은 downstream 준비 전 재시도가 반복돼 retries가
+timing에 따라 달라지고, range=0은 원본의 rand()%0이라 쓰지 않는다. 세 top-level
+store는 target_write_size=16384/max_write_interval=1이다. 새 copy thread의
+periodic과 시간 기반 message 처리는 같은 기준 초에서 함께 돌고 periodic이 먼저라
+store1/default는 SENDING_BUFFER에서 batch를 받지 않는다. target_write_size=1이면
+첫 periodicCheck 전에 store1 secondary로 들어갔다 replay되어 local file이
+`\n\n`이 되는 race가 생긴다. 이름의 날짜는 daemon TZ=UTC의 localtime이며
+lane 시작 UTC 날짜를 기록할 뿐 정규화하지 않는다. 자정을 넘기면 snapshot이,
+두 lane 날짜가 다르면 비교가 실패한다. 시작/spool 관찰은 launch 후8초 창,
+replay/drain은 각20초 안에 정확한 bytes/link/삭제를 기다릴 뿐 입력을 더하지 않는다.
+
+bucket/thriftfile/multifile, service_list/smc_service, dynamic_config_type,
+hostname sub-directory, adaptive_backoff, flush_streaming(BufferStore::copy가
+복사하지 않음), 부분 replay(replaceOldest), 여러 category가 공유하는 pooled
+connection refcount, 실제1h rotation, 반복 실패/재시도와 성능은 다루지 않는다.
+운영 config 재현이나 운영 준비 판단이 아니다.
+
+offline 시험4개는 source를 읽어 정한 **synthetic expectations**다: 명시 bytes/
+link/counter, 통과 report와 case 이름·downstream bytes·counter·`\n\n`·날짜 변형
+거부, spool 관찰 실패 시 downstream 미기동, dispatch의 두 port 검사. 별도로 WSL
+Rocky9.8 개발 host(uid1000, 격리 없음)에서 validate_linux.py stage의 modern
+scribed(source fa0c604, SHA256
+`9e733af2e50d2c838fc9aaa7d02a866eb5a49c84cae3b5ed1fe7297a07eab6d7`) 한 lane을
+같은 run_lane으로 6회 돌렸다. 저장소 밖 임시 script가 그 process 안에서만
+network_check를 대체했고 6회 모두 위 phase/counter/status와 같았다(각 약11초).
+이것은 old/new 비교가 아니다. Thrift0.9 old binary와 uid65534/lo-only 격리
+환경의 실제 game-profile old/new 실행은 아직 하지 않았다.

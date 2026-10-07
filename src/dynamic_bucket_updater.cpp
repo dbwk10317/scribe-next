@@ -1,7 +1,7 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: release the updater lock on unwind and handle Thrift RPC exceptions.
 // scribe-next modification: keep every singleton pointer access under its existing mutex.
-#include <strstream>
+// scribe-next modification: C++17 cleanup; printf-style LOG_OPER, dead null checks removed.
 #include <iostream>
 #include "dynamic_bucket_updater.h"
 #include "scribe_server.h"
@@ -249,7 +249,7 @@ bool DynamicBucketUpdater::getHostInternal(const string &category,
     ostringstream oss;
     oss << "Missing mapping for category " << category << ", bid: " << bid
         << ", updateHost: " << updateHost << ", updatePort: " << updatePort;
-    LOG_OPER(oss.str());
+    LOG_OPER("%s", oss.str().c_str());
     addStatValue(DynamicBucketUpdater::FB303_ERR_NOMAPPING, 1);
   }
 
@@ -352,20 +352,6 @@ bool DynamicBucketUpdater::updateInternal(
 
   std::shared_ptr<TSocket> socket = std::shared_ptr<TSocket>(
                                 new TSocket(remoteHost, remotePort));
-
-  if (!socket) {
-    addStatValue(DynamicBucketUpdater::FB303_ERR_CONNECT, 1);
-    ostringstream oss;
-    oss << "Failed to create socket in bucket updater("
-        << category
-        << ", "
-        << remoteHost
-        << ", "
-        << remotePort
-        << ")";
-    LOG_OPER(oss.str());
-    return false;
-  }
 
   socket->setConnTimeout(connTimeout);
   socket->setRecvTimeout(recvTimeout);

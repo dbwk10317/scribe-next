@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: C++17 cleanup; weak parent walk, unused code removed, same lookups.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,12 +21,10 @@
 // @author Jason Sobel
 // @author John Song
 
-#include <boost/algorithm/string.hpp>
 #include "common.h"
 #include "conf.h"
 #include "scribe_server.h"
 
-using namespace boost;
 using namespace std;
 
 extern std::shared_ptr<scribeHandler> g_Handler;
@@ -313,7 +312,6 @@ ostream& StoreConf::print(ostream& os, uint32_t depth,
   // are weakly ordered, so we will get consistent output.
   for (string_map_t::const_iterator iter = values.begin();
         iter != values.end(); iter++) {
-    int len = useSpace ? depth * tabw : depth;
     os << indent(depth, useSpace, tabw) << iter->first
        << "=" << iter->second << endl;
   }

@@ -1,3 +1,4 @@
+// scribe-next modification: C++17 cleanup; std::mutex status lock, override, deleted copies.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@
 #define SCRIBE_STORE_H
 
 #include "common.h" // includes std libs, thrift, and stl typedefs
+#include <mutex>
 #include "conf.h"
 #include "file.h"
 #include "conn_pool.h"
@@ -94,14 +96,14 @@ class Store {
   std::string storeType;
 
   // Don't ever take this lock for multiple stores at the same time
-  pthread_mutex_t statusMutex;
+  std::mutex statusMutex;
 
   StoreQueue* storeQueue;
   pStoreConf storeConf;
  private:
   // disallow copy, assignment, and empty construction
-  Store(Store& rhs);
-  Store& operator=(Store& rhs);
+  Store(Store& rhs) = delete;
+  Store& operator=(Store& rhs) = delete;
 };
 
 /*
@@ -116,9 +118,9 @@ class FileStoreBase : public Store {
   ~FileStoreBase();
 
   virtual void copyCommon(const FileStoreBase *base);
-  bool open();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void periodicCheck();
+  bool open() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void periodicCheck() override;
 
  protected:
   // We need to pass arguments to open when called internally.
@@ -180,8 +182,8 @@ class FileStoreBase : public Store {
 
  private:
   // disallow copy, assignment, and empty construction
-  FileStoreBase(FileStoreBase& rhs);
-  FileStoreBase& operator=(FileStoreBase& rhs);
+  FileStoreBase(FileStoreBase& rhs) = delete;
+  FileStoreBase& operator=(FileStoreBase& rhs) = delete;
 };
 
 /*
@@ -195,26 +197,26 @@ class FileStore : public FileStoreBase {
             bool multi_category, bool is_buffer_file = false);
   ~FileStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
-  void flush();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
+  void flush() override;
 
   // Each read does its own open and close and gets the whole file.
   // This is separate from the write file, and not really a consistent
   // interface.
   bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
-                  struct tm* now);
+                  struct tm* now) override;
   virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
-                             struct tm* now);
-  void deleteOldest(struct tm* now);
-  bool empty(struct tm* now);
+                             struct tm* now) override;
+  void deleteOldest(struct tm* now) override;
+  bool empty(struct tm* now) override;
 
  protected:
   // Implement FileStoreBase virtual function
-  bool openInternal(bool incrementFilename, struct tm* current_time);
+  bool openInternal(bool incrementFilename, struct tm* current_time) override;
   bool writeMessages(boost::shared_ptr<logentry_vector_t> messages,
                      boost::shared_ptr<FileInterface> write_file =
                      boost::shared_ptr<FileInterface>());
@@ -227,8 +229,8 @@ class FileStore : public FileStoreBase {
 
  private:
   // disallow copy, assignment, and empty construction
-  FileStore(FileStore& rhs);
-  FileStore& operator=(FileStore& rhs);
+  FileStore(FileStore& rhs) = delete;
+  FileStore& operator=(FileStore& rhs) = delete;
   long lostBytes_;
 };
 
@@ -242,18 +244,18 @@ class ThriftFileStore : public FileStoreBase {
                   bool multi_category);
   ~ThriftFileStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
-  void flush();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
+  void flush() override;
   bool createFileDirectory();
 
  protected:
   // Implement FileStoreBase virtual function
-  bool openInternal(bool incrementFilename, struct tm* current_time);
+  bool openInternal(bool incrementFilename, struct tm* current_time) override;
 
   boost::shared_ptr<apache::thrift::transport::TTransport> thriftFileTransport;
 
@@ -263,8 +265,8 @@ class ThriftFileStore : public FileStoreBase {
 
  private:
   // disallow copy, assignment, and empty construction
-  ThriftFileStore(ThriftFileStore& rhs);
-  ThriftFileStore& operator=(ThriftFileStore& rhs);
+  ThriftFileStore(ThriftFileStore& rhs) = delete;
+  ThriftFileStore& operator=(ThriftFileStore& rhs) = delete;
 };
 
 /*
@@ -285,16 +287,16 @@ class BufferStore : public Store {
               bool multi_category);
   ~BufferStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
-  void flush();
-  void periodicCheck();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
+  void flush() override;
+  void periodicCheck() override;
 
-  std::string getStatus();
+  std::string getStatus() override;
 
  protected:
   // Store we're trying to get the messages to
@@ -358,9 +360,9 @@ class BufferStore : public Store {
 
  private:
   // disallow copy, assignment, and empty construction
-  BufferStore();
-  BufferStore(BufferStore& rhs);
-  BufferStore& operator=(BufferStore& rhs);
+  BufferStore() = delete;
+  BufferStore(BufferStore& rhs) = delete;
+  BufferStore& operator=(BufferStore& rhs) = delete;
 };
 
 /*
@@ -376,14 +378,14 @@ class NetworkStore : public Store {
                bool multi_category);
   ~NetworkStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
-  void flush();
-  void periodicCheck();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
+  void flush() override;
+  void periodicCheck() override;
 
  protected:
   static const long int DEFAULT_SOCKET_TIMEOUT_MS = 5000; // 5 sec timeout
@@ -414,9 +416,9 @@ class NetworkStore : public Store {
 
  private:
   // disallow copy, assignment, and empty construction
-  NetworkStore();
-  NetworkStore(NetworkStore& rhs);
-  NetworkStore& operator=(NetworkStore& rhs);
+  NetworkStore() = delete;
+  NetworkStore(NetworkStore& rhs) = delete;
+  NetworkStore& operator=(NetworkStore& rhs) = delete;
 };
 
 /*
@@ -431,16 +433,16 @@ class BucketStore : public Store {
               bool multi_category);
   ~BucketStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
-  void flush();
-  void periodicCheck();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
+  void flush() override;
+  void periodicCheck() override;
 
-  std::string getStatus();
+  std::string getStatus() override;
 
  protected:
   enum bucketizer_type {
@@ -464,9 +466,9 @@ class BucketStore : public Store {
 
  private:
   // disallow copy, assignment, and emtpy construction
-  BucketStore();
-  BucketStore(BucketStore& rhs);
-  BucketStore& operator=(BucketStore& rhs);
+  BucketStore() = delete;
+  BucketStore(BucketStore& rhs) = delete;
+  BucketStore& operator=(BucketStore& rhs) = delete;
   void createBucketsFromBucket(pStoreConf configuration,
                                pStoreConf bucket_conf);
   void createBuckets(pStoreConf configuration);
@@ -483,29 +485,29 @@ class NullStore : public Store {
             bool multi_category);
   virtual ~NullStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
 
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  void flush();
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  void flush() override;
 
   // null stores are readable, but you never get anything
   virtual bool readOldest(boost::shared_ptr<logentry_vector_t> messages,
-                          struct tm* now);
+                          struct tm* now) override;
   virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
-                             struct tm* now);
-  virtual void deleteOldest(struct tm* now);
-  virtual bool empty(struct tm* now);
+                             struct tm* now) override;
+  virtual void deleteOldest(struct tm* now) override;
+  virtual bool empty(struct tm* now) override;
 
 
  private:
   // disallow empty constructor, copy and assignment
-  NullStore();
-  NullStore(Store& rhs);
-  NullStore& operator=(Store& rhs);
+  NullStore() = delete;
+  NullStore(NullStore& rhs) = delete;
+  NullStore& operator=(NullStore& rhs) = delete;
 };
 
 /*
@@ -519,21 +521,21 @@ class MultiStore : public Store {
              bool multi_category);
   ~MultiStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
 
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  void periodicCheck();
-  void flush();
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  void periodicCheck() override;
+  void flush() override;
 
   // read won't make sense since we don't know which store to read from
   bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
-                  struct tm* now) { return false; }
-  void deleteOldest(struct tm* now) {}
-  bool empty(struct tm* now) { return true; }
+                  struct tm* now) override { return false; }
+  void deleteOldest(struct tm* now) override {}
+  bool empty(struct tm* now) override { return true; }
 
  protected:
   std::vector<boost::shared_ptr<Store> > stores;
@@ -545,9 +547,9 @@ class MultiStore : public Store {
 
  private:
   // disallow copy, assignment, and empty construction
-  MultiStore();
-  MultiStore(Store& rhs);
-  MultiStore& operator=(Store& rhs);
+  MultiStore() = delete;
+  MultiStore(MultiStore& rhs) = delete;
+  MultiStore& operator=(MultiStore& rhs) = delete;
 };
 
 
@@ -566,15 +568,15 @@ class CategoryStore : public Store {
                 const std::string& name, bool multiCategory);
   ~CategoryStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category);
-  bool open();
-  bool isOpen();
-  void configure(pStoreConf configuration, pStoreConf parent);
-  void close();
+  boost::shared_ptr<Store> copy(const std::string &category) override;
+  bool open() override;
+  bool isOpen() override;
+  void configure(pStoreConf configuration, pStoreConf parent) override;
+  void close() override;
 
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages);
-  void periodicCheck();
-  void flush();
+  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  void periodicCheck() override;
+  void flush() override;
 
  protected:
   void configureCommon(pStoreConf configuration, pStoreConf parent,
@@ -583,9 +585,9 @@ class CategoryStore : public Store {
   std::map<std::string, boost::shared_ptr<Store> > stores;
 
  private:
-  CategoryStore();
-  CategoryStore(Store& rhs);
-  CategoryStore& operator=(Store& rhs);
+  CategoryStore() = delete;
+  CategoryStore(CategoryStore& rhs) = delete;
+  CategoryStore& operator=(CategoryStore& rhs) = delete;
 };
 
 /*
@@ -599,12 +601,12 @@ class MultiFileStore : public CategoryStore {
                 const std::string& category,
                 bool multi_category);
   ~MultiFileStore();
-  void configure(pStoreConf configuration, pStoreConf parent);
+  void configure(pStoreConf configuration, pStoreConf parent) override;
 
  private:
-  MultiFileStore();
-  MultiFileStore(Store& rhs);
-  MultiFileStore& operator=(Store& rhs);
+  MultiFileStore() = delete;
+  MultiFileStore(MultiFileStore& rhs) = delete;
+  MultiFileStore& operator=(MultiFileStore& rhs) = delete;
 };
 
 /*
@@ -618,12 +620,12 @@ class ThriftMultiFileStore : public CategoryStore {
                        const std::string& category,
                        bool multi_category);
   ~ThriftMultiFileStore();
-  void configure(pStoreConf configuration, pStoreConf parent);
+  void configure(pStoreConf configuration, pStoreConf parent) override;
 
 
  private:
-  ThriftMultiFileStore();
-  ThriftMultiFileStore(Store& rhs);
-  ThriftMultiFileStore& operator=(Store& rhs);
+  ThriftMultiFileStore() = delete;
+  ThriftMultiFileStore(ThriftMultiFileStore& rhs) = delete;
+  ThriftMultiFileStore& operator=(ThriftMultiFileStore& rhs) = delete;
 };
 #endif // SCRIBE_STORE_H

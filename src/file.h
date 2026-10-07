@@ -1,3 +1,4 @@
+// scribe-next modification: C++17 cleanup; override, deleted copies, loss helper, no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,32 +63,33 @@ class StdFile : public FileInterface {
   StdFile(const std::string& name, bool framed);
   virtual ~StdFile();
 
-  bool openRead();
-  bool openWrite();
-  bool openTruncate();
-  bool isOpen();
-  void close();
-  bool write(const std::string& data);
-  void flush();
-  unsigned long fileSize();
-  long readNext(std::string& _return);
-  void deleteFile();
-  void listImpl(const std::string& path, std::vector<std::string>& _return);
-  std::string getFrame(unsigned data_size);
-  bool createDirectory(std::string path);
-  bool createSymlink(std::string newpath, std::string oldpath);
+  bool openRead() override;
+  bool openWrite() override;
+  bool openTruncate() override;
+  bool isOpen() override;
+  void close() override;
+  bool write(const std::string& data) override;
+  void flush() override;
+  unsigned long fileSize() override;
+  long readNext(std::string& _return) override;
+  void deleteFile() override;
+  void listImpl(const std::string& path, std::vector<std::string>& _return) override;
+  std::string getFrame(unsigned data_size) override;
+  bool createDirectory(std::string path) override;
+  bool createSymlink(std::string oldpath, std::string newpath) override;
 
  private:
   bool open(std::ios_base::openmode mode);
+  long calcLoss();
 
   char* inputBuffer;
   unsigned bufferSize;
   std::fstream file;
 
   // disallow copy, assignment, and empty construction
-  StdFile();
-  StdFile(StdFile& rhs);
-  StdFile& operator=(StdFile& rhs);
+  StdFile() = delete;
+  StdFile(StdFile& rhs) = delete;
+  StdFile& operator=(StdFile& rhs) = delete;
 };
 
 #endif // !defined SCRIBE_FILE_H

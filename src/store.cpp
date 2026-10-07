@@ -2,6 +2,8 @@
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
 // scribe-next modification: retain default-port initialization and bounded legacy bucket checks.
 // scribe-next modification: guard absent child/model stores before dereferencing them.
+// scribe-next modification: close the previous pooled destination and replace list servers on reopen.
+// scribe-next modification: C++17 cleanup; std::mutex status guard, typed config reads, -Wall tidy; same values.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -127,11 +129,9 @@ Store::Store(StoreQueue* storeq,
     multiCategory(multi_category),
     storeType(type),
     storeQueue(storeq) {
-  pthread_mutex_init(&statusMutex, NULL);
 }
 
 Store::~Store() {
-  pthread_mutex_destroy(&statusMutex);
 }
 
 void Store::configure(pStoreConf configuration, pStoreConf parent) {
@@ -140,15 +140,13 @@ void Store::configure(pStoreConf configuration, pStoreConf parent) {
 }
 
 void Store::setStatus(const std::string& new_status) {
-  pthread_mutex_lock(&statusMutex);
+  std::lock_guard<std::mutex> guard(statusMutex);
   status = new_status;
-  pthread_mutex_unlock(&statusMutex);
 }
 
 std::string Store::getStatus() {
-  pthread_mutex_lock(&statusMutex);
+  std::lock_guard<std::mutex> guard(statusMutex);
   std::string return_status(status);
-  pthread_mutex_unlock(&statusMutex);
   return return_status;
 }
 
@@ -1277,13 +1275,16 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
   Store::configure(configuration, parent);
 
   // Constructor defaults are fine if these don't exist
-  configuration->getUnsigned("buffer_send_rate", (unsigned long&) bufferSendRate);
+  configuration->getUnsigned("buffer_send_rate", bufferSendRate);
 
   // Used for linear backoff case
-  configuration->getUnsigned("retry_interval",
-                             (unsigned long&) avgRetryInterval);
-  configuration->getUnsigned("retry_interval_range",
-                             (unsigned long&) retryIntervalRange);
+  unsigned long interval;
+  if (configuration->getUnsigned("retry_interval", interval)) {
+    avgRetryInterval = interval;
+  }
+  if (configuration->getUnsigned("retry_interval_range", interval)) {
+    retryIntervalRange = interval;
+  }
 
   // Used in case of adaptive backoff
   // max_random_offset should be some fraction of max_retry_interval
@@ -1291,12 +1292,9 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
   // if you are using max_random_offset > max_retry_interval you should
   // probably not be using adaptive backoff and using retry_interval and
   // retry_interval_range parameters to do linear backoff instead
-  configuration->getUnsigned("min_retry_interval",
-                             (unsigned long&) minRetryInterval);
-  configuration->getUnsigned("max_retry_interval",
-                             (unsigned long&) maxRetryInterval);
-  configuration->getUnsigned("max_random_offset",
-                             (unsigned long&) maxRandomOffset);
+  configuration->getUnsigned("min_retry_interval", minRetryInterval);
+  configuration->getUnsigned("max_retry_interval", maxRetryInterval);
+  configuration->getUnsigned("max_random_offset", maxRandomOffset);
   if (maxRandomOffset > maxRetryInterval) {
     LOG_OPER(" Warning max_random_offset > max_retry_interval look at using adaptive_backoff=no instead setting max_random_offset to max_retry_interval");
     maxRandomOffset = maxRetryInterval;
@@ -1764,10 +1762,10 @@ NetworkStore::NetworkStore(StoreQueue* storeq,
     remotePort(0),
     serviceListDefaultPort(0),
     serviceCacheTimeout(DEFAULT_NETWORKSTORE_CACHE_TIMEOUT),
+    lastServiceCheck(0),
     ignoreNetworkError(false),
     configmod(NULL),
-    opened(false),
-    lastServiceCheck(0) {
+    opened(false) {
   // we can't open the connection until we get configured
 
   // the bool for opened ensures that we don't make duplicate
@@ -1856,15 +1854,16 @@ void NetworkStore::periodicCheck() {
       LOG_OPER("[%s] dynamic configred network store destination changed. old value:<%s:%lu>, new value:<%s:%lu>",
                categoryHandled.c_str(), remoteHost.c_str(), remotePort,
                host.c_str(), (long unsigned)port);
+      close();
       remoteHost = host;
       remotePort = port;
-      close();
     }
   }
 }
 
 bool NetworkStore::loadFromList(const std::string &list, unsigned long defaultPort,
                                 server_vector_t& _return) {
+  _return.clear();
   vector<string> strs;
   boost::split(strs, list, boost::is_any_of("\t "));
   vector<string> split;

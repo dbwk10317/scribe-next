@@ -1,6 +1,7 @@
 # 독립 리뷰 항목 수정과 검증
 
-2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 되돌린다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 PR #25에서 되돌렸다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+2026-10-07 다시 적용: 그중 동적 목적지 변경 시 이전 pooled owner 해제와 재연결 시 service_list 후보 누적 방지만 재적용했다. 빈 pool key 공유·copy·bucket 수정은 원본 동작으로 남는다. 근거는 [정책](legacy-compatibility-policy.md#다시-고친-동작-2026-10-07)에 있다.
 
 2026-10-05 · 최신 store 수정의 base/main `da74ec9`; 이전 독립 범위의 base `ddca67e`
 

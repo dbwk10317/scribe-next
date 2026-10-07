@@ -149,8 +149,8 @@ class OrdinarySpoolTests(unittest.TestCase):
                 self.check_read(path, [(len(payload), payload) for payload in payloads]
                                 + [(0, payloads[-1])])
 
-    def test_legacy_and_current_truncate_fail_and_preserve_existing_bytes(self):
-        # The source-defined out|app|trunc failure is part of compatibility.
+    def test_raw_legacy_truncate_still_fails_while_fixed_current_truncates(self):
+        # The approved loss fix intentionally differs from pinned upstream.
         directory = self.directory()
         for version in ("legacy", "current"):
             with self.subTest(version=version):
@@ -158,18 +158,22 @@ class OrdinarySpoolTests(unittest.TestCase):
                 path.write_bytes(b"ORIGINAL\x00\xff")
                 result = run([self.executables[version, False], "truncate", path],
                              cwd=directory, env=self.env)
-                self.assertEqual(result.stdout, "0:0\n")
-                self.assertEqual(path.read_bytes(), b"ORIGINAL\x00\xff")
+                self.assertEqual(result.stdout, "0:0\n" if version == "legacy" else "1:1\n")
+                self.assertEqual(path.read_bytes(), b"ORIGINAL\x00\xff" if version == "legacy" else b"")
 
-    def test_legacy_and_current_direct_truncate_cannot_create_a_missing_file(self):
+    def test_fixed_direct_truncate_can_create_a_missing_file_legacy_cannot(self):
+        # FileStore separately checks findOldestFile; this is the lower-level
+        # out|trunc effect, documented rather than hidden as compatibility.
         directory = self.directory()
         for version in ("legacy", "current"):
             with self.subTest(version=version):
                 path = directory / (version + ".missing")
                 result = run([self.executables[version, False], "truncate", path],
                              cwd=directory, env=self.env)
-                self.assertEqual(result.stdout, "0:0\n")
-                self.assertFalse(path.exists())
+                self.assertEqual(result.stdout, "0:0\n" if version == "legacy" else "1:1\n")
+                self.assertEqual(path.exists(), version == "current")
+                if version == "current":
+                    self.assertEqual(path.read_bytes(), b"")
 
     def test_truncate_open_failure_is_still_reported_for_a_directory(self):
         directory = self.directory()

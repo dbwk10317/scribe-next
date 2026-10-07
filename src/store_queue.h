@@ -1,3 +1,4 @@
+// scribe-next modification: C++17 cleanup; explicit single-argument constructor.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,7 +80,7 @@ class StoreQueue {
     store_command_t command;
     pStoreConf configuration;
 
-    StoreCommand(store_command_t cmd, pStoreConf config = pStoreConf())
+    explicit StoreCommand(store_command_t cmd, pStoreConf config = pStoreConf())
       : command(cmd), configuration(config) {};
   };
 

@@ -1,3 +1,4 @@
+// scribe-next modification: C++17 cleanup; no header using-declarations, copy deleted.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,9 +23,6 @@
 
 #include "common.h"
 #include "conf.h"
-
-using std::string;
-using std::map;
 
 /**
   * DynamicBucketUpdater updates a bucket store's bucket id to host:port
@@ -70,13 +68,13 @@ class DynamicBucketUpdater {
     * @param recvTimeout receive timeout
     */
   static bool getHost(facebook::fb303::FacebookBase *fbBase,
-                      const string &category,
+                      const std::string &category,
                       uint32_t ttl,
                       uint64_t bid,
-                      string &host,
+                      std::string &host,
                       uint32_t &port,
-                      string service,
-                      string serviceOption,
+                      std::string service,
+                      std::string serviceOption,
                       uint32_t connTimeout = 150,
                       uint32_t sendTimeout = 150,
                       uint32_t recvTimeout = 150);
@@ -103,12 +101,12 @@ class DynamicBucketUpdater {
     * @param recvTimeout receive timeout
     */
   static bool getHost(facebook::fb303::FacebookBase *fbBase,
-                      const string &category,
+                      const std::string &category,
                       uint32_t ttl,
                       uint64_t bid,
-                      string &host,
+                      std::string &host,
                       uint32_t &port,
-                      string updateHost,
+                      std::string updateHost,
                       uint32_t updatePort,
                       uint32_t connTimeout = 150,
                       uint32_t sendTimeout = 150,
@@ -127,12 +125,12 @@ class DynamicBucketUpdater {
     * @param port the output parameter that receives the host output.
     *        If no mapping is found, this variable is not modified.
     */
-  bool getHostInternal(const string &category,
+  bool getHostInternal(const std::string &category,
                       uint32_t ttl,
                       uint64_t bid,
-                      string &host,
+                      std::string &host,
                       uint32_t &port,
-                      string updateHost,
+                      std::string updateHost,
                       uint32_t updatePort,
                       uint32_t connTimeout,
                       uint32_t sendTimeout,
@@ -155,33 +153,33 @@ class DynamicBucketUpdater {
     *
     * @return true if successful. false otherwise.
     */
-  bool periodicCheck(string category,
+  bool periodicCheck(std::string category,
                      uint32_t ttl,
-                     string host,
+                     std::string host,
                      uint32_t port,
                      uint32_t connTimeout = 150,
                      uint32_t sendTimeout = 150,
                      uint32_t recvTimeout = 150);
 
   struct HostEntry {
-    string     host_;
+    std::string host_;
     uint32_t   port_;
   };
 
   struct CategoryEntry {
     CategoryEntry() {}
-    CategoryEntry(string category, uint32_t ttl) : category_(category), ttl_(ttl),
+    CategoryEntry(std::string category, uint32_t ttl) : category_(category), ttl_(ttl),
                                                    lastUpdated_(0) {
     }
 
-    string    category_;
+    std::string category_;
     uint32_t  ttl_;
     time_t    lastUpdated_;
-    map<uint64_t, HostEntry> bidMap_;
+    std::map<uint64_t, HostEntry> bidMap_;
   };
 
   // category and bid to HostEntry map
-  typedef map<string, CategoryEntry> CatBidToHostMap;
+  typedef std::map<std::string, CategoryEntry> CatBidToHostMap;
 
   /**
     * Given a category name, remote host and port, query bucket mapping
@@ -198,9 +196,9 @@ class DynamicBucketUpdater {
     *
     * @return true if successful. false otherwise.
     */
-  bool updateInternal(string category,
+  bool updateInternal(std::string category,
                       uint32_t ttl,
-                      string remoteHost,
+                      std::string remoteHost,
                       uint32_t remotePort,
                       uint32_t connTimeout,
                       uint32_t sendTimeout,
@@ -219,7 +217,7 @@ class DynamicBucketUpdater {
   apache::thrift::concurrency::Mutex lock_;
   CatBidToHostMap catMap_;
 
-  void addStatValue(string name, uint64_t value) {
+  void addStatValue(std::string name, uint64_t value) {
 #ifdef FACEBOOK
     if (fbBase_) {
       fbBase_->addStatValue(name, value);
@@ -228,12 +226,12 @@ class DynamicBucketUpdater {
   }
 
   // make singleton
-  DynamicBucketUpdater(facebook::fb303::FacebookBase *fbBase)
+  explicit DynamicBucketUpdater(facebook::fb303::FacebookBase *fbBase)
       : fbBase_(fbBase) {
     initFb303Counters();
   }
 
-  DynamicBucketUpdater(const DynamicBucketUpdater& other) {}
+  DynamicBucketUpdater(const DynamicBucketUpdater& other) = delete;
 };
 
 #endif // SCRIBE_DYNAMIC_BUCKET_UPDATER_H

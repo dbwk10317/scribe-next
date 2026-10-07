@@ -1,4 +1,6 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
+// scribe-next modification: truncate spool replacement without app so partial replay keeps its remainder.
+// scribe-next modification: C++17 cleanup; CALC_LOSS macro is now calcLoss(), same arithmetic.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,7 +85,8 @@ bool StdFile::openWrite() {
 
 bool StdFile::openTruncate() {
   // open an existing file for write and truncate its contents
-  ios_base::openmode mode = fstream::out | fstream::app | fstream::trunc;
+  // scribe-next modification: app|trunc cannot open; overwrite for buffer replay.
+  ios_base::openmode mode = fstream::out | fstream::trunc;
   return open(mode);
 }
 
@@ -158,28 +161,11 @@ long
 StdFile::readNext(std::string& _return) {
   long size;
 
-#define CALC_LOSS() do {                    \
-  int offset = file.tellg();                \
-  if (offset != -1) {                       \
-    size = -(fileSize() - offset);          \
-  } else {                                  \
-    size = -fileSize();                     \
-  }                                         \
-  if (size > 0) {                           \
-    /* loss size can't be positive          \
-     * choose a arbitrary but reasonable
-     * value for loss
-     */                                     \
-    size = -(1000 * 1000 * 1000);           \
-  }                                         \
-  /* loss size can be 0 */                  \
-}  while (0)
-
   if (!inputBuffer) {
     bufferSize = INITIAL_BUFFER_SIZE;
     inputBuffer = (char *) malloc(bufferSize);
     if (inputBuffer == NULL) {
-      CALC_LOSS();
+      size = calcLoss();
       LOG_OPER("WARNING: nomem Data Loss loss %ld bytes in %s", size,
           filename.c_str());
      return (size);
@@ -194,7 +180,7 @@ StdFile::readNext(std::string& _return) {
   // check if most signiifcant bit set - should never be set
   if (size >= INT_MAX) {
     /* Definitely corrupted. Stop reading any further */
-    CALC_LOSS();
+    size = calcLoss();
     LOG_OPER("WARNING: Corruption Data Loss %ld bytes in %s", size,
         filename.c_str());
     return (size);
@@ -210,7 +196,7 @@ StdFile::readNext(std::string& _return) {
     }
   }
   if (inputBuffer == NULL) {
-    CALC_LOSS();
+    size = calcLoss();
     LOG_OPER("WARNING: nomem Corruption? Data Loss %ld bytes in %s", size,
         filename.c_str());
     return (size);
@@ -219,7 +205,7 @@ StdFile::readNext(std::string& _return) {
   if (file.good()) {
     _return.assign(inputBuffer, size);
   } else {
-    CALC_LOSS();
+    size = calcLoss();
     LOG_OPER("WARNING: Data Loss %ld bytes in %s", size, filename.c_str());
   }
   if (bufferSize > LARGE_BUFFER_SIZE) {
@@ -227,7 +213,28 @@ StdFile::readNext(std::string& _return) {
     inputBuffer = NULL;
   }
   return (size);
-#undef CALC_LOSS
+}
+
+// Bytes from the current read position to the end of the file, as a loss.
+long
+StdFile::calcLoss() {
+  long size;
+  // Legacy int offset: positions past 2 GiB narrow; kept for loss accounting.
+  int offset = file.tellg();
+  if (offset != -1) {
+    size = -(fileSize() - offset);
+  } else {
+    size = -fileSize();
+  }
+  if (size > 0) {
+    /* loss size can't be positive
+     * choose a arbitrary but reasonable
+     * value for loss
+     */
+    size = -(1000 * 1000 * 1000);
+  }
+  /* loss size can be 0 */
+  return size;
 }
 
 unsigned long StdFile::fileSize() {
