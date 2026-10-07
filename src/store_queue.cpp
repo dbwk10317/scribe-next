@@ -88,6 +88,24 @@ StoreQueue::StoreQueue(const std::shared_ptr<StoreQueue> example,
 
 StoreQueue::~StoreQueue() {
   if (!isModel) {
+    if (!stopping) {
+      // Constructed but never stopped: the handler failed to register the queue
+      // after the worker started. Follow the stop() sequence without a command
+      // push, which could allocate again, so the worker exits before the
+      // mutexes it uses are destroyed.
+      pthread_mutex_lock(&cmdMutex);
+      stopping = true;
+      pthread_mutex_unlock(&cmdMutex);
+
+      pthread_mutex_lock(&hasWorkMutex);
+      if (!hasWork) {
+        hasWork = true;
+        pthread_cond_signal(&hasWorkCond);
+      }
+      pthread_mutex_unlock(&hasWorkMutex);
+
+      pthread_join(storeThread, NULL);
+    }
     pthread_mutex_destroy(&cmdMutex);
     pthread_mutex_destroy(&msgMutex);
     pthread_mutex_destroy(&hasWorkMutex);
@@ -267,6 +285,10 @@ void StoreQueue::threadMember() {
         LOG_OPER("LOGIC ERROR: unknown command to store queue");
         break;
       }
+    }
+    // Destructor-driven stop; stop() already queued CMD_STOP, so this is a no-op there.
+    if (stopping) {
+      stop = true;
     }
 
     // handle periodic tasks

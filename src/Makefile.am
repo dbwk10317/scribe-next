@@ -18,7 +18,7 @@ all:
 # Generate gen-cpp in current dir not in other locations.
 # Do no create new targets especially if build time is small
 # Default setting is opt mode. Use --disable-opt to turn this off.
-# Default setting is static library . Use --disable-debug to turn on shared.
+# Default setting is static library . Use --disable-static to turn on shared.
 
 # Section 1 #########################################################################
 # Set up User defined flags, variables and switches here.

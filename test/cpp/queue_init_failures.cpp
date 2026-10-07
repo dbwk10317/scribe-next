@@ -22,12 +22,14 @@ extern "C" int __wrap_pthread_mutex_destroy(pthread_mutex_t* p){if(!live.erase(p
 extern "C" int __wrap_pthread_cond_destroy(pthread_cond_t* p){if(!live.erase(p)){++bad_destroy;return EINVAL;}return __real_pthread_cond_destroy(p);}
 extern "C" int __wrap_pthread_create(pthread_t* t,const pthread_attr_t* a,void*(*f)(void*),void* p){++calls;if(fail_step)return EAGAIN;int r=__real_pthread_create(t,a,f,p);started=!r;return r;}
 extern "C" int __wrap_pthread_join(pthread_t t,void** p){++joins;if(!started){++bad_join;return ESRCH;}return __real_pthread_join(t,p);}
+// Steps 1-5 fail the n-th pthread call; step 6 destroys an unstopped queue (registration failed
+// after construction), so the destructor alone must stop and join the worker.
 static bool check(int step){
- fail_step=step;calls=bad_destroy=bad_join=joins=0;started=false;bool rejected=false;
+ fail_step=step<=5?step:0;calls=bad_destroy=bad_join=joins=0;started=false;bool rejected=false;
  ScribeContext context;
- try {StoreQueue queue(context,"fixture","fixture",1);if(step==0||step==5)queue.stop();}
+ try {StoreQueue queue(context,"fixture","fixture",1);if(step==0)queue.stop();}
  catch(const std::system_error& error){rejected=error.code().value()==EAGAIN;}
- bool ok=live.empty()&&!bad_destroy&&!bad_join&&(step?rejected:started&&joins==1);
- std::cout<<"step="<<step<<" rejected="<<rejected<<" live="<<live.size()<<" bad_destroy="<<bad_destroy<<" bad_join="<<bad_join<<std::endl;return ok;
+ bool ok=live.empty()&&!bad_destroy&&!bad_join&&(fail_step?rejected:started&&joins==1);
+ std::cout<<"step="<<step<<" rejected="<<rejected<<" live="<<live.size()<<" bad_destroy="<<bad_destroy<<" bad_join="<<bad_join<<" joins="<<joins<<std::endl;return ok;
 }
-int main(int argc,char**argv){if(argc==2)return check(std::atoi(argv[1]))?0:1;for(int n=0;n<=5;++n)if(!check(n))return 1;std::cout<<"PASS init failure matrix"<<std::endl;}
+int main(int argc,char**argv){if(argc==2)return check(std::atoi(argv[1]))?0:1;for(int n=0;n<=6;++n)if(!check(n))return 1;std::cout<<"PASS init failure matrix"<<std::endl;}
