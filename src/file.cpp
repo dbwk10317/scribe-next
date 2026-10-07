@@ -1,6 +1,7 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: truncate spool replacement without app so partial replay keeps its remainder.
 // scribe-next modification: C++17 cleanup; CALC_LOSS macro is now calcLoss(), same arithmetic.
+// scribe-next modification: owned read buffer via nothrow new; same nomem/loss accounting.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +26,7 @@
 #include "common.h"
 #include "file.h"
 #include "HdfsFile.h"
+#include <new>
 
 #define INITIAL_BUFFER_SIZE (64 * 1024)
 #define LARGE_BUFFER_SIZE (16 * INITIAL_BUFFER_SIZE) /* arbitrarily chosen */
@@ -62,15 +64,10 @@ FileInterface::~FileInterface() {
 }
 
 StdFile::StdFile(const std::string& name, bool frame)
-  : FileInterface(name, frame), inputBuffer(NULL), bufferSize(0) {
+  : FileInterface(name, frame), bufferSize(0) {
 }
 
 StdFile::~StdFile() {
-  if (inputBuffer) {
-    // scribe-next modification: readNext allocates this buffer with malloc.
-    free(inputBuffer);
-    inputBuffer = NULL;
-  }
 }
 
 bool StdFile::openRead() {
@@ -163,8 +160,8 @@ StdFile::readNext(std::string& _return) {
 
   if (!inputBuffer) {
     bufferSize = INITIAL_BUFFER_SIZE;
-    inputBuffer = (char *) malloc(bufferSize);
-    if (inputBuffer == NULL) {
+    inputBuffer.reset(new (std::nothrow) char[bufferSize]);
+    if (inputBuffer == nullptr) {
       size = calcLoss();
       LOG_OPER("WARNING: nomem Data Loss loss %ld bytes in %s", size,
           filename.c_str());
@@ -172,8 +169,8 @@ StdFile::readNext(std::string& _return) {
     }
   }
 
-  file.read(inputBuffer, UINT_SIZE);
-  if (!file.good() || (size = unserializeUInt(inputBuffer)) == 0) {
+  file.read(inputBuffer.get(), UINT_SIZE);
+  if (!file.good() || (size = unserializeUInt(inputBuffer.get())) == 0) {
     /* end of file */
     return (0);
   }
@@ -189,28 +186,27 @@ StdFile::readNext(std::string& _return) {
   if (size > bufferSize) {
     bufferSize = ((size + INITIAL_BUFFER_SIZE - 1) / INITIAL_BUFFER_SIZE) *
         INITIAL_BUFFER_SIZE;
-    free(inputBuffer);
-    inputBuffer = (char *) malloc(bufferSize);
+    inputBuffer.reset();
+    inputBuffer.reset(new (std::nothrow) char[bufferSize]);
     if (bufferSize > LARGE_BUFFER_SIZE) {
       LOG_OPER("WARNING: allocating large buffer Corruption? %d", bufferSize);
     }
   }
-  if (inputBuffer == NULL) {
+  if (inputBuffer == nullptr) {
     size = calcLoss();
     LOG_OPER("WARNING: nomem Corruption? Data Loss %ld bytes in %s", size,
         filename.c_str());
     return (size);
   }
-  file.read(inputBuffer, size);
+  file.read(inputBuffer.get(), size);
   if (file.good()) {
-    _return.assign(inputBuffer, size);
+    _return.assign(inputBuffer.get(), size);
   } else {
     size = calcLoss();
     LOG_OPER("WARNING: Data Loss %ld bytes in %s", size, filename.c_str());
   }
   if (bufferSize > LARGE_BUFFER_SIZE) {
-    free(inputBuffer);
-    inputBuffer = NULL;
+    inputBuffer.reset();
   }
   return (size);
 }
