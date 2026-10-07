@@ -638,6 +638,7 @@ recipe를 두었다. C++/IDL/harness 기대값과 격리 guard는 바꾸지 않�
   Thrift0.25, python3 3.9.25). build 중 old ldd에 `not found`가 없고 두 `--help`가
   exit0인지 확인한다. old lane은 Rocky의 glibc2.34-275.el9_8/libstdc++11.5.0 위에서 돈다.
   앞 서버의 Ubuntu16 전체 userland와 다르다
+- modern image는 이제 저장소 root의 [Dockerfile](../Dockerfile)로 만든다(`docker build -t scribe-next-modern:rocky9 .`). README의 설치 순서와 같은 build다
 
 image는 `scribe-next-old-build:xenial`과 `scribe-next-differential:latest`다.
 [run_differential.sh](../tools/old-lane/run_differential.sh)는 새 0777 출력 폴더에
