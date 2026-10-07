@@ -6,7 +6,7 @@
 | --- | --- |
 | `tools/validate_linux.py` | 새 source 사본의 빌드, 전체 시험, 임시 설치, 설치된 `scribed --help` |
 | `tools/daemon_differential.py`, `tools/old-lane/` | 구·신 daemon을 실제로 띄워 같은 입력의 결과 비교 |
-| root `Dockerfile` | README 설치 순서와 같은 빌드, 비교용 신버전 이미지 |
+| root `Dockerfile` | README 설치 순서를 따른 `rockylinux:9` root 빌드(CRLF 정리 포함), 비교용 신버전 이미지 |
 
 실제 daemon 결과, component·모의 결과, 정적 검토, 미실행을 구분한다.
 한 환경의 결과를 전체 호환성이나 운영 준비로 확대하지 않는다.
@@ -23,15 +23,17 @@ symlink·setuid 파일, Thrift 0.25.0이 아닌 compiler, 원본 Git object 누�
 | `configure` | `bootstrap.sh --prefix=/opt/scribe`와 prefix 경로 |
 | `compiler-version`, `python-version` | 실제 compiler·Python 기록 |
 | `clean`, `build` | `make clean`, `make -j2` |
-| `tests` | `test/test_*.py` 전체. 실패·오류·건너뜀이 모두 0이고 150개 이상이어야 통과 |
+| `tests` | `test/test_*.py` 전체. 실패·오류·건너뜀이 모두 0이고 230개 이상이어야 통과 |
 | `install` | `make install DESTDIR=stage/` |
 | `installed-help` | stage의 `scribed --help` |
 
 - `--shared-rpc`는 `shared-elf`를 더해 9단계, HDFS는 `hdfs-elf`·`java-version`·`hdfs-local`을 더해 11단계다
-- 실행 중 source가 바뀌거나 stage에 symlink가 있으면 실패한다
-- source·생성 파일·설치 파일 manifest와 시험 수를 `validation.json`, `test-results.json`에 남긴다
+- 처음 복사한 source 파일이나 Git 파일 목록(새 untracked 파일 포함)이 실행 중 바뀌거나 stage에 symlink가 있으면 실패한다
+- source·생성 파일·설치 파일 manifest와 시험 수를 `validation.json`, `test-results.json`에 남긴다. 실패해도 `validation.json`에 `status: failed`와 오류를 남긴다
+- `FB303_PREFIX/share/scribe-next/fb303-safety.json`은 있으면 기록하고 없으면 없다는 사실을 기록한다. 필수가 아니며 hash를 대조하지 않는다
 - 시험에는 C++03 원본 component와의 일반 spool 교차 비교, ASan·UBSan component, loopback RPC, fb303 patch 회귀가 들어 있다
-- LSan·TSan은 일부 component에서만 실행한다. 전체 daemon sanitizer 결과가 아니다
+- LSan은 `test/test_hdfs_compat.py`의 component 하나에서만 켠다(`detect_leaks=1`). `test/test_ordinary_spool.py`의 ASan은 `detect_leaks=0`이다
+- TSan은 어디에서도 실행하지 않는다. 전체 daemon sanitizer 결과가 아니다
 
 ## 구·신 daemon 비교
 
@@ -51,7 +53,7 @@ harness는 Docker, namespace, 권한, 의존성을 설정하지 않는다.
 - real·effective UID 65534, `/sys/class/net`에 `lo`만 있음, 출력은 checkout 밖 새 폴더, 쓸 port가 비어 있음
 - client는 127.0.0.1에만 연결한다. 첫 RPC 전에 연결 socket inode가 소유한 child의 fd인지 확인한다
 - child는 독립 session으로 띄우고, 실패하면 그 process group만 TERM·KILL하고 회수한다
-- `LD_PRELOAD`·`LD_AUDIT`은 거부하고 ambient `LD_LIBRARY_PATH`는 상속하지 않는다
+- targets JSON 환경에 `LD_PRELOAD`·`LD_AUDIT`이 있으면 거부한다. 상속된 두 값과 ambient `LD_LIBRARY_PATH`는 child 환경에서 지운다
 - host network, privileged, Docker socket mount로 guard를 통과시키지 않는다
 
 ### 실행
@@ -104,9 +106,10 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 - **mixed-sender-restart-spool**: 위 흐름에서 spool을 쓴 쪽과 읽는 쪽의 버전을 바꾼다(수신측은 신버전). 두 버전이 서로 쓴 일반 spool 파일을 디스크에서 읽는 유일한 daemon case다
 - **throttle-retry**: 수신측 `max_msg_per_second=4`, 양쪽 `target_write_size=1`이다. 한 초 안에 메시지 2·2·1개를 보내면 다섯 번째가 `TRY_LATER`와 `denied for rate` 1이 된다. 송신측은 연결을 연 채 spool하고 `retry_interval` 뒤 replay한다. 수신 파일은 다섯 개가 순서대로다
 
-- retry는 `now - lastOpenAttempt > 10`(정수 초)이다. 마지막 실패 입력부터 8초 안에 spool 관찰과 카운터 확인이 끝나야 하며 넘으면 실패한다
+- retry는 `now - lastOpenAttempt > 10`(정수 초)이다. 기준 시각부터 8초 안에 spool 관찰과 카운터 확인이 끝나야 하며 넘으면 실패한다
+- 기준 시각은 receiver-restart·receiver-crash·throttle-retry가 spool로 가는 마지막 입력을 보낸 시각, sender-restart-spool·mixed-sender-restart-spool과 spool·mixed-spool·game-profile이 송신측 daemon 시작 시각이다
 - throttle-retry는 다음 초 경계 직후에 시작하고, `Z` 응답이 같은 정수 초가 아니면 실패한다
-- replay·스트리밍 관찰은 각 20초 기한이다
+- replay·스트리밍 관찰 기한은 20초다. throttle-retry의 첫 두 스트리밍 관찰만 2초다
 
 ### performance
 
@@ -123,14 +126,14 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 
 [tools/old-lane](../tools/old-lane/README.md)에 구버전 빌드와 비교 이미지 recipe, 세 명령이 있다.
 
-- `Dockerfile.old`: digest 고정 `ubuntu:16.04`, GCC 5.4.0, Boost 1.58, libevent 2.0.21, OpenSSL 1.0.2g, autoconf 2.69, automake 1.15, libtool 2.4.6, bison 3.0.4다
+- `Dockerfile.old`는 `FROM ubuntu:16.04` tag를 쓰고 digest와 apt 패키지 버전을 고정하지 않는다
+- 2026-10-07 빌드 한 번에서 관찰한 버전은 GCC 5.4.0, Boost 1.58, libevent 2.0.21, OpenSSL 1.0.2g, autoconf 2.69, automake 1.15, libtool 2.4.6, bison 3.0.4다. recipe가 고정한 값이 아니다
 - 공식 `thrift-0.9.0.tar.gz`는 `ADD --checksum`으로 SHA256 `71d129c49a2616069d9e7a93268cdba59518f77b3c41e763e09537cb3f3f0aac`를 검사한다. 같은 tar의 `contrib/fb303`을 쓴다
 - 원본 변경은 `scribe-autotools.patch` 하나다. 중복 `AM_INIT_AUTOMAKE`를 `foreign -Wall 1.9.5 no-define` 한 번으로 합친다
 - configure 변수 세 개를 준다. fb303 `CPPFLAGS=-I/opt/thrift-0.9.0/include`, Scribe `CPPFLAGS='-DHAVE_INTTYPES_H -DHAVE_NETINET_IN_H'`, `LIBS='-lboost_system -lboost_filesystem'`(Ubuntu `--as-needed` 때문)이다
-- 실행 closure는 `/old-lane/bin/scribed`와 `/old-lane/lib`의 라이브러리 7개다. ldd·`--help`·SHA256·패키지 버전은 `/old-lane/manifest.txt`에 남긴다
-- `Dockerfile.runtime`은 root `Dockerfile`로 만든 `scribe-next-modern:rocky9`에 `/old-lane`을 더한다. 구버전은 Rocky 9의 glibc·libstdc++ 위에서 돈다
-- `run_differential.sh`는 기본 17개 case를 case마다 새 컨테이너(`--network none`, `--user 65534:65534`, `--cap-drop ALL`, no-new-privileges, 2 CPU, 2 GiB, 512 PIDs)에서 돌린다
-- case별 `exit=0`이 통과다. 스크립트는 모든 case를 돌린 뒤 하나라도 실패하면 종료 코드 1을 돌려준다. performance는 case 이름을 붙여 따로 돌린다
+- 실행 closure는 `/old-lane/bin/scribed`와 `/old-lane/lib`의 라이브러리다(위 빌드에서 7개). ldd·`--help`·SHA256·패키지 버전은 이미지 안 `/old-lane/manifest.txt`에 남기며 저장소에는 넣지 않았다
+- `Dockerfile.runtime`은 root `Dockerfile` 이미지를 `scribe-next-modern:rocky9`라는 이름으로 받아 `/old-lane`을 더한다. [Docker 안내](docker.md#빌드)의 `scribe-next:local`에 이 tag를 붙여 쓴다. 구버전은 Rocky 9의 glibc·libstdc++ 위에서 돈다
+- `run_differential.sh`는 기본 17개 case를 case마다 새 컨테이너(`--network none`, `--user 65534:65534`, `--cap-drop ALL`, no-new-privileges, 2 CPU, 2 GiB, 512 PIDs)에서 돌린다. 통과 판정과 결과 파일은 [old-lane 안내](../tools/old-lane/README.md)에 있다
 
 ## 비교가 증명하지 않는 것
 
@@ -143,33 +146,52 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 
 ## 최종 재검증 (2026-10-07)
 
-`main` `9e8d775`(현대화 3단계까지 병합) 기준이다.
+아래 수치는 모두 `main` `9e8d775`(현대화 3단계까지 병합)에서 잰 한 번 실행의 값이다.
 WSL Rocky 9.8(GCC 11.5, 20 core), Docker 29.8에서 이전 산출물을 모두 지우고 의존성부터 다시 만들었다.
-모든 수치는 이 한 번 실행의 값이다.
+그 뒤의 코드 변경(PR #63 `28a4d9a`, PR #65 `e4bb4cc`와 그 뒤 변경)은 이 실행으로 확인되지 않았다. 시험 수 240도 `9e8d775` 기준이다.
+
+### `0afe2b4`와 `acc7edd`의 재확인 (2026-10-07)
+
+`main` `0afe2b4`와 이번 리뷰 수정 commit `acc7edd`를 같은 날 WSL Rocky 9.8의 Docker 29.8에서 다시 확인했다.
+[빌드](build.md#rocky-linux-8과-9)의 recipe대로 만든 Rocky 9 검증 이미지(`rockylinux:9` digest, GCC 11.5, Thrift 0.25.0, patch한 fb303)에서, `core.autocrlf=false`로 받은 LF checkout을 `/validation-input`에 읽기 전용으로 mount해 검증기를 돌렸다.
+
+- `0afe2b4`: 검증기 241 tests, 실패·오류·건너뜀 0, 통과. 구·신 비교와 Docker smoke는 하지 않았다
+- `acc7edd`: 검증기 241 tests, 실패·오류·건너뜀 0, 통과. `fb303_safety_json`은 `present`, 파일 목록 재검사 통과. 이 실행의 패키징 시험이 `--record` 설치 기록과 `make uninstall`을 돌렸다
+- `acc7edd`: [old-lane](../tools/old-lane/README.md)의 세 명령대로 구버전 이미지를 새로 만들고 17개 case를 돌려 모두 `exit=0`(performance 제외)
+- `acc7edd`: 루트 `Dockerfile` 이미지 smoke — `Log` 응답 0, `demo_current` bytes `hello docker
+
+`. 그 컨테이너의 실제 scribed에 `examples/scribed.service`의 `ExecStop` 명령을 실행해 `STATUS: STOPPING` 뒤 `scribe server exiting`, exit 0을 확인했다. `getStatus` 값과 port mount는 다시 보지 않았다
+- 검증기 경고 목록은 `0afe2b4`·`acc7edd` 모두 0줄이었다(`9e8d775`의 30줄은 그때 환경의 값이다)
+
+모두 한 번 실행한 값이다. 원시 결과는 저장소 밖 WSL home에 있고, 저장소 안의 근거는 이 문서와 PR 설명뿐이다. performance는 다시 재지 않았다.
+
+원시 결과는 저장소 밖 WSL home에 두었고 저장소에 넣지 않았다.
+저장소 안의 근거는 `42ef74e`(3단계, `9e8d775`와 같은 tree) commit 메시지가 적은 240 tests·실패·오류·건너뜀 0, 같은 경고 30줄, 구·신 17개 case 통과, Docker smoke 통과뿐이다.
+설치 명령, performance, 이미지 크기 같은 나머지 수치는 저장소에서 다시 확인할 수 없다.
 
 1. Thrift 0.25.0, Boost 1.83(C++03 기준용), patch한 fb303 0.25.0을 새 prefix에 다시 빌드
 2. `tools/validate_linux.py` 실행
 3. `tools/old-lane/Dockerfile.old`로 구버전 이미지 재빌드
-4. README 설치 명령을 깨끗한 `ubuntu:24.04`·`rockylinux:9` 컨테이너에서 그대로 실행
+4. 그때의 README(`9e8d775`, `git clone` 방식) 설치 명령을 깨끗한 `ubuntu:24.04`·`rockylinux:9` 컨테이너에서 실행. 그 README의 Ubuntu 패키지 목록에는 `curl`이 없었으며 이를 어떻게 처리했는지는 기록이 없다. 지금 README의 명령(`SCRIBE_SRC`, `curl` 추가, 기록 목록 기반 삭제)은 실행하지 않았다
 5. root `Dockerfile`로 신버전 이미지, `Dockerfile.runtime`으로 비교 이미지 빌드
 6. `run_differential.sh`로 기본 17개 case와 performance 실행
 7. 신버전 이미지 smoke(기본 설정, `Log`, getStatus, `shutdown`)
 
 | 항목 | 결과 |
 | --- | --- |
-| 검증기 | 8단계 통과, 240 tests, 실패·오류·건너뜀 0, staged scribed에 Boost 링크 없음 |
+| 검증기 | 8단계 통과, 240 tests(`9e8d775`의 시험 수), 실패·오류·건너뜀 0. Boost 링크 없음은 검증기 검사가 아니라 그 실행에서 따로 본 관찰이다 |
 | 설치 명령 | Ubuntu 24.04(GCC 13.3.0), Rocky 9(GCC 11.5.0) 모두 `scribed --help`·`ldd` 통과, Boost 없음 |
 | 구버전 이미지 | commit된 recipe로 재빌드 성공 |
 | 구·신 비교 | 17개 case 모두 exit 0 |
 | performance | 정확성 통과 |
 | Docker smoke | 이미지 272 MB, `STATUS: ALIVE`, `Log` 응답 `OK`, `demo-2026-10-07_00000`에 `hello docker\n\n`, `shutdown` 뒤 종료 코드 0 |
 
-컴파일 경고 30줄은 다음과 같다.
+`9e8d775` 빌드 log에서 센 경고성 출력 30줄은 다음과 같다.
 
 - Thrift `config.h`의 `PACKAGE_VERSION`·`PACKAGE_STRING` 재정의 26줄
-- `build_py: byte-compiling is disabled` 1줄
+- `build_py: byte-compiling is disabled` 1줄. 컴파일러 경고가 아니라 검증기의 `PYTHONDONTWRITEBYTECODE`에 따른 Python 안내다
 - `BufferStore::setNewRetryInterval`의 sign-compare 2줄
-- `StoreQueue::getStatus` guard의 ignored-attributes 1줄
+- `StoreQueue::getStatus` guard의 ignored-attributes 1줄. 그 guard는 `28a4d9a`에서 바뀌었고 지금 `getStatus`는 잠그지 않으므로 현재 코드에는 없는 경고다
 
 | 지표 | 구버전 | 신버전 |
 | --- | --- | --- |
@@ -181,20 +203,25 @@ WSL Rocky 9.8(GCC 11.5, 20 core), Docker 29.8에서 이전 산출물을 모두 �
 | 최대 메모리 VmHWM (MiB) | 23.5 | 21.1 |
 
 신버전 ACK 처리량은 구버전의 0.918배다.
-원시 결과는 저장소 밖 WSL home에 두고 저장소에 넣지 않았다.
 
 ## 확인한 것과 하지 않은 것
 
 확인한 것은 다음과 같다.
 
-- 2026-10-07 최종 `main`의 검증기 240 tests, 구·신 비교 17개 case, performance, 설치 순서 두 컨테이너, Docker 이미지
+- `9e8d775`의 검증기 240 tests, 구·신 비교 17개 case, performance, 그때 README의 설치 순서 두 컨테이너, Docker 이미지
+- `0afe2b4`의 검증기 241 tests; `acc7edd`의 검증기 241 tests, 구·신 비교 17개 case, Docker smoke와 실제 scribed에 대한 `ExecStop`([재확인](#0afe2b4와-acc7edd의-재확인-2026-10-07))
 - 2026-10-05~06 서버에서 Ubuntu 16.04 전체 userland 위 구버전으로 file부터 mapping까지 9개 case와 performance 실행
 - Rocky 8.10·9.8, Debian 13, Ubuntu 26.04.1의 빌드·시험(범위와 날짜는 [빌드](build.md#확인한-환경))
 - HDFS local JNI와 single-DataNode([HDFS](hdfs.md))
 
 하지 않은 것은 다음과 같다.
 
-- 최종 `main`의 HDFS lane, Rocky 9 RPM, Rocky 8.10·Debian 13·Ubuntu 26.04.1 재검증
+- `0afe2b4`의 구·신 비교·Docker smoke(`acc7edd`에서는 했다). `acc7edd` 뒤에 코드가 바뀌면 그 변경의 재검증
+- 지금 README의 설치·삭제 명령. Rocky 9 삭제 확인은 저장소에 기록이 없고 Ubuntu 삭제는 하지 않았다
+- `9e8d775`의 HDFS lane, Rocky 9 RPM, Rocky 8.10·Debian 13·Ubuntu 26.04.1 재검증
+- 현대화 단계 뒤의 `--shared-rpc` lane. 마지막 실행은 2026-10-06이다([빌드](build.md#확인한-환경))
+- `examples/scribed.service`로 systemd 아래에서 실제 scribed를 띄운 실행. `ExecStop` 명령은 Docker 컨테이너의 실제 scribed에 대해 확인했고, unit 등록은 Rocky 9에서 shutdown frame을 받는 대체 listener로만 시험했으며 Ubuntu·SELinux enforcing 환경은 보지 않았다
+- 설치한 Python client로 실제 `Log`를 보내는 시험
 - GCC 14·15에서의 현대화 단계
 - 반복 실행으로 보는 불안정성 통계
 - 부분 replay의 구·신 비교(의도적으로 다름)

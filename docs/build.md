@@ -14,19 +14,23 @@
 - libevent는 배포판 것을 쓴다
 - GCC 8은 `std::filesystem`에 `-lstdc++fs`가 필요하며 configure가 확인해 붙인다
 - Rocky 8의 bison 3.0.4는 Thrift 빌드가 쓰는 `--file-prefix-map`을 지원하지 않는다. bison 3.8.2가 필요하다
+- `tools/prepare_fb303.py`와 검증기는 Python 3.9 이상이 필요하다(`Path.is_relative_to`). Rocky 8 기본 `python3`는 3.6이므로 `python3.12` 패키지로 실행한다
 - 기본 RPC library는 정적이다. scribed는 완전 정적 실행 파일이 아니므로 실행할 때 Thrift·libevent를 찾아야 한다
 
 ## 확인한 환경
 
 | 환경 | 컴파일러 | 확인 | 날짜 |
 | --- | --- | --- | --- |
-| Rocky 9.8 | GCC 11.5 | 검증기 240 tests, 구·신 비교 | 2026-10-07 |
-| `ubuntu:24.04`, `rockylinux:9` | GCC 13.3, 11.5 | README 설치 순서 | 2026-10-07 |
-| Rocky 8.10 | GCC 8.5 | Boost 제거 단계 검증기 236 tests, 개발 RPM | 2026-10-07 |
+| Rocky 9.8 | GCC 11.5 | `9e8d775`에서 검증기 240 tests, 구·신 비교 | 2026-10-07 |
+| `ubuntu:24.04`, `rockylinux:9` | GCC 13.3, 11.5 | `9e8d775` README(`git clone` 방식)의 설치 순서 | 2026-10-07 |
+| Rocky 8.10 | GCC 8.5 | Boost 제거 단계(`1e66160`) 검증기 236 tests, 개발 RPM | 2026-10-07 |
 | Rocky 8.10, 9.8 | GCC 8.5, 11.5 | 기본·shared 218 tests, HDFS 220 tests | 2026-10-06 |
-| Debian 13 | GCC 14.2 | 기본·shared 빌드와 시험 | 2026-10-05 |
+| Debian 13 | GCC 14.2 | 기본·shared 빌드와 시험, HDFS 빌드·local JNI | 2026-10-05 |
 | Ubuntu 26.04.1 | GCC 15.2 | 기본·shared 빌드와 시험, HDFS | 2026-10-05 |
+| Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `0afe2b4` 검증기 241 tests; `acc7edd` 검증기 241 tests, 구·신 비교 17개 case, Docker smoke([검증](verification.md#0afe2b4와-acc7edd의-재확인-2026-10-07)) | 2026-10-07 |
 
+첫 두 행은 `9e8d775`에서 잰 것이다. 그 뒤 코드를 바꾼 PR #63(`28a4d9a`), PR #65(`e4bb4cc`)를 합친 `0afe2b4`와 리뷰 수정 `acc7edd`는 마지막 행의 Rocky 9 Docker 이미지에서만 다시 확인했다.
+지금 README의 설치 명령(`SCRIBE_SRC`, `curl` 추가, 기록 목록 기반 삭제)도 실행 기록이 없다.
 Rocky 8.10의 Boost 제거 단계 확인은 3단계(context 주입) 전이다.
 GCC 14·15에서는 2026-10-07 현대화 단계를 다시 확인하지 않았다.
 
@@ -39,7 +43,7 @@ README 설치와 같은 흐름을 별도 prefix로 할 때의 예다.
 export THRIFT_PREFIX=/absolute/thrift-0.25.0
 export FB303_PREFIX=/absolute/fb303-0.25.0
 export TOOLS_PREFIX=/absolute/tools/usr
-export TOOLS_LIBDIR="$TOOLS_PREFIX/lib/x86_64-linux-gnu"
+export TOOLS_LIBDIR="$TOOLS_PREFIX/lib/x86_64-linux-gnu"   # Debian·Ubuntu multiarch. Rocky의 /opt/tools는 "$TOOLS_PREFIX/lib"
 cd /absolute/fresh/source-copy
 CPPFLAGS="-I$TOOLS_PREFIX/include -I$TOOLS_PREFIX/include/x86_64-linux-gnu" \
 CXXFLAGS="-O2 -std=c++17 -D_GLIBCXX_USE_DEPRECATED=0" \
@@ -47,14 +51,15 @@ LDFLAGS="-L$TOOLS_LIBDIR -L$THRIFT_PREFIX/lib -L$FB303_PREFIX/lib -Wl,-rpath,$TO
 sh ./bootstrap.sh --prefix=/opt/scribe \
   --with-thriftpath="$THRIFT_PREFIX" --with-fb303path="$FB303_PREFIX"
 make clean
-make -C src thriftstyle
 make -j2
 src/scribed --help
 make install DESTDIR=/absolute/new-stage
 ```
 
 - `CPPFLAGS`의 `$TOOLS_PREFIX/include`는 Thrift·fb303 header가 include하는 Boost header 위치다
-- `bootstrap.sh`는 autoreconf 뒤 configure를 실행하고 받은 인자를 그대로 넘긴다. autoreconf가 실패하면 멈춘다
+- `bootstrap.sh`는 autoreconf 뒤 `configure --config-cache`를 실행하고 받은 인자를 경계 그대로 넘긴다. autoreconf가 실패하면 멈춘다
+- `--config-cache` 때문에 같은 폴더에서 `CPPFLAGS` 같은 precious 변수를 바꿔 다시 실행하면 configure가 cache 불일치로 멈춘다. 그때는 `config.cache`를 지우고 다시 실행한다
+- generated Thrift source는 `src/Makefile.am`의 `BUILT_SOURCES`라 `make`가 먼저 만든다
 - 사용자 `CFLAGS`/`CXXFLAGS`의 명시값과 빈 값을 보존한다. 지정하지 않을 때만 기본 opt·debug 값을 쓴다
 - generated code는 make 규칙으로 생성하고 손으로 고치지 않는다
 - 두 IDL에는 constants가 없어 Thrift 0.25.0이 만들지 않는 `*_constants.cpp`를 source 목록에서 뺐다
@@ -84,7 +89,8 @@ python3 -B tools/validate_linux.py --output /absolute/new-validation-directory
 
 - `--output`은 checkout 밖의 아직 없는 경로다. `build/`, `stage/`, `logs/`, `home/`, `test-results.json`, `validation.json`을 만든다
 - `CPPFLAGS`·`CXXFLAGS`·`LDFLAGS`를 주지 않으면 C++17 기본값과 prefix 경로를 쓴다. 준 값과 빈 값은 덮어쓰지 않는다
-- `PYTHON_SETUPUTIL_ARGS`, 상속된 make override, 추가 Python 설정은 거부한다. `HOME`은 `output/home`으로 분리한다
+- 상속된 `PYTHON_SETUPUTIL_ARGS`, make override(`MAKEFLAGS` 등), 추가 Python 설정(`DIST_EXTRA_CONFIG`, `lib/py`의 `setup.cfg`·`pyproject.toml`)은 거부한다. `HOME`은 `output/home`으로 분리한다
+- 검증기는 `PYTHON_SETUPUTIL_ARGS`를 따로 넣지 않는다. Python install은 Makefile 그대로 `--record installed_files.txt`로 설치 목록을 남기고 `make uninstall`이 그 목록을 쓴다. `test/test_python_packaging.py`가 임시 `DESTDIR`에서 이 install·uninstall을 실행한다
 - C++ prefix `/opt/scribe`와 Python prefix `/usr`의 실제 설치 대상은 언제나 `stage/` 아래다
 - 원본 Git object가 있어야 한다([준비](#원본-git-object-준비))
 - `--shared-rpc`는 [shared RPC](#shared-rpc), `--hadoop`·`--java-home`은 [HDFS](hdfs.md) lane이다
@@ -130,6 +136,8 @@ Thrift 0.25.0 `contrib/fb303/cpp/FacebookBase.cpp`(SHA256 `ac791badf8210c6869415
 [helper](../tools/prepare_fb303.py)가 입력 cpp·header hash를 확인하고 새 복사본에만 patch를 적용한다.
 
 ```sh
+# THRIFT_SOURCE: 압축을 푼 thrift-0.25.0 source 폴더. FB303_BUILD: 아직 없는 새 작업 폴더(부모는 있어야 한다)
+# THRIFT_PREFIX, FB303_PREFIX, TOOLS_PREFIX: 위 직접 빌드와 같다
 python3 -B tools/prepare_fb303.py --source "$THRIFT_SOURCE/contrib/fb303" --output "$FB303_BUILD"
 cd "$FB303_BUILD"
 aclocal -I ./aclocal && automake -a --copy && autoconf
@@ -143,10 +151,21 @@ mkdir -p "$FB303_PREFIX/share/scribe-next"
 cp scribe-next-fb303-safety.json "$FB303_PREFIX/share/scribe-next/fb303-safety.json"
 ```
 
-- `fb303-safety.json`은 원본 cpp·header, patch, patch 뒤 cpp의 hash를 기록한다. 검증기가 이 파일을 찾는다
+- `fb303-safety.json`은 원본 cpp·header, patch, patch 뒤 cpp의 hash를 기록한다. 검증기는 있으면 `dependency_files`에 기록하고 없으면 없다는 사실을 기록한다. 필수가 아니며 hash를 대조하지 않는다
 - 이미 만든 Rocky 검증 이미지를 다시 쓸 때는 [Dockerfile.fb303-safety](../tools/rocky/Dockerfile.fb303-safety)가 새 layer에서 private fb303 prefix만 다시 만든다
+- 그 Dockerfile의 기본 `BASE`(`scribe-next-rocky-validation:8-20261006`)는 [Rocky 절](#rocky-linux-8과-9)의 recipe가 만들지 않는 tag다. 그 recipe의 `scribe-next-rocky-validation:$MAJOR`를 `BASE`로 준다
+
+```sh
+# CONTEXT에 Dockerfile.fb303-safety, prepare_fb303.py, fb303 patch. MAJOR: 8 또는 9
+docker build -f "$CONTEXT/Dockerfile.fb303-safety" \
+  --build-arg BASE="scribe-next-rocky-validation:$MAJOR" \
+  -t "scribe-next-rocky-validation-fb303:$MAJOR" "$CONTEXT"
+```
 
 ## Rocky Linux 8과 9
+
+이 절은 Docker 검증 이미지 recipe다. 이 저장소에 기록된 Rocky 8·9 확인은 모두 이 이미지의 컨테이너에서 했다.
+Rocky 8 host에 직접 설치할 때는 [Dockerfile](../tools/rocky/Dockerfile)처럼 bison 3.8.2를 source로 만들어 `PATH` 앞에 두고, Python 스크립트는 `python3.12`로 실행한다. 이 host 순서 자체는 실행 기록이 없다.
 
 RESF의 `rockylinux/rockylinux` 이미지를 digest로 고정한다.
 
@@ -185,7 +204,7 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
   python3.12 -B tools/validate_linux.py --output /validation-output/new-result
 ```
 
-- 검증기의 `dependency_files`는 prefix 안 libevent 파일만 기록한다. 배포판 loader closure는 `ldd`와 `rpm -qf`로 따로 본다
+- 검증기의 `dependency_files`는 `THRIFT_PREFIX`의 `bin/thrift`·`lib/libthrift*`, `FB303_PREFIX`의 `lib/libfb303*`·`share/scribe-next/fb303-safety.json`, `TOOLS_PREFIX` 안 libevent 파일을 기록한다. 배포판 loader closure는 `ldd`와 `rpm -qf`로 따로 본다
 - 다른 무거운 빌드와 동시에 돌리면 loopback 시험 1~2개가 fixture 종료 5초 제한을 넘을 수 있다. Boost 제거 전 `main`(`f09d68e`)에서도 재현된 기존 간헐 문제다
 - 컨테이너는 host kernel을 공유한다. Rocky host kernel 자체의 검증이 아니다
 
@@ -211,7 +230,8 @@ docker build -f "$CONTEXT/Dockerfile.runtime" --build-arg BASE="$BASE" \
   -t "scribe-next-rocky-rpm-runtime:$MAJOR" "$CONTEXT"
 
 REVISION=$(git rev-parse HEAD)
-mkdir -p "$TOP"/{SOURCES,SPECS,BUILD,BUILDROOT,RPMS,SRPMS}
+SHORT=$(printf '%.7s' "$REVISION")
+for d in SOURCES SPECS BUILD BUILDROOT RPMS SRPMS; do mkdir -p "$TOP/$d"; done
 git archive --format=tar.gz --prefix=scribe-next-1.5.0/ "$REVISION" \
   > "$TOP/SOURCES/scribe-next-1.5.0.tar.gz"
 cp packaging/rocky/scribe-next-dev.spec "$TOP/SPECS/"
@@ -220,7 +240,7 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=$TOP,dst=/rpmbuild" \
   "scribe-next-rocky-rpm-builder:$MAJOR" rpmbuild -ba \
   --define '_topdir /rpmbuild' --define "source_revision $REVISION" \
-  --define "development_release 0.1.g${REVISION:0:7}" --define "dist .el$MAJOR" \
+  --define "development_release 0.1.g$SHORT" --define "dist .el$MAJOR" \
   --define 'thrift_source /sources/thrift-0.25.0' /rpmbuild/SPECS/scribe-next-dev.spec
 ```
 
@@ -229,7 +249,7 @@ SRPM은 의존성을 스스로 준비하지 않는다. 위 recipe의 prefix가 �
 [검증 script](../packaging/rocky/verify-container.py)는 컨테이너 안 root에서만 돈다.
 `/verify.py`, `/expected-licenses.json`, `/packages`, `/loopback_rpc.py`(기존 `test/loopback_rpc.py`)를 read-only로 붙이고 runtime 이미지의 `/usr/libexec/platform-python -B /verify.py /packages/<rpm>`을 부른다.
 
-- Requires/Provides, 빈 scriptlet, `rpm -V`, license hash 6개, Boost 없는 loader closure를 확인한다
+- 빈 scriptlet, `rpm -V`, license hash 6개, Boost 없는 loader closure를 확인한다. Requires/Provides는 수집해 결과에 기록만 하고 검사하지 않는다
 - 설치된 daemon으로 `ALIVE`, `Log` 응답 `OK`, counter, fb303 `shutdown` 뒤 종료 코드 0과 파일 bytes를 확인한다
 - `rpm -U --replacepkgs`로 같은 RPM을 다시 설치해 설정·로그 보존과 재시작 뒤 이어 쓰기를 확인한다
 - 제거 뒤 package 폴더와 build-id 링크 3개가 지워지는지 확인한다
@@ -244,7 +264,9 @@ Rocky 9 RPM은 fb303 patch와 Boost 제거 뒤 다시 만들지 않았다.
 - `setup.py`는 이미 설치된 setuptools를 쓰고 현재 IDL 생성 결과(`src/gen-py/scribe`)를 package로 연결한다
 - build hook은 phony `pythonstyle`로 package를 생성한 뒤 `build --force`로 누락 출력과 더 새 구 cache를 복구한다
 - bucketupdater package는 설치하지 않는다. setuptools는 자동 설치하지 않는다
-- 쓰려면 같은 버전의 Thrift Python package(0.25.0)와 fb303 Python module이 필요하다
+- 쓰려면 같은 버전의 Thrift Python package(0.25.0)와 fb303 Python module이 필요하다. 이 저장소의 설치 순서는 둘을 설치하지 않는다
+- 시스템 Python에 pip로 넣는 경로는 배포판 정책(Ubuntu 24.04의 PEP 668 등)에 막힐 수 있다. 검증한 설치 경로는 없다
+- `PY_PREFIX`는 configure 변수다. 별도 prefix에 설치하려면 configure에 `PY_PREFIX=...`를 준다
 - Python 3 Thrift string은 UTF-8이다. 임의 non-UTF-8 bytes의 동등성은 보장하지 않는다
 - 원본 Python 2 client를 대신하도록 검증하지 않았다. 같은 이름 `scribe` package가 있는 환경에 덮어 설치하지 않는다
 
