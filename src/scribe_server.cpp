@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: main exits through scribe::stopServer so it never races the shutdown RPC thread.
 // scribe-next modification: C++17 cleanup; RAII guard keeps Log's lock points, unused local removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
@@ -133,13 +134,14 @@ int main(int argc, char **argv) {
     g_Handler = std::shared_ptr<scribeHandler>(new scribeHandler(port, config_file));
     g_Handler->initialize();
 
-    scribe::startServer(); // never returns
+    scribe::startServer(); // returns after the shutdown RPC stops the server
 
   } catch(const std::exception& e) {
     LOG_OPER("Exception in main: %s", e.what());
   }
 
   LOG_OPER("scribe server exiting");
+  scribe::stopServer(); // single exit; blocks here if the shutdown thread is already exiting
   return 0;
 }
 
