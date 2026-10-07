@@ -1,4 +1,5 @@
 // scribe-next modification: C++17 cleanup; explicit single-argument constructor.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,7 +40,7 @@ class StoreQueue {
  public:
   StoreQueue(const std::string& type, const std::string& category,
              unsigned check_period, bool is_model=false, bool multi_category=false);
-  StoreQueue(const boost::shared_ptr<StoreQueue> example,
+  StoreQueue(const std::shared_ptr<StoreQueue> example,
              const std::string &category);
   virtual ~StoreQueue();
 
@@ -47,7 +48,7 @@ class StoreQueue {
   void configureAndOpen(pStoreConf configuration); // closes first if already open
   void open();                                     // closes first if already open
   void stop();
-  boost::shared_ptr<Store> copyStore(const std::string &category);
+  std::shared_ptr<Store> copyStore(const std::string &category);
   std::string getStatus(); // An empty string means OK, anything else is an error
   std::string getBaseType();
   std::string getCategoryHandled();
@@ -66,7 +67,7 @@ class StoreQueue {
   void storeInitCommon();
   void configureInline(pStoreConf configuration);
   void openInline();
-  void processFailedMessages(boost::shared_ptr<logentry_vector_t> messages);
+  void processFailedMessages(std::shared_ptr<logentry_vector_t> messages);
 
   // implementation of queues and thread
   enum store_command_t {
@@ -90,8 +91,8 @@ class StoreQueue {
   // handling of messages. This means that order of commands with
   // respect to messages is not preserved.
   cmd_queue_t cmdQueue;
-  boost::shared_ptr<logentry_vector_t> msgQueue;
-  boost::shared_ptr<logentry_vector_t> failedMessages;
+  std::shared_ptr<logentry_vector_t> msgQueue;
+  std::shared_ptr<logentry_vector_t> failedMessages;
   std::atomic<unsigned long long> msgQueueSize;   // in bytes
   pthread_t storeThread;
 
@@ -117,7 +118,7 @@ class StoreQueue {
   bool               mustSucceed;      // Always retry even if secondary fails
 
   // Store that will handle messages. This can contain other stores.
-  boost::shared_ptr<Store> store;
+  std::shared_ptr<Store> store;
 };
 
 #endif //!defined SCRIBE_STORE_QUEUE_H

@@ -1,4 +1,5 @@
 // scribe-next modification: C++17 cleanup; std::mutex status lock, override, deleted copies.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,7 +55,7 @@ enum roll_period_t {
 class Store {
  public:
   // Creates an object of the appropriate subclass.
-  static boost::shared_ptr<Store>
+  static std::shared_ptr<Store>
     createStore(StoreQueue* storeq,
                 const std::string& type, const std::string& category,
                 bool readable = false, bool multi_category = false);
@@ -63,7 +64,7 @@ class Store {
         const std::string &type, bool multi_category = false);
   virtual ~Store();
 
-  virtual boost::shared_ptr<Store> copy(const std::string &category) = 0;
+  virtual std::shared_ptr<Store> copy(const std::string &category) = 0;
   virtual bool open() = 0;
   virtual bool isOpen() = 0;
   virtual void configure(pStoreConf configuration, pStoreConf parent);
@@ -71,17 +72,17 @@ class Store {
 
   // Attempts to store messages and returns true if successful.
   // On failure, returns false and messages contains any un-processed messages
-  virtual bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) = 0;
+  virtual bool handleMessages(std::shared_ptr<logentry_vector_t> messages) = 0;
   virtual void periodicCheck() {}
   virtual void flush() = 0;
 
   virtual std::string getStatus();
 
   // following methods must be overidden to make a store readable
-  virtual bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
+  virtual bool readOldest(/*out*/ std::shared_ptr<logentry_vector_t> messages,
                           struct tm* now);
   virtual void deleteOldest(struct tm* now);
-  virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
+  virtual bool replaceOldest(std::shared_ptr<logentry_vector_t> messages,
                              struct tm* now);
   virtual bool empty(struct tm* now);
 
@@ -197,8 +198,8 @@ class FileStore : public FileStoreBase {
             bool multi_category, bool is_buffer_file = false);
   ~FileStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
   void close() override;
@@ -207,9 +208,9 @@ class FileStore : public FileStoreBase {
   // Each read does its own open and close and gets the whole file.
   // This is separate from the write file, and not really a consistent
   // interface.
-  bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
+  bool readOldest(/*out*/ std::shared_ptr<logentry_vector_t> messages,
                   struct tm* now) override;
-  virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
+  virtual bool replaceOldest(std::shared_ptr<logentry_vector_t> messages,
                              struct tm* now) override;
   void deleteOldest(struct tm* now) override;
   bool empty(struct tm* now) override;
@@ -217,15 +218,15 @@ class FileStore : public FileStoreBase {
  protected:
   // Implement FileStoreBase virtual function
   bool openInternal(bool incrementFilename, struct tm* current_time) override;
-  bool writeMessages(boost::shared_ptr<logentry_vector_t> messages,
-                     boost::shared_ptr<FileInterface> write_file =
-                     boost::shared_ptr<FileInterface>());
+  bool writeMessages(std::shared_ptr<logentry_vector_t> messages,
+                     std::shared_ptr<FileInterface> write_file =
+                     std::shared_ptr<FileInterface>());
 
   bool isBufferFile;
   bool addNewlines;
 
   // State
-  boost::shared_ptr<FileInterface> writeFile;
+  std::shared_ptr<FileInterface> writeFile;
 
  private:
   // disallow copy, assignment, and empty construction
@@ -244,8 +245,8 @@ class ThriftFileStore : public FileStoreBase {
                   bool multi_category);
   ~ThriftFileStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
@@ -257,7 +258,7 @@ class ThriftFileStore : public FileStoreBase {
   // Implement FileStoreBase virtual function
   bool openInternal(bool incrementFilename, struct tm* current_time) override;
 
-  boost::shared_ptr<apache::thrift::transport::TTransport> thriftFileTransport;
+  std::shared_ptr<apache::thrift::transport::TTransport> thriftFileTransport;
 
   unsigned long flushFrequencyMs;
   unsigned long msgBufferSize;
@@ -287,8 +288,8 @@ class BufferStore : public Store {
               bool multi_category);
   ~BufferStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
@@ -300,11 +301,11 @@ class BufferStore : public Store {
 
  protected:
   // Store we're trying to get the messages to
-  boost::shared_ptr<Store> primaryStore;
+  std::shared_ptr<Store> primaryStore;
 
   // Store to use as a buffer if the primary is unavailable.
   // The store must be of a type that supports reading.
-  boost::shared_ptr<Store> secondaryStore;
+  std::shared_ptr<Store> secondaryStore;
 
   // buffer state machine
   enum buffer_state_t {
@@ -378,8 +379,8 @@ class NetworkStore : public Store {
                bool multi_category);
   ~NetworkStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
@@ -412,7 +413,7 @@ class NetworkStore : public Store {
 
   // state
   bool opened;
-  boost::shared_ptr<scribeConn> unpooledConn; // null if useConnPool
+  std::shared_ptr<scribeConn> unpooledConn; // null if useConnPool
 
  private:
   // disallow copy, assignment, and empty construction
@@ -433,8 +434,8 @@ class BucketStore : public Store {
               bool multi_category);
   ~BucketStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
@@ -459,7 +460,7 @@ class BucketStore : public Store {
   bool opened;
   unsigned long bucketRange;  // used to compute key_range bucketizing
   unsigned long numBuckets;
-  std::vector<boost::shared_ptr<Store> > buckets;
+  std::vector<std::shared_ptr<Store> > buckets;
 
   unsigned long bucketize(const std::string& message);
   std::string getMessageWithoutKey(const std::string& message);
@@ -485,19 +486,19 @@ class NullStore : public Store {
             bool multi_category);
   virtual ~NullStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
   void close() override;
 
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   void flush() override;
 
   // null stores are readable, but you never get anything
-  virtual bool readOldest(boost::shared_ptr<logentry_vector_t> messages,
+  virtual bool readOldest(std::shared_ptr<logentry_vector_t> messages,
                           struct tm* now) override;
-  virtual bool replaceOldest(boost::shared_ptr<logentry_vector_t> messages,
+  virtual bool replaceOldest(std::shared_ptr<logentry_vector_t> messages,
                              struct tm* now) override;
   virtual void deleteOldest(struct tm* now) override;
   virtual bool empty(struct tm* now) override;
@@ -521,24 +522,24 @@ class MultiStore : public Store {
              bool multi_category);
   ~MultiStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
   void close() override;
 
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   void periodicCheck() override;
   void flush() override;
 
   // read won't make sense since we don't know which store to read from
-  bool readOldest(/*out*/ boost::shared_ptr<logentry_vector_t> messages,
+  bool readOldest(/*out*/ std::shared_ptr<logentry_vector_t> messages,
                   struct tm* now) override { return false; }
   void deleteOldest(struct tm* now) override {}
   bool empty(struct tm* now) override { return true; }
 
  protected:
-  std::vector<boost::shared_ptr<Store> > stores;
+  std::vector<std::shared_ptr<Store> > stores;
   enum report_success_value {
     SUCCESS_ANY = 1,
     SUCCESS_ALL
@@ -568,21 +569,21 @@ class CategoryStore : public Store {
                 const std::string& name, bool multiCategory);
   ~CategoryStore();
 
-  boost::shared_ptr<Store> copy(const std::string &category) override;
+  std::shared_ptr<Store> copy(const std::string &category) override;
   bool open() override;
   bool isOpen() override;
   void configure(pStoreConf configuration, pStoreConf parent) override;
   void close() override;
 
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override;
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   void periodicCheck() override;
   void flush() override;
 
  protected:
   void configureCommon(pStoreConf configuration, pStoreConf parent,
                        const std::string type);
-  boost::shared_ptr<Store> modelStore;
-  std::map<std::string, boost::shared_ptr<Store> > stores;
+  std::shared_ptr<Store> modelStore;
+  std::map<std::string, std::shared_ptr<Store> > stores;
 
  private:
   CategoryStore() = delete;

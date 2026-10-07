@@ -11,7 +11,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <boost/version.hpp>
+#if __cplusplus < 201103L // only the pinned C++03 upstream file.h/file.cpp use the Boost pointer
 #include <boost/shared_ptr.hpp>
+#endif
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/convenience.hpp>
 inline void LOG_OPER(const char*, ...) {}

@@ -1,4 +1,5 @@
 // scribe-next modification: C++17 cleanup; weak parent link breaks the conf ownership cycle.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +24,6 @@
 #define SCRIBE_CONF_H
 
 #include "common.h"
-#include <boost/weak_ptr.hpp>
 
 /*
  * This class reads and parses a configuration
@@ -34,7 +34,7 @@
  * changing the code in this class.
  */
 class StoreConf;
-typedef boost::shared_ptr<StoreConf> pStoreConf;
+typedef std::shared_ptr<StoreConf> pStoreConf;
 typedef std::map<std::string, std::string> string_map_t;
 typedef std::map<std::string, pStoreConf> store_conf_map_t;
 
@@ -68,7 +68,7 @@ class StoreConf {
   string_map_t values;
   store_conf_map_t stores;
   // Store ownership keeps live ancestors available; configs must not own upward.
-  boost::weak_ptr<StoreConf> parent;
+  std::weak_ptr<StoreConf> parent;
   static bool parseStore(/*in,out*/ std::queue<std::string>& raw_config,
                          /*out*/ StoreConf* parsed_config);
   static std::string trimString(const std::string& str);

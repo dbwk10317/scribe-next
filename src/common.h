@@ -1,3 +1,4 @@
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +44,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <boost/version.hpp>
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/convenience.hpp>
 

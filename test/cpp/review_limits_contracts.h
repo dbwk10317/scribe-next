@@ -91,7 +91,7 @@ static void runLimitRelay(const std::string& filename) {
 static void runLimitSpoolRelay(const std::string& filename) {
   FileStoreFixture fixture(filename);
   requireRelayDestination(fixture.configuration);
-  boost::shared_ptr<NetworkStore> primary(new NetworkStore(nullptr, "fallback", true));
+  std::shared_ptr<NetworkStore> primary(new NetworkStore(nullptr, "fallback", true));
   primary->configure(fixture.configuration, pStoreConf());
   require(primary->open(), "spool relay primary open");
   ReplayBuffer buffer(primary, fixture.store);

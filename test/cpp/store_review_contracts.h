@@ -5,8 +5,6 @@
 
 extern ConnPool g_connPool;
 
-#include <boost/weak_ptr.hpp>
-
 static void testConfigParentOwnership(const std::string& filename) {
   // No workers or sockets: configure the actual nested MultiStore hierarchy.
   HandlerFixture handler(filename);
@@ -17,7 +15,7 @@ static void testConfigParentOwnership(const std::string& filename) {
   require(root->getStore("store0", parent), "missing top configuration");
   require(parent->getStore("store0", middle), "missing middle configuration");
   require(middle->getStore("store0", leaf), "missing leaf configuration");
-  boost::weak_ptr<StoreConf> parentWeak(parent), middleWeak(middle), leafWeak(leaf);
+  std::weak_ptr<StoreConf> parentWeak(parent), middleWeak(middle), leafWeak(leaf);
   {
     MultiStore store(nullptr, "fixture", false);
     store.configure(parent, pStoreConf());
@@ -47,9 +45,9 @@ class ResultNullStore : public NullStore {
   explicit ResultNullStore(bool result) : NullStore(nullptr, "fixture", false), result_(result) {}
   bool open() override { return result_; }
   bool isOpen() override { return result_; }
-  bool handleMessages(boost::shared_ptr<logentry_vector_t>) override { return result_; }
-  boost::shared_ptr<Store> copy(const std::string&) override {
-    return boost::shared_ptr<Store>(new ResultNullStore(result_));
+  bool handleMessages(std::shared_ptr<logentry_vector_t>) override { return result_; }
+  std::shared_ptr<Store> copy(const std::string&) override {
+    return std::shared_ptr<Store>(new ResultNullStore(result_));
   }
  private:
   bool result_;
@@ -57,7 +55,7 @@ class ResultNullStore : public NullStore {
 class ReportMultiStore : public MultiStore {
  public:
   ReportMultiStore() : MultiStore(nullptr, "fixture", false) {}
-  void addResult(bool result) { stores.push_back(boost::shared_ptr<Store>(new ResultNullStore(result))); }
+  void addResult(bool result) { stores.push_back(std::shared_ptr<Store>(new ResultNullStore(result))); }
 };
 static void testMultiReportDefault() {
   alignas(MultiStore) unsigned char memory[sizeof(MultiStore)];
@@ -69,7 +67,7 @@ static void testMultiReportDefault() {
   require(invalid->getStatus() == "MULTI: Invalid report_success value.", "invalid report diagnostic changed");
   require(invalid->isOpen(), "invalid initial configuration has indeterminate report mode");
   require(invalid->open(), "empty all-mode open changed");
-  boost::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
+  std::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
   require(invalid->handleMessages(messages), "empty all-mode aggregation changed");
   invalid->~MultiStore();
   for (const char* mode : {"all", "any"}) {
@@ -80,7 +78,7 @@ static void testMultiReportDefault() {
     const bool expected = std::string(mode) == "any";
     require(store.open() == expected && store.isOpen() == expected &&
             store.handleMessages(messages) == expected, "valid all/any aggregation changed");
-    boost::shared_ptr<Store> copy = store.copy("copied");
+    std::shared_ptr<Store> copy = store.copy("copied");
     require(copy->isOpen() == expected, "copy lost report mode");
   }
 }
@@ -354,8 +352,8 @@ static void runStoreReviewDriver(const std::string& filename) {
           "review driver requires assigned other loopback port");
   std::string kind;
   require(config->getString("test_kind", kind), "review driver requires case");
-  boost::shared_ptr<ReviewNetworkStore> first(new ReviewNetworkStore("first"));
-  boost::shared_ptr<Store> stores[] = {first, boost::shared_ptr<Store>(new ReviewNetworkStore("second"))};
+  std::shared_ptr<ReviewNetworkStore> first(new ReviewNetworkStore("first"));
+  std::shared_ptr<Store> stores[] = {first, std::shared_ptr<Store>(new ReviewNetworkStore("second"))};
   for (unsigned i = 0; i < 2; ++i) {
     pStoreConf policy(new StoreConf(*config));
     if (kind == "list" || kind == "default-list" || kind == "same-list") {

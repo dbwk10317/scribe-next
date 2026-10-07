@@ -2,6 +2,7 @@
 // scribe-next modification: release the updater lock on unwind and handle Thrift RPC exceptions.
 // scribe-next modification: keep every singleton pointer access under its existing mutex.
 // scribe-next modification: C++17 cleanup; printf-style LOG_OPER, dead null checks removed.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 #include <iostream>
 #include "dynamic_bucket_updater.h"
 #include "scribe_server.h"
@@ -13,7 +14,6 @@ using namespace apache::thrift::transport;
 using namespace facebook;
 using namespace facebook::fb303;
 using namespace scribe::thrift;
-using boost::shared_ptr;
 extern std::shared_ptr<scribeHandler> g_Handler;
 
 DynamicBucketUpdater* DynamicBucketUpdater::instance_ = NULL;
