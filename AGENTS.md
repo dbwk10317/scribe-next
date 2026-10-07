@@ -9,9 +9,9 @@
 공개 [Facebook Scribe 원본](https://github.com/facebookarchive/scribe/tree/fcd294faffd1e88af1643a3a8c2359c41713f7c2)을
 현대 Linux에서 빌드하면서 기존 구조와 외부 계약을 보존한다. 회사 fork·설정·성능 자료는 현재 범위 밖이다.
 
-작업 전에 [README](README.md)와 [현재 호환성 정책](docs/legacy-compatibility-policy.md)을 읽는다.
-빌드·실행 작업은 [빌드 안내](docs/linux-build-mvp.md), HDFS는 [HDFS 안내](docs/hdfs-compatibility.md)를 추가로 읽는다.
-기존 설계가 필요한 변경은 [설계](docs/design.ko.md)와 [구현 계획](docs/implementation.ko.md)을 확인한다.
+작업 전에 [README](README.md)와 [현재 호환성 정책](docs/compatibility-policy.md)을 읽는다.
+빌드·실행 작업은 [빌드 안내](docs/build.md), HDFS는 [HDFS 안내](docs/hdfs.md)를 추가로 읽는다.
+기존 설계가 필요한 변경은 [설계](docs/design.md)를 확인한다.
 과거 검증 기록을 현재 코드의 성공이나 미완료 조건으로 그대로 해석하지 않는다.
 
 ## 원본 계약 보존
@@ -20,7 +20,7 @@
 로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회를 바꾸는 semantic 수정은 원본의 정의된 동작으로 되돌렸다.
 그 버그는 문서에 남기며 새 수정 옵션을 추가하지 않는다. UB/crash 방지는 유지하되 미정의 결과 자체를 재현하지 않는다.
 예외로 2026-10-07에 분배·파일 형식·전달 결과를 바꾸지 않는다고 확인한 세 가지(동적 목적지의 pooled close 순서,
-service_list 재연결 후보 누적, StdFile partial replay 보존)만 [정책](docs/legacy-compatibility-policy.md#다시-고친-동작-2026-10-07)대로 다시 적용했다.
+service_list 재연결 후보 누적, StdFile partial replay 보존)만 [정책](docs/compatibility-policy.md#다시-고친-동작-2026-10-07)대로 다시 적용했다.
 
 - 두 IDL의 method, field ID, enum, requiredness, namespace, 예외와 fb303 API를 유지한다
 - framed binary 및 server·relay·mapping의 명시적 strictRead=false/strictWrite=false를 유지한다
@@ -56,7 +56,7 @@ service_list 재연결 후보 누적, StdFile partial replay 보존)만 [정책]
 3. store·queue·connection pool·config가 전역 `g_Handler`/`g_connPool`에 의존하지 않도록 context를 주입한다
 
 각 단계는 외부 계약, lock 순서·범위, 시간 기준, `rand()` 사용, 파일·wire bytes, 카운터를 바꾸지 않는다.
-완료 조건은 `tools/validate_linux.py` 전체 시험 통과와 `tools/old-lane` 구·신 비교 10개 case 통과다.
+완료 조건은 `tools/validate_linux.py` 전체 시험 통과와 `tools/old-lane` 구·신 비교 17개 case 통과다.
 StoreQueue의 thread·조건 변수를 `std::thread`로 바꾸는 단계는 여전히 보류다.
 
 관련 호출 경로를 읽고 완료 조건을 정한 뒤 수정한다. 버그 수정은 실패 재현과 수정 후 확인을 남긴다.
