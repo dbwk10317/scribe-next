@@ -1,5 +1,6 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: C++17 cleanup; typed config read, report a failed store thread start.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +30,6 @@
 #include <system_error>
 
 using namespace std;
-using namespace boost;
 using namespace scribe::thrift;
 
 #define DEFAULT_TARGET_WRITE_SIZE  16384LL
@@ -62,7 +62,7 @@ StoreQueue::StoreQueue(const string& type, const string& category,
   storeInitCommon();
 }
 
-StoreQueue::StoreQueue(const boost::shared_ptr<StoreQueue> example,
+StoreQueue::StoreQueue(const std::shared_ptr<StoreQueue> example,
                        const std::string &category)
   : msgQueueSize(0),
     hasWork(false),
@@ -92,7 +92,7 @@ StoreQueue::~StoreQueue() {
   }
 }
 
-void StoreQueue::addMessage(boost::shared_ptr<LogEntry> entry) {
+void StoreQueue::addMessage(std::shared_ptr<LogEntry> entry) {
   if (isModel) {
     LOG_OPER("ERROR: called addMessage on model store");
   } else {
@@ -179,7 +179,7 @@ void StoreQueue::open() {
   }
 }
 
-boost::shared_ptr<Store> StoreQueue::copyStore(const std::string &category) {
+std::shared_ptr<Store> StoreQueue::copyStore(const std::string &category) {
   return store->copy(category);
 }
 
@@ -264,7 +264,7 @@ void StoreQueue::threadMember() {
     pthread_mutex_lock(&msgMutex);
     pthread_mutex_unlock(&cmdMutex);
 
-    boost::shared_ptr<logentry_vector_t> messages;
+    std::shared_ptr<logentry_vector_t> messages;
 
     // handle messages if stopping, enough time has passed, or queue is large
     //
@@ -275,11 +275,11 @@ void StoreQueue::threadMember() {
       if (failedMessages) {
         // process any messages we were not able to process last time
         messages = failedMessages;
-        failedMessages = boost::shared_ptr<logentry_vector_t>();
+        failedMessages = std::shared_ptr<logentry_vector_t>();
       } else if (msgQueueSize.load(std::memory_order_relaxed) > 0) {
         // process message in queue
         messages = msgQueue;
-        msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);
+        msgQueue = std::shared_ptr<logentry_vector_t>(new logentry_vector_t);
         msgQueueSize.store(0, std::memory_order_relaxed);
       }
 
@@ -317,7 +317,7 @@ void StoreQueue::threadMember() {
   store->close();
 }
 
-void StoreQueue::processFailedMessages(boost::shared_ptr<logentry_vector_t> messages) {
+void StoreQueue::processFailedMessages(std::shared_ptr<logentry_vector_t> messages) {
   // If the store was not able to process these messages, we will either
   // requeue them or give up depending on the value of mustSucceed
 
@@ -339,7 +339,7 @@ void StoreQueue::processFailedMessages(boost::shared_ptr<logentry_vector_t> mess
 void StoreQueue::storeInitCommon() {
   // model store doesn't need this stuff
   if (!isModel) {
-    msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);
+    msgQueue = std::shared_ptr<logentry_vector_t>(new logentry_vector_t);
     bool cmd_ready = false, msg_ready = false, work_ready = false, cond_ready = false;
     const auto check = [](int result, const char* operation) {
       if (result) throw std::system_error(result, std::generic_category(), operation);

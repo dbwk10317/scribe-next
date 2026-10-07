@@ -1,5 +1,6 @@
 // scribe-next modification: C++17 cleanup; override, deleted copies, loss helper, no behaviour change.
 // scribe-next modification: owned read buffer via nothrow new; same nomem/loss accounting.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +33,7 @@ class FileInterface {
   FileInterface(const std::string& name, bool framed);
   virtual ~FileInterface();
 
-  static boost::shared_ptr<FileInterface> createFileInterface(const std::string& type,
+  static std::shared_ptr<FileInterface> createFileInterface(const std::string& type,
                                                               const std::string& name,
                                                               bool framed = false);
   static std::vector<std::string> list(const std::string& path, const std::string& fsType);

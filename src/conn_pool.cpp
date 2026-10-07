@@ -1,5 +1,6 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; std::mutex pool guards keep lock points, dead null checks removed.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,7 +31,6 @@
 using std::string;
 using std::ostringstream;
 using std::map;
-using boost::shared_ptr;
 using namespace apache::thrift;
 using namespace apache::thrift::protocol;
 using namespace apache::thrift::transport;
@@ -56,12 +56,12 @@ string ConnPool::makeKey(const string& hostname, unsigned long port) {
 
 bool ConnPool::open(const string& hostname, unsigned long port, int timeout) {
         return openCommon(makeKey(hostname, port),
-                    boost::shared_ptr<scribeConn>(new scribeConn(hostname, port, timeout)));
+                    std::shared_ptr<scribeConn>(new scribeConn(hostname, port, timeout)));
 }
 
 bool ConnPool::open(const string &service, const server_vector_t &servers, int timeout) {
         return openCommon(service,
-                    boost::shared_ptr<scribeConn>(new scribeConn(service, servers, timeout)));
+                    std::shared_ptr<scribeConn>(new scribeConn(service, servers, timeout)));
 }
 
 void ConnPool::close(const string& hostname, unsigned long port) {
@@ -73,12 +73,12 @@ void ConnPool::close(const string &service) {
 }
 
 int ConnPool::send(const string& hostname, unsigned long port,
-                    boost::shared_ptr<logentry_vector_t> messages) {
+                    std::shared_ptr<logentry_vector_t> messages) {
   return sendCommon(makeKey(hostname, port), messages);
 }
 
 int ConnPool::send(const string &service,
-                    boost::shared_ptr<logentry_vector_t> messages) {
+                    std::shared_ptr<logentry_vector_t> messages) {
   return sendCommon(service, messages);
 }
 
@@ -95,7 +95,7 @@ class ConnectionGuard {
 };
 }
 
-bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn) {
+bool ConnPool::openCommon(const string &key, std::shared_ptr<scribeConn> conn) {
 
   // note on locking:
   // The mapMutex locks all reads and writes to the connMap.
@@ -106,7 +106,7 @@ bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn)
 
   // Declared before the guard so a replaced connection is still destroyed
   // after mapMutex is released, as with the former unlock-then-return.
-  boost::shared_ptr<scribeConn> old_conn;
+  std::shared_ptr<scribeConn> old_conn;
   std::lock_guard<std::mutex> map_lock(mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
@@ -155,11 +155,11 @@ void ConnPool::closeCommon(const string &key) {
 }
 
 int ConnPool::sendCommon(const string &key,
-                          boost::shared_ptr<logentry_vector_t> messages) {
+                          std::shared_ptr<logentry_vector_t> messages) {
   std::unique_lock<std::mutex> map_lock(mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
-    boost::shared_ptr<scribeConn> connection = iter->second;
+    std::shared_ptr<scribeConn> connection = iter->second;
     ConnectionGuard connection_guard(*connection);
     map_lock.unlock();
     return connection->send(messages);
@@ -276,7 +276,7 @@ void scribeConn::close() {
 }
 
 int
-scribeConn::send(boost::shared_ptr<logentry_vector_t> messages) {
+scribeConn::send(std::shared_ptr<logentry_vector_t> messages) {
   // Non-strict binary Log payload: 21-byte envelope, then 15 bytes plus the
   // category/message bytes per entry. The outer four-byte frame is excluded.
   // TFramedTransport::flush itself only limits writes to 2GB. Reject locally

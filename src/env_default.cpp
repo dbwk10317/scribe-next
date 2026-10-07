@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,8 +34,6 @@ using namespace apache::thrift::concurrency;
 
 using namespace scribe::thrift;
 using namespace scribe::concurrency;
-
-using boost::shared_ptr;
 
 std::shared_ptr<TConfiguration> scribe::createThriftConfiguration() {
   if (!g_Handler->hasValidThriftLimits()) {
@@ -72,8 +71,8 @@ bool scribe::network_config::getService(const std::string& serviceName,
  * Concurrency mechanisms
  */
 
-boost::shared_ptr<ReadWriteMutex> scribe::concurrency::createReadWriteMutex() {
-  return boost::shared_ptr<ReadWriteMutex>(new ReadWriteMutex());
+std::shared_ptr<ReadWriteMutex> scribe::concurrency::createReadWriteMutex() {
+  return std::shared_ptr<ReadWriteMutex>(new ReadWriteMutex());
 }
 
 /*

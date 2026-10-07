@@ -71,7 +71,7 @@ class ReviewPeriodicBucket : public BucketStore {
     // Populate test children directly. No BucketStore configure/copy/routing
     // path is executed; this fixture owns periodicCheck's order only.
     for (uint32_t i = 0; i < size; ++i) {
-      buckets.push_back(boost::shared_ptr<Store>(new ReviewPeriodicChild(i, calls)));
+      buckets.push_back(std::shared_ptr<Store>(new ReviewPeriodicChild(i, calls)));
     }
   }
 };

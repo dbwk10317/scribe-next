@@ -1,5 +1,6 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; override and deleted copies, no behaviour change.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2009 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,8 +30,8 @@
 #include "store.h"
 #include "store_queue.h"
 
-typedef std::vector<boost::shared_ptr<StoreQueue> > store_list_t;
-typedef std::map<std::string, boost::shared_ptr<store_list_t> > category_map_t;
+typedef std::vector<std::shared_ptr<StoreQueue> > store_list_t;
+typedef std::map<std::string, std::shared_ptr<store_list_t> > category_map_t;
 
 class scribeHandler : virtual public scribe::thrift::scribeIf,
                               public facebook::fb303::FacebookBase {
@@ -114,7 +115,7 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
    * A single mutex is fine since it only needs to be locked in write mode
    * during start/stop/reinitialize or when we need to create a new category.
    */
-  boost::shared_ptr<scribe::concurrency::ReadWriteMutex>
+  std::shared_ptr<scribe::concurrency::ReadWriteMutex>
     scribeHandlerLock;
 
   // disallow empty construction, copy, and assignment
@@ -127,19 +128,19 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   void deleteCategoryMap(category_map_t& cats);
   const char* statusAsString(facebook::fb303::fb_status new_status);
   bool createCategoryFromModel(const std::string &category,
-                               const boost::shared_ptr<StoreQueue> &model);
-  boost::shared_ptr<StoreQueue>
+                               const std::shared_ptr<StoreQueue> &model);
+  std::shared_ptr<StoreQueue>
     configureStoreCategory(pStoreConf store_conf,
                            const std::string &category,
-                           const boost::shared_ptr<StoreQueue> &model,
+                           const std::shared_ptr<StoreQueue> &model,
                            bool category_list=false);
   bool configureStore(pStoreConf store_conf, int* num_stores);
   void stopStores();
   bool throttleRequest(const std::vector<scribe::thrift::LogEntry>&  messages);
-  boost::shared_ptr<store_list_t>
+  std::shared_ptr<store_list_t>
     createNewCategory(const std::string& category);
   void addMessage(const scribe::thrift::LogEntry& entry,
-                  const boost::shared_ptr<store_list_t>& store_list);
+                  const std::shared_ptr<store_list_t>& store_list);
 };
 extern std::shared_ptr<scribeHandler> g_Handler;
 #endif // SCRIBE_SERVER_H

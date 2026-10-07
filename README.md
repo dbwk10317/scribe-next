@@ -877,7 +877,7 @@ store thread 생성 실패는 설정 단계에서 `Bad config - can't create a s
 - [빈 메시지만 든 큐를 전달하지 않는 판단](#빈-메시지만-든-큐는-전달되지-않는다)
 - 재시도·bucket·서버 후보 순서에 쓰는 GNU `rand()` 순서
 - store queue의 thread·조건 변수(시간 기준과 깨우기 의미가 바뀔 수 있어 그대로 둠)
-- `boost::shared_ptr` 일괄 치환과 Boost 제거(별도 작업으로 보류)
+- Boost 제거(별도 작업으로 보류). 내부 `boost::shared_ptr`·`boost::weak_ptr`는 현대화 1단계에서 `std::shared_ptr`·`std::weak_ptr`로 바꿨으며, 타입만 바꾼 것이라 동작은 같습니다
 
 ### 검증 도구
 

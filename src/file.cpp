@@ -2,6 +2,7 @@
 // scribe-next modification: truncate spool replacement without app so partial replay keeps its remainder.
 // scribe-next modification: C++17 cleanup; CALC_LOSS macro is now calcLoss(), same arithmetic.
 // scribe-next modification: owned read buffer via nothrow new; same nomem/loss accounting.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,23 +34,22 @@
 #define UINT_SIZE 4
 
 using namespace std;
-using boost::shared_ptr;
 
-boost::shared_ptr<FileInterface> FileInterface::createFileInterface(const std::string& type,
+std::shared_ptr<FileInterface> FileInterface::createFileInterface(const std::string& type,
                                                                     const std::string& name,
                                                                     bool framed) {
   if (0 == type.compare("std")) {
-    return boost::shared_ptr<FileInterface>(new StdFile(name, framed));
+    return std::shared_ptr<FileInterface>(new StdFile(name, framed));
   } else if (0 == type.compare("hdfs")) {
-    return boost::shared_ptr<FileInterface>(new HdfsFile(name));
+    return std::shared_ptr<FileInterface>(new HdfsFile(name));
   } else {
-    return boost::shared_ptr<FileInterface>();
+    return std::shared_ptr<FileInterface>();
   }
 }
 
 std::vector<std::string> FileInterface::list(const std::string& path, const std::string &fsType) {
   std::vector<std::string> files;
-  boost::shared_ptr<FileInterface> concrete_file = createFileInterface(fsType, path);
+  std::shared_ptr<FileInterface> concrete_file = createFileInterface(fsType, path);
   if (concrete_file) {
     concrete_file->listImpl(path, files);
   }

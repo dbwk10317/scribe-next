@@ -4,9 +4,9 @@
 #ifndef SCRIBE_TEST_FILESTORE_CONTRACTS_H
 #define SCRIBE_TEST_FILESTORE_CONTRACTS_H
 
-static boost::shared_ptr<logentry_vector_t> fileMessages(
+static std::shared_ptr<logentry_vector_t> fileMessages(
     const std::vector<LogEntry>& entries) {
-  boost::shared_ptr<logentry_vector_t> result(new logentry_vector_t);
+  std::shared_ptr<logentry_vector_t> result(new logentry_vector_t);
   for (const auto& value : entries) {
     result->push_back(logentry_ptr_t(new LogEntry(value)));
   }
@@ -24,7 +24,7 @@ static std::string hexBytes(const std::string& bytes) {
 }
 
 static void saveEntries(const std::string& path,
-                        boost::shared_ptr<logentry_vector_t> messages) {
+                        std::shared_ptr<logentry_vector_t> messages) {
   std::string text;
   for (const auto& value : *messages) {
     text += hexBytes(value->category) + ":" + hexBytes(value->message) + "\n";
@@ -55,7 +55,7 @@ struct FileStoreFixture {
   ~FileStoreFixture() { store->close(); }
   HandlerFixture handlerFixture;
   pStoreConf configuration;
-  boost::shared_ptr<FileStore> store;
+  std::shared_ptr<FileStore> store;
   struct tm now;
 };
 
@@ -148,14 +148,14 @@ class ReplayPrimary : public Store {
  public:
   explicit ReplayPrimary(bool partial)
       : Store(nullptr, "fallback", "test-primary", false), partial_(partial) {}
-  boost::shared_ptr<Store> copy(const std::string&) override {
+  std::shared_ptr<Store> copy(const std::string&) override {
     throw std::runtime_error("unused primary copy");
   }
   bool open() override { return true; }
   bool isOpen() override { return true; }
   void close() override {}
   void flush() override {}
-  bool handleMessages(boost::shared_ptr<logentry_vector_t> messages) override {
+  bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override {
     received = *messages;
     if (partial_) {
       require(messages->size() == 3, "partial replay fixture expected three entries");
@@ -175,7 +175,7 @@ class ReplayPrimary : public Store {
 
 class ReplayBuffer : public BufferStore {
  public:
-  ReplayBuffer(boost::shared_ptr<Store> primary, boost::shared_ptr<Store> secondary)
+  ReplayBuffer(std::shared_ptr<Store> primary, std::shared_ptr<Store> secondary)
       : BufferStore(nullptr, "fallback", false) {
     primaryStore = primary;
     secondaryStore = secondary;
@@ -195,13 +195,13 @@ static void testBufferReplay(const std::string& config,
   FileStoreFixture fixture(config);
   unsigned long partial = 0;
   fixture.configuration->getUnsigned("test_partial", partial);
-  boost::shared_ptr<ReplayPrimary> primary(new ReplayPrimary(partial != 0));
+  std::shared_ptr<ReplayPrimary> primary(new ReplayPrimary(partial != 0));
   ReplayBuffer buffer(primary, fixture.store);
   auto record = [&](const std::string& suffix) {
     saveEntries(directory + "/received" + suffix + ".txt",
-                boost::shared_ptr<logentry_vector_t>(new logentry_vector_t(primary->received)));
+                std::shared_ptr<logentry_vector_t>(new logentry_vector_t(primary->received)));
     saveEntries(directory + "/accepted" + suffix + ".txt",
-                boost::shared_ptr<logentry_vector_t>(new logentry_vector_t(primary->accepted)));
+                std::shared_ptr<logentry_vector_t>(new logentry_vector_t(primary->accepted)));
     std::ostringstream states;
     states << "lost=" << fixture.handlerFixture.handler->getCounter("fallback:lost") << "\n"
            << "bytes-lost=" << fixture.handlerFixture.handler->getCounter("fallback:bytes lost") << "\n"

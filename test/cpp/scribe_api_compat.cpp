@@ -28,14 +28,14 @@ class StatusBufferStore : public BufferStore {
  public:
   StatusBufferStore() : BufferStore(nullptr, "fixture", false) {}
   void statusForTest(const std::string& value) { setStatus(value); }
-  void childrenForTest(boost::shared_ptr<Store> secondary, boost::shared_ptr<Store> primary) {
+  void childrenForTest(std::shared_ptr<Store> secondary, std::shared_ptr<Store> primary) {
     secondaryStore = secondary; primaryStore = primary;
   }
 };
 static void testBufferStatusPublication() {
   StatusBufferStore buffer;
   require(!buffer.getStatus().empty(), "unconfigured buffer must report pending status safely");
-  boost::shared_ptr<StatusNullStore> secondary(new StatusNullStore), primary(new StatusNullStore);
+  std::shared_ptr<StatusNullStore> secondary(new StatusNullStore), primary(new StatusNullStore);
   buffer.childrenForTest(secondary, primary);
   secondary->statusForTest("secondary"); buffer.statusForTest("buffer"); primary->statusForTest("primary");
   require(buffer.getStatus()=="secondary", "secondary status priority changed");

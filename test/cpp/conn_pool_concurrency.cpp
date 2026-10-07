@@ -22,11 +22,11 @@ void scribeConn::unlock(){std::lock_guard<std::mutex> g(state);if(owners[this]!=
 bool scribeConn::isOpen(){std::lock_guard<std::mutex> g(state);if(opener){unsafe_open=owners[this]!=std::this_thread::get_id();reopen_event=true;changed.notify_all();}return opened[this];}
 bool scribeConn::open(){std::lock_guard<std::mutex> g(state);opened[this]=true;return true;}
 void scribeConn::close(){std::lock_guard<std::mutex> g(state);opened[this]=false;}
-int scribeConn::send(boost::shared_ptr<logentry_vector_t>){if(throw_send)throw std::runtime_error("fixture send allocation failure");std::unique_lock<std::mutex> g(state);opened[this]=false;sending=true;changed.notify_all();if(!changed.wait_for(g,std::chrono::seconds(3),[]{return release_send;}))std::abort();return CONN_TRANSIENT;}
-class TestPool:public ConnPool{public:void seed(boost::shared_ptr<scribeConn> c){connMap["fixture:1"]=c;} unsigned refs(){return connMap.at("fixture:1")->getRef();} bool empty(){return connMap.empty();}};
+int scribeConn::send(std::shared_ptr<logentry_vector_t>){if(throw_send)throw std::runtime_error("fixture send allocation failure");std::unique_lock<std::mutex> g(state);opened[this]=false;sending=true;changed.notify_all();if(!changed.wait_for(g,std::chrono::seconds(3),[]{return release_send;}))std::abort();return CONN_TRANSIENT;}
+class TestPool:public ConnPool{public:void seed(std::shared_ptr<scribeConn> c){connMap["fixture:1"]=c;} unsigned refs(){return connMap.at("fixture:1")->getRef();} bool empty(){return connMap.empty();}};
 int main(int argc,char** argv){
- TestPool pool;boost::shared_ptr<scribeConn> old(new scribeConn("fixture",1,1));pool.seed(old);
- boost::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
+ TestPool pool;std::shared_ptr<scribeConn> old(new scribeConn("fixture",1,1));pool.seed(old);
+ std::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
  if(argc==2 && std::string(argv[1])=="exception") {
   throw_send=true;try {pool.send("fixture",1,messages);return 2;}catch(const std::runtime_error&){}
   if(!pool.open("fixture",1,1) || pool.refs()!=2)return 3;
