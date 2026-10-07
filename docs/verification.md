@@ -135,7 +135,7 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 ## 비교가 증명하지 않는 것
 
 - `OK`는 큐 수락이다. fsync, 전원 장애 durability, exactly-once를 보여 주지 않는다. SIGKILL은 첫 batch가 파일에 보인 뒤에만 보낸다
-- 모든 replay는 한 번에 성공하는 `deleteOldest` 경로다. 부분 replay는 구·신이 [일부러 다르게](compatibility-policy.md#다시-고친-동작-2026-10-07) 동작해 비교하지 않는다
+- 모든 replay는 한 번에 성공하는 `deleteOldest` 경로다. 부분 replay는 구·신이 [일부러 다르게](compatibility-policy.md#원본-오류-세-가지) 동작해 비교하지 않는다
 - 반복 실패, 여러 송신측, 연결 pool 공유, `service_list`, `adaptive_backoff`, 빈 frame spool, disk full, 운영 설정·부하는 다루지 않는다
 - 응답 유실, malformed frame, 큰 frame, 시간 의존 backpressure는 daemon 비교에 없다
 - 구버전은 Ubuntu 16.04 전체 userland가 아니라 비교 이미지의 Rocky 시스템 라이브러리 위에서 돈다
