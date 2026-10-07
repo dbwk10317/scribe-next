@@ -4,6 +4,11 @@ ARG OLD_IMAGE=scribe-next-old-build:xenial
 FROM ${OLD_IMAGE} AS old
 
 FROM scribe-next-modern:rocky9
+# The root Dockerfile image runs as the scribe user with scribed as ENTRYPOINT; the harness needs root for
+# the copy fix-up and a plain shell entry (run_differential.sh still runs every case as --user 65534).
+USER root
+ENTRYPOINT []
+CMD []
 COPY --from=old /old-lane /old-lane
 RUN chmod -R a+rX /old-lane \
  && ! LD_LIBRARY_PATH=/old-lane/lib ldd /old-lane/bin/scribed | grep 'not found' \
