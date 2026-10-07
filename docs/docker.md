@@ -1,8 +1,8 @@
 # Docker 이미지
 
 로컬 checkout을 build context로 `scribed` 실행 이미지를 만든다. 기본 env_default·비-HDFS·static RPC
-lane이며 [Dockerfile](../Dockerfile)의 build 단계는 [빌드 안내](linux-build-mvp.md)와 같은 Thrift 0.25.0,
-[patch한 fb303](fb303-counter-safety.md), 기존 autotools 경로를 사용한다.
+lane이며 [Dockerfile](../Dockerfile)의 build 단계는 [빌드 안내](build.md)와 같은 Thrift 0.25.0,
+[patch한 fb303](build.md#fb303-patch), 기존 autotools 경로를 사용한다.
 
 ## 빌드
 
@@ -77,27 +77,22 @@ PY
 
 ## 한계
 
-- HDFS 미포함. [HDFS 안내](hdfs-compatibility.md)의 별도 lane을 쓴다
+- HDFS 미포함. [HDFS 안내](hdfs.md)의 별도 lane을 쓴다
 - static RPC library만 쓴다. shared RPC lane이 아니다
 - 로컬 checkout을 그대로 빌드한다. commit하지 않은 변경도 들어가며 특정 commit 재현은 clean checkout에서 한다
-- base는 `rockylinux:9` tag이며 digest를 고정하지 않는다. 고정 image는 [Rocky 빌드 안내](rocky-build.md)를 따른다
+- base는 `rockylinux:9` tag이며 digest를 고정하지 않는다. 고정 image는 [Rocky 빌드 안내](build.md#rocky-linux-8과-9)를 따른다
 - 운영 hardening 안내가 아니다. Scribe에는 인증·TLS가 없으므로 1463은 신뢰 network에만 노출한다.
   자원 제한, log 보관·삭제, 감시와 정상 종료 절차는 운영 환경에서 따로 정한다
 
 ## 확인 기록
 
-2026-10-07, WSL Rocky 9 host의 Docker 29.8.2. base `rockylinux:9`(Rocky 9.3,
-`sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6`), Windows CRLF checkout을 context로 사용했다.
-
-- build 성공. prepare_fb303의 patch SHA256이 Git blob과 같아 CRLF 정리를 확인했다. 실행 이미지 273MB(content 67.2MB)
-- 실행 이미지 `ldd`는 libthrift/libthriftnb 0.25.0, 배포판 libevent 2.1과 Boost 1.75 filesystem/system을 찾는다
-- `Log(demo, "hello docker\n")` 응답 0(OK), `demo/demo-2026-10-07_00000` bytes `hello docker\n\n`, `getStatus` 2(ALIVE)
-- oneway `shutdown` 뒤 exit 0, `docker stop`은 10초 뒤 exit 137. 설정 mount로 port 1500 기동 확인
-
-2026-10-07 Boost 제거(현대화 2단계) 뒤 같은 host에서 작업 tree로 다시 빌드했다.
+2026-10-07, WSL Rocky 9 host의 Docker 29.8.2에서 Windows CRLF checkout을 context로 빌드했다.
+base `rockylinux:9`는 Rocky 9.3(`sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6`)이었다.
 
 - 실행 이미지 272MB(content 67.2MB). `rpm -qa`에 Boost 패키지가 없고 `ldd`는 libthrift/libthriftnb 0.25.0과 배포판 libevent 2.1만 찾는다
+- prepare_fb303의 patch SHA256이 Git blob과 같아 CRLF 정리를 확인했다
 - 기본 설정으로 `Log(demo, "hello docker\n")` 응답 0(OK), `demo_current` bytes `hello docker\n\n`, `getStatus` 2(ALIVE)
-- oneway `shutdown` 뒤 exit 0
+- oneway `shutdown` 뒤 exit 0, `docker stop`은 10초 뒤 exit 137. 설정 mount로 port 1500 기동도 확인했다
+- 최종 `main` 이미지도 같은 smoke를 통과했다([최종 재검증](verification.md#최종-재검증-2026-10-07))
 
 한 환경의 실제 컨테이너 결과이며 운영 준비나 다른 host 호환성으로 확대하지 않는다.
