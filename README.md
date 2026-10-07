@@ -452,7 +452,7 @@ docker logs scribe
 | [빌드와 의존성](#빌드와-의존성) | C++17, Thrift 0.25, 최신 GCC로 빌드, Boost 라이브러리 제거 | 같음 |
 | [새 설정 키](#새-설정-키) | `thrift_max_frame_size`, `thrift_max_message_size` 추가 | 같음(큰 요청 제외) |
 | [고친 문제](#고친-문제) | 비정상 종료·미정의 동작 6가지, 전송·연결 수정 3가지 | 정상 설정에서는 같음 |
-| [C++17 정리](#c17-정리-동작-불변) | 잠금·소유권·죽은 코드 정리 | 같음 |
+| [C++17 정리](#c17-정리-동작-불변) | 잠금·소유권·전역 변수 의존·죽은 코드 정리 | 같음 |
 | [max_msg_per_second 계산](#max_msg_per_second와-절반-예외) | 동시에 들어오는 요청도 잠금 아래에서 정확히 셈 | 같음(동시 요청 제외) |
 
 새 설정 키 두 개의 기본값은 각각 256 MiB[^17]이며, 이 한도를 넘는 큰 요청만 처리가 다릅니다.
@@ -866,6 +866,7 @@ secondary에 add_newlines=1일 때: 다시 쓴 frame에 LF가 하나 더 붙음
 | store thread 생성 실패 | `pthread_create` 반환값을 보지 않아 실패하면 미정의 동작 | 실패를 store 생성 실패로 처리 | 원래 미정의 동작이던 경우만 정의된 오류가 됨 |
 | 진단 로그 두 줄 | stderr에 글자 그대로 `oss.str()`로 찍혔음 | 실제 내용을 찍거나 함께 삭제 | stderr 문구만 바뀌고 로그 데이터·파일·카운터와 무관 |
 | Boost 의존성(현대화 1·2단계) | `boost::shared_ptr`·`boost::filesystem`·`boost::split` | `std::shared_ptr`·`std::filesystem`·작은 분리 함수 | 같은 호출에 같은 결과. [왜 Boost를 제거했나](#왜-boost를-제거했나) 참고 |
+| 전역 handler·연결 pool 의존(현대화 3단계) | store·queue·연결 pool·설정 조회가 전역 `g_Handler`·`g_connPool`을 직접 읽음 | handler가 넘겨주는 context(`ScribeContext`)를 씀 | 같은 handler의 같은 값·카운터·pool. [왜 전역 의존을 없앴나](#왜-전역-의존을-없앴나) 참고 |
 
 `Log()`의 예전 코드는 중간에 예외가 나면 잠금이 영원히 풀리지 않았습니다.
 그러면 이후 `reinitialize`·`shutdown`·새 category 생성이 멈출 수 있었습니다.
@@ -894,6 +895,17 @@ store thread 생성 실패는 설정 단계에서 `Bad config - can't create a s
 - [빈 메시지만 든 큐를 전달하지 않는 판단](#빈-메시지만-든-큐는-전달되지-않는다)
 - 재시도·bucket·서버 후보 순서에 쓰는 GNU `rand()` 순서
 - store queue의 thread·조건 변수(시간 기준과 깨우기 의미가 바뀔 수 있어 그대로 둠)
+
+#### 왜 전역 의존을 없앴나
+
+원본의 store·store queue·연결 pool·설정 조회·dynamic bucket updater는 프로세스 전역 변수 두 개를 직접 읽었습니다.
+실행 중인 서버 handler인 `g_Handler`에서 카운터 증가, `max_queue_size`, Thrift 크기 한도, 설정 상속(`type::key`)의 최상위 설정, fb303 객체를 얻었고, `use_conn_pool=yes` 연결은 `store.cpp`의 전역 `g_connPool`로 공유했습니다.
+이제 handler가 이 기능만 담은 작은 interface(`ScribeContext`, `src/context.h`)를 구현하고 연결 pool을 직접 가지며, store queue를 만들 때 자신을 넘깁니다.
+store와 연결은 그 context를 queue나 부모 store에서 이어받고, 설정 트리는 handler가 설정을 읽을 때마다 최상위 설정을 연결해 둡니다.
+전역 변수가 없으니 store·queue·연결 pool을 서버 전체 없이 따로 만들어 시험할 수 있고, 각 부품이 서버의 무엇을 쓰는지 생성자에 드러나 숨은 연결이 없습니다.
+서버 하나에 context 하나이므로 읽는 값, 카운터 이름, 연결 pool의 공유 범위·참조 수·잠금 순서는 예전과 같습니다.
+설정 키는 바뀌지 않았고 로그의 분배·내용·파일 형식, 카운터와 stderr 문구도 같습니다.
+`g_Handler`는 Thrift 서버를 구성하는 `main()`과 `scribe::createServer()`에만 남아 있습니다.
 
 ### 검증 도구
 

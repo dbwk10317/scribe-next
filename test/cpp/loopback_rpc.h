@@ -48,7 +48,7 @@ static void runLoopbackServer(const std::string& config,
   // Use the unmodified handler, including its real oneway shutdown RPC. The
   // owning Python parent enforces deadlines and kills/reaps this child on error.
   auto handler = std::make_shared<scribeHandler>(0, config);
-  g_Handler = handler;
+  g_Handler = handler;  // scribe::createServer() wires it like main() does
   handler->initialize();
   if (handler->getStatus() != facebook::fb303::ALIVE) {
     std::string details;

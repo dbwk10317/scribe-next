@@ -23,13 +23,12 @@ struct StoreConf {
  bool getString(const std::string&,std::string&){return false;}
 };
 typedef std::shared_ptr<StoreConf> pStoreConf;
-struct DummyHandler {void incCounter(const std::string&,const std::string&,size_t){}};
-extern std::shared_ptr<DummyHandler> g_Handler;
+class ScribeContext {public: void incCounter(const std::string&,const std::string&,size_t){}};
 void fixture_configure();
 std::string fixture_status();
 class StoreQueue;
 struct Store {
- static std::shared_ptr<Store> createStore(StoreQueue*,const std::string&,const std::string&,bool,bool){return std::shared_ptr<Store>(new Store);}
+ static std::shared_ptr<Store> createStore(ScribeContext&,StoreQueue*,const std::string&,const std::string&,bool,bool){return std::shared_ptr<Store>(new Store);}
  std::shared_ptr<Store> copy(const std::string&){return std::shared_ptr<Store>(new Store);}
  void configure(pStoreConf,pStoreConf){fixture_configure();}
  std::string getStatus(){return fixture_status();}

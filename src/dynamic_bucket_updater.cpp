@@ -3,6 +3,7 @@
 // scribe-next modification: keep every singleton pointer access under its existing mutex.
 // scribe-next modification: C++17 cleanup; printf-style LOG_OPER, dead null checks removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 #include <iostream>
 #include "dynamic_bucket_updater.h"
 #include "scribe_server.h"
@@ -14,7 +15,6 @@ using namespace apache::thrift::transport;
 using namespace facebook;
 using namespace facebook::fb303;
 using namespace scribe::thrift;
-extern std::shared_ptr<scribeHandler> g_Handler;
 
 DynamicBucketUpdater* DynamicBucketUpdater::instance_ = NULL;
 Mutex DynamicBucketUpdater::instanceLock_;
@@ -32,7 +32,8 @@ const char* DynamicBucketUpdater::FB303_ERR_NOMAPPING = "bucketupdater.err.nobid
 // number of buckets that have been updated
 const char* DynamicBucketUpdater::FB303_BUCKETSUPDATED = "bucketupdater.bucket_updated";
 
-bool DynamicBucketUpdater::getHost(const string& category,
+bool DynamicBucketUpdater::getHost(ScribeContext& context,
+                                   const string& category,
                                    const StoreConf* pconf,
                                    string& host,
                                    uint32_t& port) {
@@ -52,7 +53,7 @@ bool DynamicBucketUpdater::getHost(const string& category,
   pconf->getInt("timeout", timeout);
 
   if (!service.empty()) {
-    success = DynamicBucketUpdater::getHost(g_Handler.get(),
+    success = DynamicBucketUpdater::getHost(context,
                                             category,
                                             ttl,
                                             (uint32_t)bid,
@@ -62,7 +63,7 @@ bool DynamicBucketUpdater::getHost(const string& category,
                                             serviceOptions,
                                             timeout, timeout, timeout);
   } else {
-    success = DynamicBucketUpdater::getHost(g_Handler.get(),
+    success = DynamicBucketUpdater::getHost(context,
                                             category,
                                             ttl,
                                             (uint32_t)bid,
@@ -108,7 +109,7 @@ bool DynamicBucketUpdater::isConfigValid(const string& category,
   * function returns true.  Otherwise, function returns false and output
   * parameters are not modified.
   *
-  * @param fbBase ponter to FacebookBase
+  * @param context server context (fb303 base and Thrift wire limits)
   * @param category the category name, or any identifier that uniquely
   *        identifies a bucket store.
   * @param ttl ttl in seconds
@@ -122,7 +123,7 @@ bool DynamicBucketUpdater::isConfigValid(const string& category,
   * @param sendTimeout send timeout
   * @param recvTimeout receive timeout
   */
-bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
+bool DynamicBucketUpdater::getHost(ScribeContext& context,
                       const string &category,
                       uint32_t ttl,
                       uint64_t bid,
@@ -133,11 +134,12 @@ bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
                       uint32_t connTimeout,
                       uint32_t sendTimeout,
                       uint32_t recvTimeout) {
-  DynamicBucketUpdater *instance = DynamicBucketUpdater::getInstance(fbBase);
+  DynamicBucketUpdater *instance =
+    DynamicBucketUpdater::getInstance(context.getFacebookBase());
 
   Guard guard(instance->lock_);
 
-  bool ret = instance->getHostInternal(category, ttl, bid,
+  bool ret = instance->getHostInternal(context, category, ttl, bid,
                                        host, port, updateHost,
                                        updatePort, connTimeout,
                                        sendTimeout, recvTimeout);
@@ -150,7 +152,7 @@ bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
   * function returns true.  Otherwise, function returns false and output
   * parameters are not modified.
   *
-  * @param fbBase ponter to FacebookBase
+  * @param context server context (fb303 base and Thrift wire limits)
   * @param category the category name, or any identifier that uniquely
   *        identifies a bucket store.
   * @param ttl ttl in seconds
@@ -160,7 +162,7 @@ bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
   * @param port the output parameter that receives the host output.
   *        If no mapping is found, this variable is not modified.
   */
-bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
+bool DynamicBucketUpdater::getHost(ScribeContext& context,
                       const string &category,
                       uint32_t ttl,
                       uint64_t bid,
@@ -189,7 +191,7 @@ bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
     int which = rand() % servers.size();
     string updateHost = servers[which].first;
     uint32_t updatePort = servers[which].second;
-    return DynamicBucketUpdater::getHost(fbBase, category, ttl, bid,
+    return DynamicBucketUpdater::getHost(context, category, ttl, bid,
                                          host, port,
                                          updateHost, updatePort,
                                          connTimeout, sendTimeout,
@@ -208,7 +210,8 @@ bool DynamicBucketUpdater::getHost(facebook::fb303::FacebookBase *fbBase,
   * @param port the output parameter that receives the host output.
   *        If no mapping is found, this variable is not modified.
   */
-bool DynamicBucketUpdater::getHostInternal(const string &category,
+bool DynamicBucketUpdater::getHostInternal(const ScribeContext& context,
+                                           const string &category,
                                            uint32_t ttl,
                                            uint64_t bid,
                                            string &host,
@@ -224,7 +227,8 @@ bool DynamicBucketUpdater::getHostInternal(const string &category,
   // update
   CatBidToHostMap::const_iterator iter = catMap_.find(category);
   if (iter == catMap_.end() || iter->second.lastUpdated_ + ttl < now) {
-    periodicCheck(category,
+    periodicCheck(context,
+                  category,
                   ttl,
                   updateHost,
                   updatePort,
@@ -276,7 +280,8 @@ bool DynamicBucketUpdater::getHostInternal(const string &category,
   *
   * @return true if successful. false otherwise.
   */
-bool DynamicBucketUpdater::periodicCheck(string category,
+bool DynamicBucketUpdater::periodicCheck(const ScribeContext& context,
+                                         string category,
                                          uint32_t ttl,
                                          string host,
                                          uint32_t port,
@@ -285,7 +290,8 @@ bool DynamicBucketUpdater::periodicCheck(string category,
                                          uint32_t recvTimeout) {
   bool ret = false;
   try {
-    ret = updateInternal(category,
+    ret = updateInternal(context,
+                         category,
                          ttl,
                          host,
                          port,
@@ -335,6 +341,7 @@ bool DynamicBucketUpdater::periodicCheck(string category,
   * @return true if successful. false otherwise.
   */
 bool DynamicBucketUpdater::updateInternal(
+                           const ScribeContext& context,
                            string category,
                            uint32_t ttl,
                            string remoteHost,
@@ -357,7 +364,7 @@ bool DynamicBucketUpdater::updateInternal(
   socket->setRecvTimeout(recvTimeout);
   socket->setSendTimeout(sendTimeout);
 
-  auto config = scribe::createThriftConfiguration();
+  auto config = scribe::createThriftConfiguration(context);
   socket->setConfiguration(config);
   std::shared_ptr<TFramedTransport> framedTransport = std::shared_ptr<TFramedTransport>(
                 new TFramedTransport(socket, config));

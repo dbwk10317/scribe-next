@@ -1,4 +1,5 @@
 // scribe-next modification: C++17 cleanup; no header using-declarations, copy deleted.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +25,8 @@
 #include "common.h"
 #include "conf.h"
 
+class ScribeContext;
+
 /**
   * DynamicBucketUpdater updates a bucket store's bucket id to host:port
   * mapping periodically using the bucketupdater.thrift interface.
@@ -43,7 +46,7 @@ class DynamicBucketUpdater {
   // missing a bid mapping
   static const char *FB303_ERR_NOMAPPING;
 
-  static bool getHost(const std::string& category, const StoreConf* pconf, std::string& host, uint32_t& port);
+  static bool getHost(ScribeContext& context, const std::string& category, const StoreConf* pconf, std::string& host, uint32_t& port);
 
   static bool isConfigValid(const std::string& category, const StoreConf* pconf);
 
@@ -53,7 +56,7 @@ class DynamicBucketUpdater {
     * function returns true.  Otherwise, function returns false and output
     * parameters are not modified.
     *
-    * @param fbBase ponter to FacebookBase
+    * @param context server context (fb303 base and Thrift wire limits)
     * @param category the category name, or any identifier that uniquely
     *        identifies a bucket store.
     * @param ttl ttl in seconds
@@ -67,7 +70,7 @@ class DynamicBucketUpdater {
     * @param sendTimeout send timeout
     * @param recvTimeout receive timeout
     */
-  static bool getHost(facebook::fb303::FacebookBase *fbBase,
+  static bool getHost(ScribeContext& context,
                       const std::string &category,
                       uint32_t ttl,
                       uint64_t bid,
@@ -85,7 +88,7 @@ class DynamicBucketUpdater {
     * function returns true.  Otherwise, function returns false and output
     * parameters are not modified.
     *
-    * @param fbBase ponter to FacebookBase
+    * @param context server context (fb303 base and Thrift wire limits)
     * @param category the category name, or any identifier that uniquely
     *        identifies a bucket store.
     * @param ttl ttl in seconds
@@ -100,7 +103,7 @@ class DynamicBucketUpdater {
     * @param sendTimeout send timeout
     * @param recvTimeout receive timeout
     */
-  static bool getHost(facebook::fb303::FacebookBase *fbBase,
+  static bool getHost(ScribeContext& context,
                       const std::string &category,
                       uint32_t ttl,
                       uint64_t bid,
@@ -125,7 +128,8 @@ class DynamicBucketUpdater {
     * @param port the output parameter that receives the host output.
     *        If no mapping is found, this variable is not modified.
     */
-  bool getHostInternal(const std::string &category,
+  bool getHostInternal(const ScribeContext& context,
+                      const std::string &category,
                       uint32_t ttl,
                       uint64_t bid,
                       std::string &host,
@@ -153,7 +157,8 @@ class DynamicBucketUpdater {
     *
     * @return true if successful. false otherwise.
     */
-  bool periodicCheck(std::string category,
+  bool periodicCheck(const ScribeContext& context,
+                     std::string category,
                      uint32_t ttl,
                      std::string host,
                      uint32_t port,
@@ -196,7 +201,8 @@ class DynamicBucketUpdater {
     *
     * @return true if successful. false otherwise.
     */
-  bool updateInternal(std::string category,
+  bool updateInternal(const ScribeContext& context,
+                      std::string category,
                       uint32_t ttl,
                       std::string remoteHost,
                       uint32_t remotePort,

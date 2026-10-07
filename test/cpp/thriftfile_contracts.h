@@ -9,7 +9,8 @@
 
 class ThriftFileProbe : public ThriftFileStore {
  public:
-  ThriftFileProbe() : ThriftFileStore(nullptr, "fallback", false) {}
+  explicit ThriftFileProbe(ScribeContext& context)
+      : ThriftFileStore(context, nullptr, "fallback", false) {}
 
   // Form protected member pointers in the derived scope and apply them to the
   // real base object returned by copy(). No layout cast or production hook.
@@ -47,7 +48,7 @@ class ThriftFileProbe : public ThriftFileStore {
 
 struct ThriftFileFixture {
   explicit ThriftFileFixture(const std::string& filename)
-      : handler(filename), config(new StoreConf) {
+      : handler(filename), config(new StoreConf), store(*handler.handler) {
     // Direct store calls need only the existing handler's counters, no workers
     // or sockets. All configuration paths are owned temporary fixture files.
     config->parseConfig(filename);

@@ -9,7 +9,6 @@
 #define private public
 #include "store_queue.h"
 #undef private
-std::shared_ptr<DummyHandler> g_Handler(new DummyHandler);
 static std::mutex state;
 static std::condition_variable changed;
 static bool configuring=false,published=false,release_configure=false,query_arrived=false,early_status=false;
@@ -23,7 +22,7 @@ extern "C" int __wrap_pthread_mutex_lock(pthread_mutex_t* mutex){
 void fixture_configure(){std::unique_lock<std::mutex> lock(state);configuring=true;changed.notify_all();if(!changed.wait_for(lock,std::chrono::seconds(3),[]{return release_configure;}))std::abort();published=true;}
 std::string fixture_status(){std::lock_guard<std::mutex> lock(state);early_status=!published;query_arrived=true;changed.notify_all();return published?"":"partial configuration";}
 int main(){
- StoreQueue queue("fixture","fixture",1);command_mutex=&queue.cmdMutex;
+ ScribeContext context;StoreQueue queue(context,"fixture","fixture",1);command_mutex=&queue.cmdMutex;
  queue.configureAndOpen(pStoreConf(new StoreConf));
  {std::unique_lock<std::mutex> lock(state);if(!changed.wait_for(lock,std::chrono::seconds(3),[]{return configuring;}))std::abort();}
  std::string status;std::thread query([&]{querying=true;status=queue.getStatus();});

@@ -1,6 +1,7 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; std::mutex for the pool lock. The connection lock stays pthread for the ERRORCHECK fixture.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,11 +34,13 @@
 #define CONN_OK           (0)  /* success */
 #define CONN_TRANSIENT    (1)  /* transient error */
 
+class ScribeContext;
+
 // Basic scribe class to manage network connections. Used by network store
 class scribeConn {
  public:
-  scribeConn(const std::string& host, unsigned long port, int timeout);
-  scribeConn(const std::string &service, const server_vector_t &servers, int timeout);
+  scribeConn(ScribeContext& context, const std::string& host, unsigned long port, int timeout);
+  scribeConn(ScribeContext& context, const std::string &service, const server_vector_t &servers, int timeout);
   virtual ~scribeConn();
 
   void addRef();
@@ -62,6 +65,7 @@ class scribeConn {
   std::shared_ptr<apache::thrift::protocol::TBinaryProtocol> protocol;
   std::shared_ptr<scribe::thrift::scribeClient> resendClient;
 
+  ScribeContext& context; // wire limits and the "sent" counter
   unsigned refCount;
 
   bool serviceBased;
@@ -80,10 +84,10 @@ typedef std::map<std::string, std::shared_ptr<scribeConn> > conn_map_t;
 // Maintains a map of (<host,port> or service) to scribeConn class.
 // used to ensure that there is only one connection from one particular
 // scribe server to any host,port or service.
-// see the global g_connPool in store.cpp
+// The server context (scribeHandler) owns the pool and hands it its own context.
 class ConnPool {
  public:
-  ConnPool();
+  explicit ConnPool(ScribeContext& context);
   virtual ~ConnPool();
 
   bool open(const std::string& host, unsigned long port, int timeout);
@@ -106,6 +110,7 @@ class ConnPool {
  protected:
   std::string makeKey(const std::string& name, unsigned long port);
 
+  ScribeContext& context;
   std::mutex mapMutex;
   conn_map_t connMap;
 };

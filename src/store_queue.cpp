@@ -1,6 +1,7 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: C++17 cleanup; typed config read, report a failed store thread start.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +42,7 @@ void* threadStatic(void *this_ptr) {
   return NULL;
 }
 
-StoreQueue::StoreQueue(const string& type, const string& category,
+StoreQueue::StoreQueue(ScribeContext& context, const string& type, const string& category,
                        unsigned check_period, bool is_model, bool multi_category)
   : msgQueueSize(0),
     hasWork(false),
@@ -52,9 +53,10 @@ StoreQueue::StoreQueue(const string& type, const string& category,
     checkPeriod(check_period),
     targetWriteSize(DEFAULT_TARGET_WRITE_SIZE),
     maxWriteInterval(DEFAULT_MAX_WRITE_INTERVAL),
-    mustSucceed(true) {
+    mustSucceed(true),
+    context(context) {
 
-  store = Store::createStore(this, type, category,
+  store = Store::createStore(context, this, type, category,
                             false, multiCategory);
   if (!store) {
     throw std::runtime_error("createStore failed in StoreQueue constructor. Invalid type?");
@@ -73,7 +75,8 @@ StoreQueue::StoreQueue(const std::shared_ptr<StoreQueue> example,
     checkPeriod(example->checkPeriod),
     targetWriteSize(example->targetWriteSize.load(std::memory_order_relaxed)),
     maxWriteInterval(example->maxWriteInterval),
-    mustSucceed(example->mustSucceed) {
+    mustSucceed(example->mustSucceed),
+    context(example->context) {
 
   store = example->copyStore(category);
   if (!store) {
@@ -327,12 +330,12 @@ void StoreQueue::processFailedMessages(std::shared_ptr<logentry_vector_t> messag
 
     LOG_OPER("[%s] WARNING: Re-queueing %lu messages!",
              categoryHandled.c_str(), messages->size());
-    g_Handler->incCounter(categoryHandled, "requeue", messages->size());
+    context.incCounter(categoryHandled, "requeue", messages->size());
   } else {
     // record messages as being lost
     LOG_OPER("[%s] WARNING: Lost %lu messages!",
              categoryHandled.c_str(), messages->size());
-    g_Handler->incCounter(categoryHandled, "lost", messages->size());
+    context.incCounter(categoryHandled, "lost", messages->size());
   }
 }
 

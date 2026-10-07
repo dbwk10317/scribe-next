@@ -9,6 +9,7 @@ static void testThriftLimits(const std::string& filename, bool invalid) {
   HandlerFixture fixture(filename);
   auto handler = fixture.handler;
   handler->initialize();
+  g_Handler = handler;  // scribe::createServer() wires it like main() does
   if (invalid) {
     require(handler->getStatus() == facebook::fb303::WARNING &&
                 !handler->hasValidThriftLimits(), "invalid limits accepted");
@@ -16,6 +17,7 @@ static void testThriftLimits(const std::string& filename, bool invalid) {
       scribe::createServer(std::make_shared<
           apache::thrift::transport::TNonblockingServerSocket>("127.0.0.1", 0));
     } catch (const std::runtime_error&) {
+      g_Handler.reset();
       return;
     }
     throw std::runtime_error("invalid limits constructed server");
@@ -39,22 +41,24 @@ static void testThriftLimits(const std::string& filename, bool invalid) {
           "input policy unexpectedly wrapped memory transport");
   require(memory->getConfiguration() == configuration,
           "separate input memory retained default configuration");
-  const auto client = scribe::createThriftConfiguration();
+  const auto client = scribe::createThriftConfiguration(*handler);
   require(client->getMaxFrameSize() == static_cast<int>(frame) &&
               client->getMaxMessageSize() == static_cast<int>(message),
           "RPC client limits differ from server");
+  g_Handler.reset();
 }
 
 class LimitConnection : public scribeConn {
  public:
-  LimitConnection(unsigned long port) : scribeConn("127.0.0.1", port, 500) {}
+  LimitConnection(ScribeContext& context, unsigned long port)
+      : scribeConn(context, "127.0.0.1", port, 500) {}
   void checkPolicy() {
     require(socket->getConfiguration()->getMaxFrameSize() ==
-                g_Handler->getThriftMaxFrameSize() &&
+                context.getThriftMaxFrameSize() &&
                 framedTransport->getMaxFrameSize() ==
-                    static_cast<uint32_t>(g_Handler->getThriftMaxFrameSize()) &&
+                    static_cast<uint32_t>(context.getThriftMaxFrameSize()) &&
                 framedTransport->getConfiguration()->getMaxMessageSize() ==
-                    g_Handler->getThriftMaxMessageSize(), "relay layer policy mismatch");
+                    context.getThriftMaxMessageSize(), "relay layer policy mismatch");
   }
 };
 
@@ -76,7 +80,7 @@ static void runLimitRelay(const std::string& filename) {
   for (unsigned long i = 0; i < entry_count; ++i)
     entries.push_back(entry(std::string(category_size, 'c'), std::string(i ? 0 : payload_size, 'x')));
   auto messages = fileMessages(entries);
-  LimitConnection connection(port);
+  LimitConnection connection(*handler, port);
   require(connection.open(), "limit relay connection failed");
   connection.checkPolicy();
   const int result = connection.send(messages);
@@ -91,10 +95,11 @@ static void runLimitRelay(const std::string& filename) {
 static void runLimitSpoolRelay(const std::string& filename) {
   FileStoreFixture fixture(filename);
   requireRelayDestination(fixture.configuration);
-  std::shared_ptr<NetworkStore> primary(new NetworkStore(nullptr, "fallback", true));
+  ScribeContext& context = *fixture.handlerFixture.handler;
+  std::shared_ptr<NetworkStore> primary(new NetworkStore(context, nullptr, "fallback", true));
   primary->configure(fixture.configuration, pStoreConf());
   require(primary->open(), "spool relay primary open");
-  ReplayBuffer buffer(primary, fixture.store);
+  ReplayBuffer buffer(context, primary, fixture.store);
   buffer.periodicCheck();
   unsigned long rejected = 0;
   fixture.configuration->getUnsigned("expected_rejected", rejected);
@@ -131,7 +136,7 @@ static void runLimitMapping(const std::string& filename) {
   uint32_t port = 19;
   // Invoke only the RPC mapping client. No NetworkStore dynamic destination,
   // service discovery, bucket fallback/configure/copy/routing path is used.
-  const bool result = DynamicBucketUpdater::getHost(handler.get(), "limitmapping",
+  const bool result = DynamicBucketUpdater::getHost(*handler, "limitmapping",
       60, 42, host, port, "127.0.0.1", static_cast<uint32_t>(remote_port), 500, 500, 500);
   std::cout << "MAPPING " << result << " " << host.size() << " " << port << std::endl;
 }

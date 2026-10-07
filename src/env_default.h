@@ -1,5 +1,6 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,11 +73,14 @@ const std::string scribeversion("2.2");
   }
 
 
+class ScribeContext;
+
 namespace scribe {
 
 // Explicit finite wire limits, shared by the server and both RPC clients.
 const int DEFAULT_THRIFT_MAX_SIZE = 256 * 1024 * 1024;
-std::shared_ptr<apache::thrift::TConfiguration> createThriftConfiguration();
+std::shared_ptr<apache::thrift::TConfiguration> createThriftConfiguration(
+    const ScribeContext& context);
 
 /*
  * Network based configuration and directory service

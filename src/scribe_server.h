@@ -1,6 +1,7 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; override and deleted copies, no behaviour change.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2009 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,12 +30,14 @@
 
 #include "store.h"
 #include "store_queue.h"
+#include "context.h"
 
 typedef std::vector<std::shared_ptr<StoreQueue> > store_list_t;
 typedef std::map<std::string, std::shared_ptr<store_list_t> > category_map_t;
 
 class scribeHandler : virtual public scribe::thrift::scribeIf,
-                              public facebook::fb303::FacebookBase {
+                              public facebook::fb303::FacebookBase,
+                              public ScribeContext {
 
  public:
   scribeHandler(unsigned long int port, const std::string& conf_file);
@@ -58,7 +61,7 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   size_t numThriftServerThreads;
 
 
-  inline unsigned long long getMaxQueueSize() {
+  inline unsigned long long getMaxQueueSize() override {
     return maxQueueSize;
   }
 
@@ -66,10 +69,10 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
     return config;
   }
 
-  void incCounter(std::string category, std::string counter);
-  void incCounter(std::string category, std::string counter, long amount);
-  void incCounter(std::string counter);
-  void incCounter(std::string counter, long amount);
+  void incCounter(std::string category, std::string counter) override;
+  void incCounter(std::string category, std::string counter, long amount) override;
+  void incCounter(std::string counter) override;
+  void incCounter(std::string counter, long amount) override;
 
   inline void setServer(
       std::shared_ptr<apache::thrift::server::TNonblockingServer> & server) {
@@ -78,11 +81,15 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   unsigned long getMaxConn() {
     return maxConn;
   }
-  int getThriftMaxFrameSize() const { return thriftMaxFrameSize; }
-  int getThriftMaxMessageSize() const { return thriftMaxMessageSize; }
-  bool hasValidThriftLimits() const { return thriftLimitsValid; }
+  int getThriftMaxFrameSize() const override { return thriftMaxFrameSize; }
+  int getThriftMaxMessageSize() const override { return thriftMaxMessageSize; }
+  bool hasValidThriftLimits() const override { return thriftLimitsValid; }
+  ConnPool& getConnPool() override { return connPool; }
+  facebook::fb303::FacebookBase* getFacebookBase() override { return this; }
  private:
   std::shared_ptr<apache::thrift::server::TNonblockingServer> server;
+  // Declared before the store maps so it outlives their network stores.
+  ConnPool connPool;
 
   unsigned long checkPeriod; // periodic check interval for all contained stores
 
@@ -142,6 +149,5 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   void addMessage(const scribe::thrift::LogEntry& entry,
                   const std::shared_ptr<store_list_t>& store_list);
 };
-extern std::shared_ptr<scribeHandler> g_Handler;
 #endif // SCRIBE_SERVER_H
 // scribe-next modification: serialize the per-second throttle state independently of handler read access.

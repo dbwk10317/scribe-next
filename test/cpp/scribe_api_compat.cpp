@@ -13,6 +13,10 @@ using scribe::thrift::ResultCode;
 using scribe::thrift::scribeClient;
 using scribe::thrift::scribeProcessor;
 
+// Defined in scribe_server.cpp. Only scribe::createServer() (main's server
+// wiring) reads it; stores, queues, the pool and config lookups do not.
+extern std::shared_ptr<scribeHandler> g_Handler;
+
 static void require(bool value, const char* message) {
   if (!value) {
     throw std::runtime_error(message);
@@ -21,21 +25,23 @@ static void require(bool value, const char* message) {
 
 class StatusNullStore : public NullStore {
  public:
-  StatusNullStore() : NullStore(nullptr, "fixture", false) {}
+  explicit StatusNullStore(ScribeContext& context) : NullStore(context, nullptr, "fixture", false) {}
   void statusForTest(const std::string& value) { setStatus(value); }
 };
 class StatusBufferStore : public BufferStore {
  public:
-  StatusBufferStore() : BufferStore(nullptr, "fixture", false) {}
+  explicit StatusBufferStore(ScribeContext& context) : BufferStore(context, nullptr, "fixture", false) {}
   void statusForTest(const std::string& value) { setStatus(value); }
   void childrenForTest(std::shared_ptr<Store> secondary, std::shared_ptr<Store> primary) {
     secondaryStore = secondary; primaryStore = primary;
   }
 };
 static void testBufferStatusPublication() {
-  StatusBufferStore buffer;
+  scribeHandler context(0, "");
+  StatusBufferStore buffer(context);
   require(!buffer.getStatus().empty(), "unconfigured buffer must report pending status safely");
-  std::shared_ptr<StatusNullStore> secondary(new StatusNullStore), primary(new StatusNullStore);
+  std::shared_ptr<StatusNullStore> secondary(new StatusNullStore(context)),
+      primary(new StatusNullStore(context));
   buffer.childrenForTest(secondary, primary);
   secondary->statusForTest("secondary"); buffer.statusForTest("buffer"); primary->statusForTest("primary");
   require(buffer.getStatus()=="secondary", "secondary status priority changed");
@@ -64,12 +70,10 @@ class TestHandler : public scribeHandler {
 struct HandlerFixture {
   explicit HandlerFixture(const std::string& config, unsigned long port = 0)
       : handler(std::make_shared<TestHandler>(config, port)) {
-    // Actual stores use the existing global handler for their counters.
-    g_Handler = handler;
+    // The handler is the ScribeContext of its stores; no process global is set.
   }
   ~HandlerFixture() {
     handler->stopForTest();
-    g_Handler.reset();
   }
   std::shared_ptr<TestHandler> handler;
 };
@@ -315,9 +319,16 @@ static void testConfigInheritance(const std::string& filename) {
   HandlerFixture fixture(filename);
   fixture.handler->initialize();
   require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "inheritance handler config");
+  // initialize() roots the handler's own tree, nested stores included.
+  pStoreConf ownParent, ownChild;
+  require(const_cast<StoreConf&>(fixture.handler->getConfig()).getStore("store0", ownParent) &&
+              ownParent->getStore("leaf", ownChild), "handler config tree");
+  requireString(*ownChild, "global_only", "global-value");
   // Store::configure supplies parents explicitly. Parsing by itself does not.
   pStoreConf root(new StoreConf);
   root->parseConfig(filename);
+  // A separately parsed tree reaches the server root only when given it.
+  root->setRoot(&fixture.handler->getConfig());
   root->setString("file::ancestor", "local-root-typed");
   pStoreConf parent = requireStore(*root, "store0");
   pStoreConf child = requireStore(*parent, "leaf");
@@ -344,6 +355,9 @@ static void testConfigInheritance(const std::string& filename) {
           "untyped stores must not inherit typed parameters");
   StoreConf detached;
   detached.setString("type", "file");
+  require(!detached.getString("global_only", text) && text == "unchanged",
+          "a config without a root must not fall back");
+  detached.setRoot(&fixture.handler->getConfig());
   requireString(detached, "global_only", "global-value");
   StoreConf otherType;
   otherType.setString("type", "buffer");

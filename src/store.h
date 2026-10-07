@@ -1,5 +1,6 @@
 // scribe-next modification: C++17 cleanup; std::mutex status lock, override, deleted copies.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,11 +57,11 @@ class Store {
  public:
   // Creates an object of the appropriate subclass.
   static std::shared_ptr<Store>
-    createStore(StoreQueue* storeq,
+    createStore(ScribeContext& context, StoreQueue* storeq,
                 const std::string& type, const std::string& category,
                 bool readable = false, bool multi_category = false);
 
-  Store(StoreQueue* storeq, const std::string& category,
+  Store(ScribeContext& context, StoreQueue* storeq, const std::string& category,
         const std::string &type, bool multi_category = false);
   virtual ~Store();
 
@@ -100,6 +101,7 @@ class Store {
   std::mutex statusMutex;
 
   StoreQueue* storeQueue;
+  ScribeContext& context;
   pStoreConf storeConf;
  private:
   // disallow copy, assignment, and empty construction
@@ -113,7 +115,7 @@ class Store {
  */
 class FileStoreBase : public Store {
  public:
-  FileStoreBase(StoreQueue* storeq,
+  FileStoreBase(ScribeContext& context, StoreQueue* storeq,
                 const std::string& category,
                 const std::string &type, bool multi_category);
   ~FileStoreBase();
@@ -194,7 +196,7 @@ class FileStoreBase : public Store {
 class FileStore : public FileStoreBase {
 
  public:
-  FileStore(StoreQueue* storeq, const std::string& category,
+  FileStore(ScribeContext& context, StoreQueue* storeq, const std::string& category,
             bool multi_category, bool is_buffer_file = false);
   ~FileStore();
 
@@ -240,7 +242,7 @@ class FileStore : public FileStoreBase {
  */
 class ThriftFileStore : public FileStoreBase {
  public:
-  ThriftFileStore(StoreQueue* storeq,
+  ThriftFileStore(ScribeContext& context, StoreQueue* storeq,
                   const std::string& category,
                   bool multi_category);
   ~ThriftFileStore();
@@ -283,7 +285,7 @@ class ThriftFileStore : public FileStoreBase {
 class BufferStore : public Store {
 
  public:
-  BufferStore(StoreQueue* storeq,
+  BufferStore(ScribeContext& context, StoreQueue* storeq,
               const std::string& category,
               bool multi_category);
   ~BufferStore();
@@ -368,13 +370,13 @@ class BufferStore : public Store {
 
 /*
  * This store sends messages to another scribe server.
- * This class is really just an adapter to the global
- * connection pool g_connPool.
+ * This class is really just an adapter to the connection
+ * pool of its server context.
  */
 class NetworkStore : public Store {
 
  public:
-  NetworkStore(StoreQueue* storeq,
+  NetworkStore(ScribeContext& context, StoreQueue* storeq,
                const std::string& category,
                bool multi_category);
   ~NetworkStore();
@@ -429,7 +431,7 @@ class NetworkStore : public Store {
 class BucketStore : public Store {
 
  public:
-  BucketStore(StoreQueue* storeq,
+  BucketStore(ScribeContext& context, StoreQueue* storeq,
               const std::string& category,
               bool multi_category);
   ~BucketStore();
@@ -481,7 +483,7 @@ class BucketStore : public Store {
 class NullStore : public Store {
 
  public:
-  NullStore(StoreQueue* storeq,
+  NullStore(ScribeContext& context, StoreQueue* storeq,
             const std::string& category,
             bool multi_category);
   virtual ~NullStore();
@@ -517,7 +519,7 @@ class NullStore : public Store {
  */
 class MultiStore : public Store {
  public:
-  MultiStore(StoreQueue* storeq,
+  MultiStore(ScribeContext& context, StoreQueue* storeq,
              const std::string& category,
              bool multi_category);
   ~MultiStore();
@@ -561,10 +563,10 @@ class MultiStore : public Store {
  */
 class CategoryStore : public Store {
  public:
-  CategoryStore(StoreQueue* storeq,
+  CategoryStore(ScribeContext& context, StoreQueue* storeq,
                 const std::string& category,
                 bool multi_category);
-  CategoryStore(StoreQueue* storeq,
+  CategoryStore(ScribeContext& context, StoreQueue* storeq,
                 const std::string& category,
                 const std::string& name, bool multiCategory);
   ~CategoryStore();
@@ -598,7 +600,7 @@ class CategoryStore : public Store {
  */
 class MultiFileStore : public CategoryStore {
  public:
-  MultiFileStore(StoreQueue* storeq,
+  MultiFileStore(ScribeContext& context, StoreQueue* storeq,
                 const std::string& category,
                 bool multi_category);
   ~MultiFileStore();
@@ -617,7 +619,7 @@ class MultiFileStore : public CategoryStore {
  */
 class ThriftMultiFileStore : public CategoryStore {
  public:
-  ThriftMultiFileStore(StoreQueue* storeq,
+  ThriftMultiFileStore(ScribeContext& context, StoreQueue* storeq,
                        const std::string& category,
                        bool multi_category);
   ~ThriftMultiFileStore();

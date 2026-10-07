@@ -1,3 +1,4 @@
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,9 +23,11 @@
 
 #include "conf.h"
 
+class ScribeContext;
+
 // functional types for network dynamic updater validation and getHost calls
 typedef bool (*NetworkIsConfigValidFunc)(const std::string& category, const StoreConf* pconf);
-typedef bool (*NetworkGetHost)(const std::string& category, const StoreConf* pconf, std::string& host, uint32_t& port);
+typedef bool (*NetworkGetHost)(ScribeContext& context, const std::string& category, const StoreConf* pconf, std::string& host, uint32_t& port);
 
 struct NetworkDynamicConfigMod {
   const char* name;

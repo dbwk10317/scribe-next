@@ -1,5 +1,6 @@
 // scribe-next modification: C++17 cleanup; weak parent link breaks the conf ownership cycle.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -64,11 +65,15 @@ class StoreConf {
   // Reads configuration from a file and throws an exception if it fails.
   void parseConfig(const std::string& filename);
   void setParent(pStoreConf parent);
+  // Sets the root config used as the last type::key fallback on this tree.
+  void setRoot(const StoreConf* root);
  private:
   string_map_t values;
   store_conf_map_t stores;
   // Store ownership keeps live ancestors available; configs must not own upward.
   std::weak_ptr<StoreConf> parent;
+  // The server's root config (scribeHandler sets it); none means no fallback.
+  const StoreConf* root = nullptr;
   static bool parseStore(/*in,out*/ std::queue<std::string>& raw_config,
                          /*out*/ StoreConf* parsed_config);
   static std::string trimString(const std::string& str);
