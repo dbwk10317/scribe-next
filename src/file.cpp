@@ -1,4 +1,5 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
+// scribe-next modification: truncate spool replacement without app so partial replay keeps its remainder.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,7 +84,8 @@ bool StdFile::openWrite() {
 
 bool StdFile::openTruncate() {
   // open an existing file for write and truncate its contents
-  ios_base::openmode mode = fstream::out | fstream::app | fstream::trunc;
+  // scribe-next modification: app|trunc cannot open; overwrite for buffer replay.
+  ios_base::openmode mode = fstream::out | fstream::trunc;
   return open(mode);
 }
 

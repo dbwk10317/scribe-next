@@ -2,6 +2,7 @@
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
 // scribe-next modification: retain default-port initialization and bounded legacy bucket checks.
 // scribe-next modification: guard absent child/model stores before dereferencing them.
+// scribe-next modification: close the previous pooled destination and replace list servers on reopen.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1851,15 +1852,16 @@ void NetworkStore::periodicCheck() {
       LOG_OPER("[%s] dynamic configred network store destination changed. old value:<%s:%lu>, new value:<%s:%lu>",
                categoryHandled.c_str(), remoteHost.c_str(), remotePort,
                host.c_str(), (long unsigned)port);
+      close();
       remoteHost = host;
       remotePort = port;
-      close();
     }
   }
 }
 
 bool NetworkStore::loadFromList(const std::string &list, unsigned long defaultPort,
                                 server_vector_t& _return) {
+  _return.clear();
   vector<string> strs;
   boost::split(strs, list, boost::is_any_of("\t "));
   vector<string> split;

@@ -188,7 +188,7 @@ class StoreReviewContracts:
                 peer.state("CLOSE", 1, result=True, opened=(False, False), sent=9)
                 peer.eof(first)
 
-    def test_review_store_same_service_list_shares_and_reopen_accumulates_servers(self):
+    def test_review_store_same_service_list_shares_and_reopen_replaces_server_list(self):
         with self.store_review_peer("same-list") as peer:
             peer.command("OPEN 0")
             connection = peer.accept()
@@ -237,7 +237,7 @@ class StoreReviewContracts:
                     peer.command(f"OPEN {index}")
                     peer.state("OPEN", index, result=False, opened=(False, False), sent=0)
 
-    def test_review_store_dynamic_update_to_absent_key_retains_previous_pool_reference(self):
+    def test_review_store_dynamic_update_closes_previous_pool_owner_only(self):
         with self.store_review_peer("dynamic") as peer:
             peer.command("OPEN 0")
             first = peer.accept()
@@ -256,6 +256,7 @@ class StoreReviewContracts:
             peer.state("SEND", 0, result=True, opened=(True, True), sent=6, size=3)
             peer.command("CLOSE 1")
             peer.state("CLOSE", 1, result=True, opened=(True, False), sent=6)
+            peer.eof(first)
             peer.command("CLOSE 0")
             peer.state("CLOSE", 0, result=True, opened=(False, False), sent=6)
             peer.eof(second)
@@ -278,7 +279,7 @@ class StoreReviewContracts:
                 peer.response(connection)
                 peer.state("SEND", 1, result=True, opened=(False, True), sent=6, size=3)
 
-    def test_review_store_dynamic_update_closes_destination_owner_then_same_peer_reconnects(self):
+    def test_review_store_dynamic_update_keeps_owner_already_at_new_destination(self):
         with self.store_review_peer("dynamic-owned") as peer:
             peer.command("OPEN 0")
             first = peer.accept()
@@ -288,30 +289,20 @@ class StoreReviewContracts:
             peer.state("OPEN", 1, result=True, opened=(True, True), sent=0)
             peer.command("CHECK 0")
             peer.state("CHECK", 0, result=True, opened=(False, True), sent=0)
-            peer.eof(second)
-            # The other owner still believes it is open. Its first send finds
-            # the erased pool key and fails without transmitting a frame.
-            peer.command("SEND 1 abc")
-            peer.state("SEND", 1, result=False, opened=(False, False), sent=0, size=3)
-            peer.no_pending_connections()
-            self.assertFalse(select.select([peer.other], [], [], 0)[0],
-                             "missing pool key unexpectedly connected before retry")
-            peer.command("SEND 1 abc")
-            reconnected = peer.accept(peer.other)
-            peer.request(reconnected, "abc")
-            peer.response(reconnected)
-            peer.state("SEND", 1, result=True, opened=(False, True), sent=3, size=3)
-            self.relay_request(peer, "binary", reconnected, index=0)
-            peer.response(reconnected)
-            peer.state("SEND", 0, result=True, opened=(True, True), sent=6, size=3)
+            peer.eof(first)
+            for index in (1, 0):
+                self.relay_request(peer, "abc", second, index=index)
+                peer.response(second)
+                peer.state("SEND", index, result=True, opened=(bool(index == 0), True),
+                           sent=3 if index == 1 else 6, size=3)
             peer.command("CLOSE 0")
             peer.state("CLOSE", 0, result=True, opened=(False, True), sent=6)
-            self.relay_request(peer, "binary", reconnected, index=1)
-            peer.response(reconnected)
+            self.relay_request(peer, "binary", second, index=1)
+            peer.response(second)
             peer.state("SEND", 1, result=True, opened=(False, True), sent=9, size=3)
             peer.command("CLOSE 1")
             peer.state("CLOSE", 1, result=True, opened=(False, False), sent=9)
-            peer.eof(reconnected)
+            peer.eof(second)
 
     def test_review_store_failed_dynamic_refresh_and_copy_retain_live_endpoint(self):
         for pooled in (False, True):

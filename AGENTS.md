@@ -19,6 +19,8 @@
 최신 방침은 구·신 송수신 양방향 혼용과 기존 로그 소비 client의 계약을 우선한다.
 로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회를 바꾸는 semantic 수정은 원본의 정의된 동작으로 되돌렸다.
 그 버그는 문서에 남기며 새 수정 옵션을 추가하지 않는다. UB/crash 방지는 유지하되 미정의 결과 자체를 재현하지 않는다.
+예외로 2026-10-07에 분배·파일 형식·전달 결과를 바꾸지 않는다고 확인한 세 가지(동적 목적지의 pooled close 순서,
+service_list 재연결 후보 누적, StdFile partial replay 보존)만 [정책](docs/legacy-compatibility-policy.md#다시-고친-동작-2026-10-07)대로 다시 적용했다.
 
 - 두 IDL의 method, field ID, enum, requiredness, namespace, 예외와 fb303 API를 유지한다
 - framed binary 및 server·relay·mapping의 명시적 strictRead=false/strictWrite=false를 유지한다

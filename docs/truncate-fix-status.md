@@ -1,6 +1,7 @@
 # StdFile truncate 열기 수정과 부분 replay 보존
 
-2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 현재 기본 동작은 [원본 계약 우선 정책](legacy-compatibility-policy.md)을 따르며 route/byte/format/delivery/monitoring 변경은 되돌린다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+2026-10-06 정책 변경: 아래 승인·수정·측정은 당시 이력이다. 이 out|trunc 수정은 PR #25에서 원본 out|app|trunc로 되돌렸다. 과거 raw 결과는 현재 검증으로 세지 않는다.
+2026-10-07 다시 적용: 같은 out|trunc 수정을 재적용했다. 부분 replay의 나머지는 spool에 다시 쓰여 재시도된다. 근거와 관찰 차이는 [원본 계약 우선 정책](legacy-compatibility-policy.md#다시-고친-동작-2026-10-07)에 있다.
 
 2026-10-04 · base/main `ffc73ee268a8a3430e57464f460bdf3556c983bb` · 아래 측정은 당시 미commit·미push 작업 트리 기준. 이후 구현 `8baf6f3`·PR #1을 거쳐 main `24692d6`에 반영
 

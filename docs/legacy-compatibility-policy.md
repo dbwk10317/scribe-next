@@ -12,10 +12,8 @@
 | BucketStore copy | remove_key/bucket_range를 복사하지 않는다. key_range clone은 원본 bucket0 routing·key 포함 bytes를 유지한다 |
 | ThriftFileStore copy | simple source도 clone은 default framed transport다. 직접 설정한 simple store는 raw다. 기존 framed suffix를 보존하고 다음 clone suffix도 framed로 기록한다 |
 | NetworkStore copy | 원본 endpoint/service flags 등 원래 fields만 복사한다. list/options/cache/ignore-error/dynamic updater를 새로 상속하지 않아 template category의 전송 실패·warning 또는 모델 endpoint 사용이 남는다 |
-| service_list pool/reopen | 빈 pool key 공유 및 후보 누적을 보존한다. 서로 다른 list가 첫 연결을 공유하거나 재연결 후보 가중치가 바뀔 수 있다 |
-| dynamic pooled endpoint 변경 | 원본은 새 endpoint를 대입한 뒤 해당 key를 close한다. 다른 owner의 refcount/연결을 줄이거나 missing-key 진단을 남길 수 있다. shared_ptr 객체 관리와 원본 pool-key 선택은 구분한다 |
+| service_list pool key | 빈 pool key 공유를 보존한다. 서로 다른 list가 첫 연결을 공유할 수 있다 |
 | empty-only queue | payload byte 합계0이면 periodic/shutdown에 전달하지 않는다. ACK/received에도 output/lost0일 수 있다. nonempty가 섞인 batch와 빈 Log 요청은 별개다 |
-| StdFile partial replay | out|app|trunc의 정의된 open 실패를 유지한다. primary가 prefix를 처리한 뒤 남은 suffix를 교체하지 못하면 기존 loss 집계·spool 삭제가 발생한다. 보존·exactly-once·durable ACK를 약속하지 않는다 |
 | extra bucket 설정 | 원본 literal pointer의 길이 안 suffix 검사만 안전하게 유지한다. bucketN+1을 새로 거절하지 않는다. literal 밖 offset은 검사하지 않아 UB를 만들지 않는다 |
 
 copy의 초기 mapping 조회를 제거하므로 P1의 resolve-on-open flag도 필요 없다.
@@ -23,6 +21,23 @@ copy의 초기 mapping 조회를 제거하므로 P1의 resolve-on-open flag도 �
 변환·삭제하지 않는다. 이미 이전 수정본이 기록한 raw clone 파일이 있다면 이번
 되돌림이 그 파일을 framed로 바꾸지 않으므로 reader/rollback 전에 파일 세대를
 확인해야 한다. 같은 directory에 서로 다른 형식이 있을 수 있다.
+
+## 다시 고친 동작 (2026-10-07)
+
+PR #25가 되돌린 수정 중 로그 분배·파일 형식·전달 결과를 바꾸지 않는다고 리뷰로
+확인한 세 가지만 다시 적용했다. 위 표의 나머지 동작은 원본 그대로다.
+
+| 경로 | 수정과 관찰 차이 |
+| --- | --- |
+| dynamic pooled endpoint 변경 | `periodicCheck`가 새 endpoint 대입 전에 close해 이전 key를 해제한다. use_conn_pool=yes에서 원본은 새 key를 해제했다. 이전 연결 refcount가 남아 연결이 계속 열려 있고, 새 key를 이미 쓰던 다른 store가 있으면 그 연결을 닫아 그 store의 다음 batch1회가 실패·requeue로 집계됐다. 없으면 LOGIC ERROR 진단만 남았다. 이제 이전 연결만 닫히고 그 일시 실패가 없다. routing·파일 내용·전달은 같다. unpooled 경로는 원래 맞아 차이가 없다 |
+| service_list 재연결 | `loadFromList`가 parse 전에 server 목록을 비운다. 원본은 재연결마다 전체 목록을 덧붙여 uptime에 따라 메모리가 늘고 죽은 server를 open마다 K번(각 timeout) 시도해 failover가 점점 느려졌다. 모든 entry가 같이 중복되므로 K·N개 균등 shuffle의 server 선택 확률은 1/N으로 같다. service 기반 경로는 자체 cache로 갱신하며 바뀌지 않는다 |
+| StdFile partial replay | `openTruncate`가 out\|trunc로 연다(app 제거). file primary가 replay batch 일부만 받으면 원본 replaceOldest는 항상 실패해 나머지를 lost로 세고 spool 파일을 지웠다. 이제 나머지를 같은 frame 형식으로 spool에 다시 쓰고 다음 check에 재시도한다. 전체 거절은 원래 계속 재시도했으므로 부분 실패도 같아진다. network primary는 batch를 all-or-nothing으로 보내 이 경로에 오지 않는다. spool 형식은 같다 |
+
+StdFile의 관찰 차이: `lost`가 남은 entry 수만큼 줄고(대표 시험2→0, `bytes lost`는
+정상 frame에서 0 그대로) spool 파일이 삭제되지 않고 남아 이후 전달된다.
+add_newlines=1이면 기존 writer 규칙대로 다시 쓴 나머지에 LF가 한 번 더 붙는다.
+직접 호출한 openTruncate는 없는 파일도 만든다. FileStore는 findOldestFile로 먼저
+확인한다. 보존·exactly-once·durable ACK·원자적 교체를 새로 약속하지 않는다.
 
 ## 유지하는 안전·이식 경계
 
