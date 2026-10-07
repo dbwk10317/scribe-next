@@ -251,6 +251,59 @@ ldd "$(command -v scribed)"
 Boost 라이브러리(`libboost_*`)는 보이지 않아야 합니다.
 실행 파일에 모든 라이브러리를 넣는 빌드가 아니므로, 실행할 때도 이 라이브러리들을 찾을 수 있어야 합니다.
 
+#### 6. 삭제
+
+위 순서로 설치한 것을 모두 지우는 방법입니다.
+빌드할 때 쓴 폴더(`$SCRIBE_SRC`, `~/scribe-build`)의 `make uninstall`과 Thrift의 설치 목록(`install_manifest.txt`)을 쓰므로, 그 폴더가 남아 있어야 합니다.
+`scribed`를 먼저 멈춘 뒤([실행의 정지](#4-정지)) 실행합니다.
+
+```sh
+cd "$SCRIBE_SRC" && sudo make uninstall
+SCRIBE_PY="$(cd / && python3 -c 'import scribe, os; print(os.path.dirname(scribe.__file__))')"
+sudo rm -rf "$SCRIBE_PY" "$(dirname "$SCRIBE_PY")"/scribe-2.0-*.egg-info
+cd ~/scribe-build/fb303-build && sudo make uninstall
+cd ~/scribe-build && sudo xargs rm -f < thrift-build/install_manifest.txt
+sudo rm -rf /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303 /usr/local/share/scribe-next
+sudo rmdir --ignore-fail-on-non-empty /usr/local/lib/cmake /usr/local/lib/pkgconfig
+sudo rm -f /etc/ld.so.conf.d/scribe-local.conf
+sudo ldconfig
+rm -rf ~/scribe-build
+```
+
+- 1~3번째 줄은 `scribed`와 정적 RPC 라이브러리, 그리고 시스템 Python에 들어간 `scribe` package와 그 metadata를 지웁니다.
+  - `make uninstall`은 Python package를 지우지 않으므로 경로를 찾아 직접 지웁니다.
+- 4~7번째 줄은 fb303, Thrift, 그리고 그 둘이 남긴 빈 폴더와 patch 기록을 지웁니다.
+  - `install_manifest.txt`는 파일만 적어 두므로 header 폴더는 따로 지웁니다.
+- `scribe-local.conf`는 Rocky(1-B)에서만 만들었습니다. Ubuntu에서는 없는 파일이라 그 줄은 아무것도 하지 않습니다.
+- 1단계의 배포판 패키지(빌드 도구, libevent, Boost header)는 다른 소프트웨어도 쓸 수 있어 지우지 않습니다.
+
+빌드 폴더를 이미 지웠다면 설치된 파일을 직접 지웁니다. 위 설치가 `/usr/local`에 만든 것은 이것이 전부입니다.
+
+```sh
+sudo rm -rf /usr/local/bin/scribed /usr/local/bin/thrift \
+  /usr/local/lib/libscribe.a /usr/local/lib/libdynamicbucketupdater.a /usr/local/lib/libfb303.a \
+  /usr/local/lib/libthrift.so /usr/local/lib/libthrift.so.0.25.0 \
+  /usr/local/lib/libthriftnb.so /usr/local/lib/libthriftnb.so.0.25.0 \
+  /usr/local/lib/pkgconfig/thrift.pc /usr/local/lib/pkgconfig/thrift-nb.pc \
+  /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303 /usr/local/share/scribe-next
+```
+
+Python package는 위와 같이 `SCRIBE_PY`로 찾아 지웁니다.
+
+저장소 폴더의 빌드 산출물은 `make distclean`으로 다 지워지지 않습니다(`configure`, `Makefile.in` 등이 남습니다).
+`sudo make install`이 root 소유로 만든 `lib/py/scribe.egg-info`도 있으므로, 저장소 폴더에서 다음으로 지웁니다.
+commit하지 않은 파일도 함께 지워지니, 먼저 `git clean -ndx`로 목록을 확인하세요.
+
+```sh
+sudo git clean -fdx
+```
+
+[실행](#실행)에서 만든 `$HOME/scribe-demo.conf`와 `$HOME/scribe-data`는 설치와 무관한 본인 파일이므로 필요 없으면 직접 지웁니다.
+
+지운 뒤 `command -v scribed`는 아무것도 출력하지 않고, `python3 -c 'import scribe'`는 `ModuleNotFoundError`로 끝나야 합니다.
+2026-10-07에 Rocky Linux 9에서 1-B~5단계를 그대로 실행한 뒤 첫 번째 블록으로 지웠을 때, `/usr/local`과 시스템 Python은 설치 전과 같아졌습니다.
+Ubuntu 24.04에서는 삭제를 따로 실행하지 않았습니다.
+
 ### Docker 방식
 
 원본 Scribe에는 없던 방법입니다.
@@ -344,6 +397,20 @@ docker logs scribe
 - 기반 이미지 `rockylinux:9`를 digest로 고정하지 않았습니다.
 - 보안 강화 안내가 아닙니다.
   - Scribe에는 인증·TLS가 없어 포트에 닿는 모든 client의 요청을 받으므로, 신뢰할 수 있는 네트워크에만 여세요.
+
+#### 삭제
+
+컨테이너, 이미지, 로그 폴더를 지웁니다. 로그 폴더를 만든 곳에서 실행합니다.
+
+```sh
+docker rm -f scribe
+docker rmi scribe-next:local
+sudo rm -rf scribe-logs
+```
+
+- `docker rm -f`는 실행 중인 컨테이너를 SIGKILL로 끝내므로, 큐의 로그를 지키려면 먼저 [정지](#정지)대로 `shutdown`을 보내세요.
+- `scribe-logs`의 파일은 컨테이너 사용자(uid 999) 소유라 `sudo`가 필요할 수 있습니다.
+- 빌드 중간 layer는 `docker builder prune`으로 지웁니다. 다른 이미지의 cache도 함께 지워집니다.
 
 ## 실행
 
