@@ -1,0 +1,11 @@
+# Both lanes in one image: modern /usr/local/bin/scribed (scribe-next-modern:rocky9)
+# and the old closure /old-lane from Dockerfile.old. Build context can be empty.
+ARG OLD_IMAGE=scribe-next-old-build:xenial
+FROM ${OLD_IMAGE} AS old
+
+FROM scribe-next-modern:rocky9
+COPY --from=old /old-lane /old-lane
+RUN chmod -R a+rX /old-lane \
+ && ! LD_LIBRARY_PATH=/old-lane/lib ldd /old-lane/bin/scribed | grep 'not found' \
+ && LD_LIBRARY_PATH=/old-lane/lib /old-lane/bin/scribed --help \
+ && /usr/local/bin/scribed --help

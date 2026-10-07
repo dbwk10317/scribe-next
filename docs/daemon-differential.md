@@ -602,3 +602,80 @@ scribed(source fa0c604, SHA256
 network_check를 대체했고 6회 모두 위 phase/counter/status와 같았다(각 약11초).
 이것은 old/new 비교가 아니다. Thrift0.9 old binary와 uid65534/lo-only 격리
 환경의 실제 game-profile old/new 실행은 아직 하지 않았다.
+
+## Docker 재현 lane
+
+2026-10-07 · base main `e012376`. 앞 절들의 old binary는 서버에서 손으로 준비해 저장소에
+recipe가 없었다. [tools/old-lane](../tools/old-lane/README.md)에 다시 만들 수 있는
+recipe를 두었다. C++/IDL/harness 기대값과 격리 guard는 바꾸지 않았다.
+
+- `Dockerfile.old`: `ubuntu:16.04`(digest `1f1a2d56de1d…`)와 기본 archive/security
+  source. old-releases에는 xenial이 없다(404). GCC5.4.0-6ubuntu1~16.04.12,
+  Boost1.58.0+dfsg-5ubuntu3.1, libevent2.0.21, OpenSSL1.0.2g, autoconf2.69/automake1.15/
+  libtool2.4.6, bison3.0.4다. 공식 thrift-0.9.0.tar.gz는 `ADD --checksum`으로
+  SHA256 `71d129c49a2616069d9e7a93268cdba59518f77b3c41e763e09537cb3f3f0aac`를 검사한다.
+  위 file-stores 절의 tar와 같은 값이며 Apache md5/sha1도 일치했다. C++ library/compiler만
+  `/opt/thrift-0.9.0`, 같은 tar의 contrib/fb303은 `/opt/fb303-0.9.0`에 설치한다
+- 원본 `fcd294f`(git archive) 변경은 `scribe-autotools.patch` 하나다. configure.ac의
+  `AM_INIT_AUTOMAKE([foreign -Wall])`과 acinclude.m4 FB_INITIALIZE의 두 번째 호출을
+  `AM_INIT_AUTOMAKE([foreign -Wall 1.9.5 no-define])` 한 호출로 합친다. 현재 main의
+  두 줄과 같다
+- source 대신 configure 변수 세 개를 쓴다. fb303 `CPPFLAGS=-I/opt/thrift-0.9.0/include`는
+  생성 코드의 `<thrift/...>` include 때문이다. Scribe `CPPFLAGS='-DHAVE_INTTYPES_H
+  -DHAVE_NETINET_IN_H'`는 Thrift0.9.0 header가 호출자 정의를 요구해서다.
+  `LIBS='-lboost_system -lboost_filesystem'`은 src/Makefile.am이 Boost를 object 앞
+  AM_LDFLAGS에 두어 Ubuntu 기본 `--as-needed`가 버리기 때문이다. 빠지면 각각
+  compile/link가 실패했다
+- runtime closure: `/old-lane/bin/scribed`와 `/old-lane/lib`의 libthrift-0.9.0,
+  libthriftnb-0.9.0, libboost_system/filesystem1.58.0, libevent-2.0.so.5,
+  libssl/libcrypto1.0.0 7개. glibc·libstdc++·libgcc_s는 runtime image 것을 쓴다.
+  ldd·`--help`·SHA256·package 버전은 `/old-lane/manifest.txt`에 남긴다. 이번 old scribed
+  SHA256 `4618891b0881588444bfd2169115e89e32b1d3bda81feddc89a49da3f6d315a0`는 서버 old
+  binary `929d9bf5…`와 다르다. 같은 binary 재현이 아니라 같은 조건의 새 build다
+- `Dockerfile.runtime`: `FROM scribe-next-modern:rocky9`에 `COPY --from` old image의
+  `/old-lane`을 더한다. modern image는 저장소 recipe 밖에서 main을 bootstrap/make install한
+  것이다(`/usr/local/bin/scribed` SHA256 `9f6aabac69b3e11d2fef77d3ae273d6770f90d8b2f4813dfaee493ee78a8c9dc`,
+  Thrift0.25, python3 3.9.25). build 중 old ldd에 `not found`가 없고 두 `--help`가
+  exit0인지 확인한다. old lane은 Rocky의 glibc2.34-275.el9_8/libstdc++11.5.0 위에서 돈다.
+  앞 서버의 Ubuntu16 전체 userland와 다르다
+
+image는 `scribe-next-old-build:xenial`과 `scribe-next-differential:latest`다.
+[run_differential.sh](../tools/old-lane/run_differential.sh)는 새 0777 출력 폴더에
+targets.json(old `/old-lane/bin/scribed`+`LD_LIBRARY_PATH=/old-lane/lib`, modern
+`/usr/local/bin/scribed`+`{}`)을 쓰고 case마다 새 container를 띄운다.
+
+```sh
+docker run --rm --network none --user 65534:65534 --cap-drop ALL --security-opt no-new-privileges \
+  --cpus 2 --memory 2g --pids-limit 512 \
+  -v "$CHECKOUT:/validation-input:ro" -v "$OUT:/out" scribe-next-differential:latest \
+  python3 /validation-input/tools/daemon_differential.py --run-isolated-daemons \
+  --targets /out/targets.json --output /out/<case> --case <case>
+```
+
+### 2026-10-07 WSL 결과
+
+WSL2 Rocky9.8(kernel 6.18.33.2-microsoft-standard-WSL2, 20 CPU), Docker 29.8.2에서
+main `e012376` export로 각 case를 1회 실행했다. 전체 약1분54초.
+
+| case | 결과 |
+| --- | --- |
+| file | PASS |
+| stores | PASS |
+| rotation | PASS |
+| restart | PASS |
+| spool | PASS |
+| mixed-spool | PASS (old→modern, modern→old) |
+| file-stores | PASS |
+| fb303 | PASS |
+| mapping | PASS |
+| game-profile | PASS (파일 날짜 2026-10-07) |
+
+모든 comparison.json이 passed이고 container exit0이다. 각 start.json의 lane command,
+uid65534와 interface `lo`만을 확인했다. getVersion은 양쪽 2.2다. raw는 WSL의
+`~/old-lane/results/run-20261007T015544Z/`(약3.9MB)에 두고 저장소에 넣지 않는다.
+
+미검증: performance case, offline unittest, 반복 실행과 timing 여유, HDFS.
+앞 서버와 달리 checkout(ro)/output(rw) mount가 있고 PIDs512이며 swap을 따로 제한하지
+않았다. 운영 container 보존 확인은 해당 없다. modern image 자체의 clean build와
+Ubuntu16 userland 위 old 실행은 이번 범위가 아니다. 한 환경 1회 PASS를 전체 호환성,
+운영 준비나 성능 결론으로 확대하지 않는다.

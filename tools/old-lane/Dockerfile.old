@@ -1,0 +1,65 @@
+# Old lane: public upstream Scribe fcd294f + Thrift/fb303 0.9.0 on Ubuntu 16.04
+# (GCC 5.4, Boost 1.58, libevent 2.0, OpenSSL 1.0.2). Output: /old-lane/{bin,lib,manifest.txt}.
+# Context: this file, scribe-autotools.patch and scribe-fcd294f.tar from
+#   git archive --prefix=scribe-fcd294f/ fcd294faffd1e88af1643a3a8c2359c41713f7c2 -o scribe-fcd294f.tar
+FROM ubuntu:16.04
+
+# Default sources: on 2026-10-07 xenial was still on archive/security.ubuntu.com
+# (old-releases.ubuntu.com/ubuntu/dists/xenial returned 404).
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential autoconf automake libtool pkg-config bison flex \
+      libboost-system-dev libboost-filesystem-dev libboost-thread-dev \
+      libboost-program-options-dev libboost-test-dev \
+      libevent-dev libssl-dev python curl ca-certificates git \
+ && rm -rf /var/lib/apt/lists/*
+
+# Official Apache tarball; SHA256 observed 2026-10-07 (matches the published md5/sha1).
+ADD --checksum=sha256:71d129c49a2616069d9e7a93268cdba59518f77b3c41e763e09537cb3f3f0aac \
+    https://archive.apache.org/dist/thrift/0.9.0/thrift-0.9.0.tar.gz /src/
+RUN cd /src && tar xzf thrift-0.9.0.tar.gz && cd thrift-0.9.0 \
+ && ./configure --prefix=/opt/thrift-0.9.0 --with-cpp --without-tests \
+      --without-qt4 --without-c_glib --without-csharp --without-java --without-erlang \
+      --without-python --without-perl --without-php --without-php_extension \
+      --without-ruby --without-haskell --without-go --without-d \
+ && make -j"$(nproc)" && make install
+
+# fb303 0.9.0 only adds <prefix>/include/thrift, but its generated code includes <thrift/...>.
+RUN cd /src/thrift-0.9.0/contrib/fb303 \
+ && ./bootstrap.sh --prefix=/opt/fb303-0.9.0 --with-thriftpath=/opt/thrift-0.9.0 --with-boost=/usr \
+      CPPFLAGS=-I/opt/thrift-0.9.0/include \
+ && make && make install
+
+# Configure variables only (via the environment, since bootstrap.sh splits $*):
+# - Thrift 0.9.0 headers need the caller to define HAVE_INTTYPES_H/HAVE_NETINET_IN_H.
+# - src/Makefile.am puts Boost in AM_LDFLAGS before the objects; Ubuntu's default
+#   --as-needed then drops them, so LIBS repeats them at the end of the link line.
+COPY scribe-fcd294f.tar scribe-autotools.patch /src/
+RUN cd /src && tar xf scribe-fcd294f.tar && cd scribe-fcd294f \
+ && patch -p1 < ../scribe-autotools.patch \
+ && CPPFLAGS='-DHAVE_INTTYPES_H -DHAVE_NETINET_IN_H' LIBS='-lboost_system -lboost_filesystem' \
+    ./bootstrap.sh --with-thriftpath=/opt/thrift-0.9.0 --with-fb303path=/opt/fb303-0.9.0 \
+      --with-boost=/usr --with-boost-system=boost_system --with-boost-filesystem=boost_filesystem \
+ && make -j"$(nproc)"
+
+# Runtime closure: scribed plus every ldd-resolved library except glibc, libstdc++ and libgcc_s,
+# which the Rocky 9 runtime provides (newer, backward compatible).
+RUN set -e; mkdir -p /old-lane/bin /old-lane/lib; cd /src/scribe-fcd294f \
+ && cp src/scribed /old-lane/bin/ \
+ && export LD_LIBRARY_PATH=/opt/thrift-0.9.0/lib:/opt/fb303-0.9.0/lib \
+ && ldd /old-lane/bin/scribed | awk '$3 ~ /^\// {print $3}' \
+      | grep -Ev '/(libc|libm|libpthread|libdl|librt|ld-linux-x86-64|libstdc\+\+|libgcc_s)\.so' \
+      | xargs -I{} cp -L {} /old-lane/lib/ \
+ && unset LD_LIBRARY_PATH \
+ && { echo "# upstream fcd294faffd1e88af1643a3a8c2359c41713f7c2 + scribe-autotools.patch"; \
+      sha256sum /src/thrift-0.9.0.tar.gz /src/scribe-fcd294f.tar /src/scribe-autotools.patch; \
+      echo; echo "# /old-lane sha256"; cd /old-lane && sha256sum bin/* lib/*; \
+      echo; echo "# ldd (LD_LIBRARY_PATH=/old-lane/lib)"; LD_LIBRARY_PATH=/old-lane/lib ldd bin/scribed; \
+      echo; echo "# scribed --help"; LD_LIBRARY_PATH=/old-lane/lib bin/scribed --help 2>&1; \
+      echo; echo "# packages"; cat /etc/lsb-release; gcc --version | head -1; \
+      dpkg-query -W gcc-5 g++-5 libstdc++6 libc6 autoconf automake libtool bison flex \
+        libboost1.58-dev libboost-system1.58.0 libboost-filesystem1.58.0 \
+        libevent-2.0-5 libssl1.0.0 python2.7; \
+    } > /old-lane/manifest.txt \
+ && chmod -R a+rX /old-lane \
+ && cat /old-lane/manifest.txt

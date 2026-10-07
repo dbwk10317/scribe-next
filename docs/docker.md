@@ -1,0 +1,97 @@
+# Docker 이미지
+
+로컬 checkout을 build context로 `scribed` 실행 이미지를 만든다. 기본 env_default·비-HDFS·static RPC
+lane이며 [Dockerfile](../Dockerfile)의 build 단계는 [빌드 안내](linux-build-mvp.md)와 같은 Thrift 0.25.0,
+[patch한 fb303](fb303-counter-safety.md), 기존 autotools 경로를 사용한다.
+
+## 빌드
+
+checkout root에서 실행한다. Thrift archive를 내려받아 SHA256을 검사하므로 network가 필요하다.
+
+```sh
+docker build -t scribe-next:local .
+```
+
+Windows checkout(`core.autocrlf=true`)의 CRLF는 build 단계에서 LF로 바꾼다. 작업 tree를 고치지 않는다.
+
+## 실행
+
+```sh
+mkdir -p scribe-logs && chmod 0777 scribe-logs   # 또는 컨테이너 uid에 chown
+docker run -d --name scribe -p 1463:1463 \
+  -v "$PWD/scribe-logs:/var/log/scribed" \
+  -v "$PWD/my-scribe.conf:/etc/scribe/scribe.conf:ro" \
+  scribe-next:local
+```
+
+- 설정 mount는 선택이다. 없으면 [examples/docker.conf](../examples/docker.conf)를 쓴다.
+  모든 category를 `/var/log/scribed/<category>/<category>-YYYY-MM-DD_00000`에 쓰고 `<category>_current` symlink를 둔다.
+- 컨테이너는 비root `scribe` system 사용자로 실행된다. uid는 `docker run --rm --entrypoint id scribe-next:local`로 확인한다.
+  bind mount한 log 디렉터리는 그 uid가 쓸 수 있어야 하고 mount한 설정은 읽을 수 있어야 한다. 이름 있는 volume은 소유권이 자동으로 맞는다.
+  bind mount에 생긴 log 파일은 그 uid 소유이므로 host에서 지우려면 같은 uid나 root가 필요하다.
+- 설정의 `port`가 CLI `-p`보다 우선한다(원본 동작). port를 바꾸면 설정과 `docker run -p`를 함께 바꾼다.
+- 파일 날짜와 daily rotation은 컨테이너 local time(기본 UTC)을 따른다.
+
+## 동작 확인
+
+`docker logs scribe`에 `Starting scribe server on port 1463`과 `STATUS: ALIVE`가 보여야 한다.
+시험 메시지는 checkout root에서 기존 harness encoder로 보낸다(Python 3 표준 라이브러리만 사용).
+
+```sh
+python3 - <<'PY'
+import socket, struct, sys
+sys.path.insert(0, 'tools')
+from daemon_differential import framed, log_fields, parse_reply, recv_exact
+with socket.create_connection(('127.0.0.1', 1463)) as s:
+    s.sendall(framed(b'Log', 1, log_fields([(b'demo', b'hello docker\n')])))
+    body = recv_exact(s, struct.unpack('>I', recv_exact(s, 4))[0])
+    print(parse_reply(body, b'Log', 1))   # 0 = OK, 1 = TRY_LATER
+PY
+cat scribe-logs/demo/demo_current          # "hello docker\n\n" (add_newlines=1이 한 줄 더 붙인다)
+```
+
+`OK`는 메모리 큐 수락이다. 파일 기록은 store thread가 약 1초 안에 한다.
+fb303 상태는 `framed(b'getStatus', 2)` 응답 값 2(ALIVE)로 확인한다.
+
+## 중지
+
+scribed에는 SIGTERM handler가 없고 컨테이너 PID 1이라 `docker stop`은 유예 시간(기본 10초) 뒤 SIGKILL로 끝난다.
+그 사이 쓰지 않은 큐 메시지는 잃을 수 있다. 정상 종료는 fb303 oneway `shutdown`을 보낸다(store를 멈추고 exit 0).
+
+```sh
+python3 - <<'PY'
+import socket, sys
+sys.path.insert(0, 'tools')
+from daemon_differential import framed
+socket.create_connection(('127.0.0.1', 1463)).sendall(framed(b'shutdown', 1, oneway=True))
+PY
+```
+
+## 이미지 구성
+
+- `/usr/local/bin/scribed`, `/usr/local/lib/libthrift.so.0.25.0`, `libthriftnb.so.0.25.0`. fb303와 Scribe RPC library는 static link다
+- 배포판 libevent, Boost filesystem/system
+- `/etc/scribe/scribe.conf`(examples/docker.conf), log volume `/var/log/scribed`, `EXPOSE 1463`
+- `/usr/share/licenses/scribe-next/`: Scribe LICENSE, Thrift LICENSE/NOTICE, fb303 LICENSE
+- compiler, source, Thrift compiler, Python client와 `scribe_cat`·`scribe_ctrl`은 넣지 않는다
+
+## 한계
+
+- HDFS 미포함. [HDFS 안내](hdfs-compatibility.md)의 별도 lane을 쓴다
+- static RPC library만 쓴다. shared RPC lane이 아니다
+- 로컬 checkout을 그대로 빌드한다. commit하지 않은 변경도 들어가며 특정 commit 재현은 clean checkout에서 한다
+- base는 `rockylinux:9` tag이며 digest를 고정하지 않는다. 고정 image는 [Rocky 빌드 안내](rocky-build.md)를 따른다
+- 운영 hardening 안내가 아니다. Scribe에는 인증·TLS가 없으므로 1463은 신뢰 network에만 노출한다.
+  자원 제한, log 보관·삭제, 감시와 정상 종료 절차는 운영 환경에서 따로 정한다
+
+## 확인 기록
+
+2026-10-07, WSL Rocky 9 host의 Docker 29.8.2. base `rockylinux:9`(Rocky 9.3,
+`sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6`), Windows CRLF checkout을 context로 사용했다.
+
+- build 성공. prepare_fb303의 patch SHA256이 Git blob과 같아 CRLF 정리를 확인했다. 실행 이미지 273MB(content 67.2MB)
+- 실행 이미지 `ldd`는 libthrift/libthriftnb 0.25.0, 배포판 libevent 2.1과 Boost 1.75 filesystem/system을 찾는다
+- `Log(demo, "hello docker\n")` 응답 0(OK), `demo/demo-2026-10-07_00000` bytes `hello docker\n\n`, `getStatus` 2(ALIVE)
+- oneway `shutdown` 뒤 exit 0, `docker stop`은 10초 뒤 exit 137. 설정 mount로 port 1500 기동 확인
+
+한 환경의 실제 컨테이너 결과이며 운영 준비나 다른 host 호환성으로 확대하지 않는다.

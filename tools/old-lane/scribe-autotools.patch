@@ -1,0 +1,24 @@
+The only change applied to upstream fcd294f: the same single AM_INIT_AUTOMAKE
+that this repository's configure.ac/acinclude.m4 carry (build-only).
+--- a/configure.ac
++++ b/configure.ac
+@@ -10,7 +10,8 @@
+ AC_PREREQ(2.52)
+ AC_INIT([scribe], [1.5.0])
+ AC_CONFIG_MACRO_DIR([aclocal])
+-AM_INIT_AUTOMAKE([foreign -Wall])
++# scribe-next modification: initialize once, retaining both original option sets.
++AM_INIT_AUTOMAKE([foreign -Wall 1.9.5 no-define])
+ # To install locally
+ FB_INITIALIZE([localinstall])
+ AC_PREFIX_DEFAULT([/usr/local])
+--- a/acinclude.m4
++++ b/acinclude.m4
+@@ -1,6 +1,6 @@
+ AC_DEFUN([FB_INITIALIZE],
+ [
+-AM_INIT_AUTOMAKE([ foreign 1.9.5 no-define ])
++# scribe-next modification: Automake initialization is owned by configure.ac.
+ if test "x$1" = "xlocalinstall"; then
+ wdir=`pwd`
+ # To use $wdir undef quote.
