@@ -1,4 +1,4 @@
-# scribed 이미지. build context는 로컬 checkout이다(git clone을 하지 않는다).
+# scribed 이미지. build context는 이 checkout이다. 저장소를 따로 받지 않는다.
 #   docker build -t scribe-next:local .
 # 사용법과 한계는 docs/docker.md를 본다.
 
