@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: C++17 cleanup; RAII guard keeps Log's lock points, unused local removed.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@
 
 using namespace apache::thrift::concurrency;
 using scribe::concurrency::RWGuard;
+using scribe::concurrency::RWUpgradeGuard;
 
 using namespace facebook::fb303;
 using namespace facebook;
@@ -312,7 +314,6 @@ bool scribeHandler::throttleRequest(const vector<LogEntry>&  messages) {
   // Also note that we always check all categories, not just the ones in this request.
   // This is a simplification based on the assumption that most Log() calls contain most
   // categories.
-  unsigned long long max_count = 0;
   for (category_map_t::iterator cat_iter = categories.begin();
        cat_iter != categories.end();
        ++cat_iter) {
@@ -417,17 +418,13 @@ void scribeHandler::addMessage(
 
 
 ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
-  ResultCode result = TRY_LATER;
-
-  scribeHandlerLock->acquireRead();
+  RWUpgradeGuard lock(*scribeHandlerLock);
   if(status == STOPPING) {
-    result = TRY_LATER;
-    goto end;
+    return TRY_LATER;
   }
 
   if (throttleRequest(messages)) {
-    result = TRY_LATER;
-    goto end;
+    return TRY_LATER;
   }
 
   for (vector<LogEntry>::const_iterator msg_iter = messages.begin();
@@ -452,14 +449,12 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
     // Try creating a new store for this category if we didn't find one
     if (store_list == NULL) {
       // Need write lock to create a new category
-      scribeHandlerLock->release();
-      scribeHandlerLock->acquireWrite();
+      lock.upgrade();
 
       // This may cause some duplicate messages if some messages in this batch
       // were already added to queues
       if(status == STOPPING) {
-        result = TRY_LATER;
-        goto end;
+        return TRY_LATER;
       }
 
       if ((cat_iter = categories.find(category)) != categories.end()) {
@@ -481,11 +476,7 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
     addMessage(*msg_iter, store_list);
   }
 
-  result = OK;
-
- end:
-  scribeHandlerLock->release();
-  return result;
+  return OK;
 }
 
 // Returns true if overloaded.

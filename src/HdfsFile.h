@@ -1,4 +1,5 @@
 // scribe-next modification: return an empty string from the unavailable HDFS stub.
+// scribe-next modification: C++17 cleanup; override, deleted copies, std::mutex, stub tidy-up.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -9,28 +10,29 @@
 #define HDFS_FILE_H
 
 #ifdef USE_SCRIBE_HDFS
+#include <mutex>
 #include "hdfs.h"
 
 class HdfsFile : public FileInterface {
  public:
-  HdfsFile(const std::string& name);
+  explicit HdfsFile(const std::string& name);
   virtual ~HdfsFile();
 
   static void init();        // initialize hdfs subsystem
-  bool openRead();           // open for reading file
-  bool openWrite();          // open for appending to file
-  bool openTruncate();       // truncate and open for write
-  bool isOpen();             // is file open?
-  void close();
-  bool write(const std::string& data);
-  void flush();
-  unsigned long fileSize();
-  long readNext(std::string& _return);
-  void deleteFile();
-  void listImpl(const std::string& path, std::vector<std::string>& _return);
-  std::string getFrame(unsigned data_size);
-  bool createDirectory(std::string path);
-  bool createSymlink(std::string newpath, std::string oldpath);
+  bool openRead() override;  // open for reading file
+  bool openWrite() override; // open for appending to file
+  bool openTruncate() override; // truncate and open for write
+  bool isOpen() override;    // is file open?
+  void close() override;
+  bool write(const std::string& data) override;
+  void flush() override;
+  unsigned long fileSize() override;
+  long readNext(std::string& _return) override;
+  void deleteFile() override;
+  void listImpl(const std::string& path, std::vector<std::string>& _return) override;
+  std::string getFrame(unsigned data_size) override;
+  bool createDirectory(std::string path) override;
+  bool createSymlink(std::string oldpath, std::string newpath) override;
 
  private:
   char* inputBuffer_;
@@ -40,50 +42,42 @@ class HdfsFile : public FileInterface {
   hdfsFS connectToPath(const char* uri);
 
   // disallow copy, assignment, and empty construction
-  HdfsFile();
-  HdfsFile(HdfsFile& rhs);
-  HdfsFile& operator=(HdfsFile& rhs);
+  HdfsFile() = delete;
+  HdfsFile(HdfsFile& rhs) = delete;
+  HdfsFile& operator=(HdfsFile& rhs) = delete;
 };
 
 /**
  * A static lock
  */
 class HdfsLock {
-  private:
-    static bool lockInitialized;
-
   public:
-    static pthread_mutex_t lock;
-    static bool initLock() {
-      pthread_mutex_init(&lock, NULL);
-      return true;
-    }
+    static std::mutex lock;
 };
 
 #else
 
 class HdfsFile : public FileInterface {
  public:
-  HdfsFile(const std::string& name) : FileInterface(name, false) {
+  explicit HdfsFile(const std::string& name) : FileInterface(name, false) {
     LOG_OPER("[hdfs] ERROR: HDFS is not supported.  file: %s", name.c_str());
     LOG_OPER("[hdfs] If you want HDFS Support, please recompile scribe with HDFS support");
   }
   static void init() {};
-  bool openRead() { return false; };           // open for reading file
-  bool openWrite(){ return false; };           // open for appending to file
-  bool openTruncate() { return false; }        // open for write and truncate
-  bool isOpen()   { return false; };           // is file open?
-  void close()    {};
-  bool write(const std::string& data) { return false; };
-  void flush()    {};
-  void sync()     {};
-  unsigned long fileSize() { return 0; };
-  long readNext(std::string& _return) { return false; };
-  void deleteFile() {};
-  void listImpl(const std::string& path, std::vector<std::string>& _return) {};
-  std::string getFrame(unsigned data_size) { return std::string(); };
-  bool createDirectory(std::string path) { return false; };
-  bool createSymlink(std::string newpath, std::string oldpath) { return false; };
+  bool openRead() override { return false; };  // open for reading file
+  bool openWrite() override { return false; }; // open for appending to file
+  bool openTruncate() override { return false; } // open for write and truncate
+  bool isOpen() override { return false; };    // is file open?
+  void close() override {};
+  bool write(const std::string& data) override { return false; };
+  void flush() override {};
+  unsigned long fileSize() override { return 0; };
+  long readNext(std::string& _return) override { return 0; };
+  void deleteFile() override {};
+  void listImpl(const std::string& path, std::vector<std::string>& _return) override {};
+  std::string getFrame(unsigned data_size) override { return std::string(); };
+  bool createDirectory(std::string path) override { return false; };
+  bool createSymlink(std::string oldpath, std::string newpath) override { return false; };
 };
 #endif // USE_SCRIBE_HDFS
 

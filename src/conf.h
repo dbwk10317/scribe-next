@@ -1,3 +1,4 @@
+// scribe-next modification: C++17 cleanup; weak parent link breaks the conf ownership cycle.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,7 @@
 #define SCRIBE_CONF_H
 
 #include "common.h"
+#include <boost/weak_ptr.hpp>
 
 /*
  * This class reads and parses a configuration
@@ -65,7 +67,7 @@ class StoreConf {
  private:
   string_map_t values;
   store_conf_map_t stores;
-  pStoreConf parent;
+  boost::weak_ptr<StoreConf> parent;
   static bool parseStore(/*in,out*/ std::queue<std::string>& raw_config,
                          /*out*/ StoreConf* parsed_config);
   static std::string trimString(const std::string& str);

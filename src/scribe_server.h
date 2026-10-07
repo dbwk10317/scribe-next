@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: C++17 cleanup; override and deleted copies, no behaviour change.
 //  Copyright (c) 2007-2009 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,15 +39,15 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   scribeHandler(unsigned long int port, const std::string& conf_file);
   ~scribeHandler();
 
-  void shutdown();
+  void shutdown() override;
   void initialize();
-  void reinitialize();
+  void reinitialize() override;
 
-  scribe::thrift::ResultCode Log(const std::vector<scribe::thrift::LogEntry>& messages);
+  scribe::thrift::ResultCode Log(const std::vector<scribe::thrift::LogEntry>& messages) override;
 
-  void getVersion(std::string& _return) {_return = scribeversion;}
-  facebook::fb303::fb_status getStatus();
-  void getStatusDetails(std::string& _return);
+  void getVersion(std::string& _return) override {_return = scribeversion;}
+  facebook::fb303::fb_status getStatus() override;
+  void getStatusDetails(std::string& _return) override;
   void setStatus(facebook::fb303::fb_status new_status);
   void setStatusDetails(const std::string& new_status_details);
 
@@ -117,9 +118,9 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
     scribeHandlerLock;
 
   // disallow empty construction, copy, and assignment
-  scribeHandler();
-  scribeHandler(const scribeHandler& rhs);
-  const scribeHandler& operator=(const scribeHandler& rhs);
+  scribeHandler() = delete;
+  scribeHandler(const scribeHandler& rhs) = delete;
+  const scribeHandler& operator=(const scribeHandler& rhs) = delete;
 
  protected:
   bool throttleDeny(int num_messages); // returns true if overloaded

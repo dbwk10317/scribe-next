@@ -55,6 +55,26 @@ class RWGuard {
   const ReadWriteMutex& mutex_;
 };
 
+// Read guard whose upgrade() is the same non-atomic release-then-acquireWrite;
+// the destructor releases whichever lock is held at scope exit.
+class RWUpgradeGuard {
+ public:
+  explicit RWUpgradeGuard(const ReadWriteMutex& mutex) : mutex_(mutex) {
+    mutex_.acquireRead();
+  }
+  ~RWUpgradeGuard() { mutex_.release(); }
+  void upgrade() {
+    mutex_.release();
+    mutex_.acquireWrite();
+  }
+
+  RWUpgradeGuard(const RWUpgradeGuard&) = delete;
+  RWUpgradeGuard& operator=(const RWUpgradeGuard&) = delete;
+
+ private:
+  const ReadWriteMutex& mutex_;
+};
+
 } // namespace concurrency
 } // namespace scribe
 #endif // SCRIBE_COMPAT_MUTEX_H

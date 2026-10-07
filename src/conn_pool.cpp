@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: C++17 cleanup; std::mutex guards keep lock points, dead null checks removed.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,11 +39,9 @@ using namespace scribe::thrift;
 
 
 ConnPool::ConnPool() {
-  pthread_mutex_init(&mapMutex, NULL);
 }
 
 ConnPool::~ConnPool() {
-  pthread_mutex_destroy(&mapMutex);
 }
 
 string ConnPool::makeKey(const string& hostname, unsigned long port) {
@@ -85,8 +84,6 @@ int ConnPool::send(const string &service,
 
 bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn) {
 
-#define RETURN(x) {pthread_mutex_unlock(&mapMutex); return(x);}
-
   // note on locking:
   // The mapMutex locks all reads and writes to the connMap.
   // The locks on each connection serialize writes and deletion.
@@ -94,13 +91,16 @@ bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn)
   // are only accessed under the mapMutex.
   // mapMutex MUST be held before attempting to lock particular connection
 
-  pthread_mutex_lock(&mapMutex);
+  // Declared before the guard so a replaced connection is still destroyed
+  // after mapMutex is released, as with the former unlock-then-return.
+  boost::shared_ptr<scribeConn> old_conn;
+  std::lock_guard<std::mutex> map_lock(mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
-    boost::shared_ptr<scribeConn> old_conn = (*iter).second;
+    old_conn = (*iter).second;
     if (old_conn->isOpen()) {
       old_conn->addRef();
-      RETURN(true);
+      return true;
     }
     if (conn->open()) {
       LOG_OPER("CONN_POOL: switching to a new connection <%s>", key.c_str());
@@ -108,24 +108,23 @@ bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn)
       conn->addRef();
       // old connection will be magically deleted by shared_ptr
       connMap[key] = conn;
-      RETURN(true);
+      return true;
     }
-    RETURN(false);
+    return false;
   }
   // don't need to lock the conn yet, because no one know about
   // it until we release the mapMutex
   if (conn->open()) {
     // ref count starts at one, so don't addRef here
     connMap[key] = conn;
-    RETURN(true);
+    return true;
   }
   // conn object that failed to open is deleted
-  RETURN(false);
-#undef RETURN
+  return false;
 }
 
 void ConnPool::closeCommon(const string &key) {
-  pthread_mutex_lock(&mapMutex);
+  std::lock_guard<std::mutex> map_lock(mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
     (*iter).second->releaseRef();
@@ -139,22 +138,20 @@ void ConnPool::closeCommon(const string &key) {
     // This can be bad. If one client double closes then other cleints are screwed
     LOG_OPER("LOGIC ERROR: attempting to close connection <%s> that connPool has no entry for", key.c_str());
   }
-  pthread_mutex_unlock(&mapMutex);
 }
 
 int ConnPool::sendCommon(const string &key,
                           boost::shared_ptr<logentry_vector_t> messages) {
-  pthread_mutex_lock(&mapMutex);
+  std::unique_lock<std::mutex> map_lock(mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
     (*iter).second->lock();
-    pthread_mutex_unlock(&mapMutex);
+    map_lock.unlock();
     int result = (*iter).second->send(messages);
     (*iter).second->unlock();
     return result;
   } else {
     LOG_OPER("send failed. No connection pool entry for <%s>", key.c_str());
-    pthread_mutex_unlock(&mapMutex);
     return (CONN_FATAL);
   }
 }
@@ -165,7 +162,6 @@ scribeConn::scribeConn(const string& hostname, unsigned long port, int timeout_)
   remoteHost(hostname),
   remotePort(port),
   timeout(timeout_) {
-  pthread_mutex_init(&mutex, NULL);
 }
 
 scribeConn::scribeConn(const string& service, const server_vector_t &servers, int timeout_)
@@ -174,11 +170,9 @@ scribeConn::scribeConn(const string& service, const server_vector_t &servers, in
   serviceName(service),
   serverList(servers),
   timeout(timeout_) {
-  pthread_mutex_init(&mutex, NULL);
 }
 
 scribeConn::~scribeConn() {
-  pthread_mutex_destroy(&mutex);
 }
 
 void scribeConn::addRef() {
@@ -198,11 +192,11 @@ void scribeConn::setRef(unsigned r) {
 }
 
 void scribeConn::lock() {
-  pthread_mutex_lock(&mutex);
+  mutex.lock();
 }
 
 void scribeConn::unlock() {
-  pthread_mutex_unlock(&mutex);
+  mutex.unlock();
 }
 
 bool scribeConn::isOpen() {
@@ -215,10 +209,6 @@ bool scribeConn::open() {
     socket = serviceBased ?
       std::shared_ptr<TSocket>(new TSocketPool(serverList)) :
       std::shared_ptr<TSocket>(new TSocket(remoteHost, remotePort));
-
-    if (!socket) {
-      throw std::runtime_error("Failed to create socket");
-    }
 
     socket->setConnTimeout(timeout);
     socket->setRecvTimeout(timeout);
@@ -238,18 +228,9 @@ bool scribeConn::open() {
     auto config = scribe::createThriftConfiguration();
     socket->setConfiguration(config);
     framedTransport = std::shared_ptr<TFramedTransport>(new TFramedTransport(socket, config));
-    if (!framedTransport) {
-      throw std::runtime_error("Failed to create framed transport");
-    }
     protocol = std::shared_ptr<TBinaryProtocol>(new TBinaryProtocol(framedTransport));
-    if (!protocol) {
-      throw std::runtime_error("Failed to create protocol");
-    }
     protocol->setStrict(false, false);
     resendClient = std::shared_ptr<scribeClient>(new scribeClient(protocol));
-    if (!resendClient) {
-      throw std::runtime_error("Failed to create network client");
-    }
 
     framedTransport->open();
     if (serviceBased) {

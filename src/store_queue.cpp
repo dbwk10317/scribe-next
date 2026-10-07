@@ -1,4 +1,5 @@
 // scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
+// scribe-next modification: C++17 cleanup; typed config read, report a failed store thread start.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -335,15 +336,19 @@ void StoreQueue::storeInitCommon() {
     pthread_mutex_init(&hasWorkMutex, NULL);
     pthread_cond_init(&hasWorkCond, NULL);
 
-    pthread_create(&storeThread, NULL, threadStatic, (void*) this);
+    if (pthread_create(&storeThread, NULL, threadStatic, (void*) this) != 0) {
+      throw std::runtime_error("pthread_create failed in StoreQueue");
+    }
   }
 }
 
 void StoreQueue::configureInline(pStoreConf configuration) {
   // Constructor defaults are fine if these don't exist
   configuration->getUnsignedLongLong("target_write_size", targetWriteSize);
-  configuration->getUnsigned("max_write_interval",
-                            (unsigned long&) maxWriteInterval);
+  unsigned long max_write_interval;
+  if (configuration->getUnsigned("max_write_interval", max_write_interval)) {
+    maxWriteInterval = max_write_interval;
+  }
   if (maxWriteInterval == 0) {
     maxWriteInterval = 1;
   }

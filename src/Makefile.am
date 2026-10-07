@@ -63,6 +63,9 @@ endif
 # DO NOT USE CPPFLAGS, CXXFLAGS, CFLAGS, LDFLAGS here! Set in configure.ac and|or override on command line.
 # USE flags AM_CXXFLAGS, AM_CFLAGS, AM_CPPFLAGS, AM_LDFLAGS, LDADD in this section.
 
+# scribe-next modification: declare C++17 and -Wall; user CXXFLAGS still follow and win.
+AM_CXXFLAGS = -std=c++17 -Wall
+
 AM_CPPFLAGS = -I..
 AM_CPPFLAGS += -I$(thrift_home)/include
 AM_CPPFLAGS += -I$(thrift_home)/include/thrift
