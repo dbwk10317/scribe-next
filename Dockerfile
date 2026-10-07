@@ -3,6 +3,8 @@
 # 사용법과 한계는 docs/docker.md를 본다.
 
 # ---- 빌드 단계: Thrift 0.25.0, matching fb303, scribed ----
+# boost-devel은 Thrift 0.25.0 C++ 라이브러리 빌드와 Thrift·fb303 header가 요구하는 Boost header용이다.
+# scribed는 Boost 라이브러리를 링크하지 않으므로 실행 단계에는 Boost가 없다.
 FROM rockylinux:9 AS build
 RUN dnf -y install git gcc gcc-c++ make cmake autoconf automake libtool bison flex libevent-devel boost-devel python3 python3-setuptools && \
     echo /usr/local/lib > /etc/ld.so.conf.d/scribe-local.conf
@@ -31,8 +33,7 @@ RUN python3 scribe-next/tools/prepare_fb303.py --source thrift-0.25.0/contrib/fb
 
 # scribed: 기존 autotools 경로 그대로(env_default, 비-HDFS, static RPC library).
 RUN cd scribe-next && \
-    ./bootstrap.sh --prefix=/usr/local --with-thriftpath=/usr/local --with-fb303path=/usr/local --with-boost=/usr \
-      --with-boost-system=boost_system --with-boost-filesystem=boost_filesystem && \
+    ./bootstrap.sh --prefix=/usr/local --with-thriftpath=/usr/local --with-fb303path=/usr/local && \
     make -j"$(nproc)" && make install
 
 # 실행 이미지에 넣을 LICENSE/NOTICE(scribe-next, Thrift runtime, scribed에 static link된 fb303).
@@ -43,7 +44,7 @@ RUN mkdir -p licenses/thrift licenses/fb303 && \
 
 # ---- 실행 단계: scribed와 Thrift runtime만 둔다 ----
 FROM rockylinux:9
-RUN dnf -y install libevent boost-filesystem boost-system && dnf clean all
+RUN dnf -y install libevent && dnf clean all
 
 COPY --from=build /usr/local/bin/scribed /usr/local/bin/scribed
 COPY --from=build /usr/local/lib/libthrift.so.0.25.0 /usr/local/lib/libthriftnb.so.0.25.0 /usr/local/lib/

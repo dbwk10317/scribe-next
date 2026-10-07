@@ -110,11 +110,12 @@ for suffix,digest in sorted(expected.items()):
 assert '/opt/scribe-next-dev/bin/scribed' in files
 assert all(x.startswith('/opt/scribe-next-dev/') or x=='/opt/scribe-next-dev' or x.startswith(license_base+'/') or x==license_base or x.startswith('/usr/lib/.build-id/') or x=='/usr/lib/.build-id' for x in files),files
 build_ids=[pathlib.Path(x) for x in files if x.startswith('/usr/lib/.build-id/') and pathlib.Path(x).is_symlink()]
-assert len(build_ids)==6
+assert len(build_ids)==3
 assert all(str(p.resolve()).startswith('/opt/scribe-next-dev/') for p in build_ids)
 ldd=run(['ldd','/opt/scribe-next-dev/bin/scribed']);assert 'not found' not in ldd,ldd
 for line in ldd.splitlines():
-    if 'libboost_' in line or 'libthrift' in line:
+    assert 'libboost_' not in line,line
+    if 'libthrift' in line:
         assert '/opt/scribe-next-dev/deps/' in line,line
 help_text=run(['/opt/scribe-next-dev/bin/scribed','--help'])
 assert help_text

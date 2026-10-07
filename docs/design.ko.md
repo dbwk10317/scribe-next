@@ -69,7 +69,7 @@ Thrift v0.25.0의 commit `27e8a425ffb498e190df3a12e239326bf5ba9ed6`에서 아래
 
 fb303의 source 존재만으로 header/library 설치·운영 method 호환성을 선언하지 않는다. 기존 구현의 빌드 경계부터 검증하고 필요한 부분만 수정한다.
 
-autotools, Boost system/filesystem, Thrift 및 libthriftnb, libevent, pthread, fb303 연결을 우선 유지한다. optional HDFS는 공개 원본의 별도 build/runtime lane에서 검증해야 하며 조용히 제거하지 않는다. Boost 제거는 2026-10-07 승인된 현대화 단계로 별도 PR에서 진행한다([개발 지침](../AGENTS.md) 참고). CMake 전환은 의존성 이식과 행동 변경에서 분리한 후속 선택 작업이다. 기존 운영 install 경로가 동등하게 유지되어야 한다.
+autotools, Thrift 및 libthriftnb, libevent, pthread, fb303 연결을 우선 유지한다. optional HDFS는 공개 원본의 별도 build/runtime lane에서 검증해야 하며 조용히 제거하지 않는다. Boost 의존성은 2026-10-07 승인된 현대화 2단계에서 제거했다. scribed는 Boost 라이브러리를 링크하지 않으며, 빌드할 때 Thrift 0.25.0과 그 header가 요구하는 Boost header만 필요하다([개발 지침](../AGENTS.md) 참고). CMake 전환은 의존성 이식과 행동 변경에서 분리한 후속 선택 작업이다. 기존 운영 install 경로가 동등하게 유지되어야 한다.
 
 ## 현대화 경계와 제안값
 

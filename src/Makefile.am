@@ -72,10 +72,7 @@ AM_CPPFLAGS += -I$(thrift_home)/include/thrift
 AM_CPPFLAGS += -I$(fb303_home)/include/thrift
 AM_CPPFLAGS += -I$(fb303_home)/include/thrift/fb303
 AM_CPPFLAGS += -I$(hadoop_home)/include
-AM_CPPFLAGS += $(BOOST_CPPFLAGS)
 AM_CPPFLAGS += $(FB_CPPFLAGS) $(DEBUG_CPPFLAGS)
-
-AM_LDFLAGS = $(BOOST_LDFLAGS)
 
 # Section 3 #############################################################################
 # GENERATE BUILD RULES
@@ -112,7 +109,8 @@ if USE_SCRIBE_HDFS
   scribed_SOURCES += HdfsFile.cpp
 endif
 # scribe-next modification: keep library dependencies after their consumers for --as-needed.
-scribed_LDADD = $(INTERNAL_LIBS) $(EXTERNAL_LIBS) $(BOOST_FILESYSTEM_LIB) $(BOOST_SYSTEM_LIB)
+# scribe-next modification: no Boost libraries; STDCXXFS_LIB is -lstdc++fs only where configure needs it (GCC 8).
+scribed_LDADD = $(INTERNAL_LIBS) $(EXTERNAL_LIBS) $(STDCXXFS_LIB)
 noinst_HEADERS = compat_mutex.h compat_hdfs.h
 
 if SHARED

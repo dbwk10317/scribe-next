@@ -10,6 +10,15 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def filesystem_libs(compiler, directory):
+    """Same choice as configure: GCC 8 needs -lstdc++fs for std::filesystem, GCC 9 and later do not."""
+    source = Path(directory) / "filesystem-probe.cpp"
+    source.write_text('#include <filesystem>\nint main() { return std::filesystem::exists("/") ? 0 : 1; }\n')
+    linked = subprocess.run([str(compiler), "-std=c++17", str(source), "-o", str(source.with_suffix(""))],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+    return [] if linked.returncode == 0 else ["-lstdc++fs"]
+
+
 class HdfsDeleteCompatibilityTests(unittest.TestCase):
     def check_api(self, modern):
         compiler = shutil.which("g++")
@@ -72,6 +81,7 @@ class HdfsLinkLifetimeTests(unittest.TestCase):
             for name in ("file.cpp", "file.h", "HdfsFile.cpp", "HdfsFile.h", "compat_hdfs.h"):
                 shutil.copyfile(ROOT / "src" / name, work / name)
             shutil.copyfile(ROOT / "test/cpp/spool_component_common.h", work / "common.h")
+            fs_libs = filesystem_libs(compiler, work)
             for sanitized in (False, True):
                 binary = work / ("sanitized" if sanitized else "ordinary")
                 flags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if sanitized else []
@@ -79,7 +89,8 @@ class HdfsLinkLifetimeTests(unittest.TestCase):
                            "-I", str(work), "-I", str(ROOT / "test/fixtures/hdfs_mock"),
                            "-I", str(tools / "include"), str(work / "file.cpp"),
                            str(work / "HdfsFile.cpp"), str(ROOT / "test/cpp/hdfs_link_lifetime.cpp"),
-                           *("-L" + str(path) for path in libraries), "-lboost_filesystem", "-o", str(binary)]
+                           *("-L" + str(path) for path in libraries), *fs_libs,
+                           "-o", str(binary)]
                 compiled = subprocess.run(command, env=env, text=True, stdout=subprocess.PIPE,
                                           stderr=subprocess.STDOUT, timeout=90)
                 self.assertEqual(compiled.returncode, 0, compiled.stdout)

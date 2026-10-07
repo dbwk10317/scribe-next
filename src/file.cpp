@@ -3,6 +3,7 @@
 // scribe-next modification: C++17 cleanup; CALC_LOSS macro is now calcLoss(), same arithmetic.
 // scribe-next modification: owned read buffer via nothrow new; same nomem/loss accounting.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: std::filesystem replaces Boost.Filesystem with the same calls, results and error handling.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@
 #include "file.h"
 #include "HdfsFile.h"
 #include <new>
+#include <filesystem>
 
 #define INITIAL_BUFFER_SIZE (64 * 1024)
 #define LARGE_BUFFER_SIZE (16 * INITIAL_BUFFER_SIZE) /* arbitrarily chosen */
@@ -236,7 +238,7 @@ StdFile::calcLoss() {
 unsigned long StdFile::fileSize() {
   unsigned long size = 0;
   try {
-    size = boost::filesystem::file_size(filename.c_str());
+    size = std::filesystem::file_size(filename.c_str());
   } catch(const std::exception& e) {
     LOG_OPER("Failed to get size for file <%s> error <%s>", filename.c_str(), e.what());
     size = 0;
@@ -246,19 +248,11 @@ unsigned long StdFile::fileSize() {
 
 void StdFile::listImpl(const std::string& path, std::vector<std::string>& _return) {
   try {
-    if (boost::filesystem::exists(path)) {
-      boost::filesystem::directory_iterator dir_iter(path), end_iter;
+    if (std::filesystem::exists(path)) {
+      std::filesystem::directory_iterator dir_iter(path), end_iter;
 
       for ( ; dir_iter != end_iter; ++dir_iter) {
-#if BOOST_VERSION > 104900
         _return.push_back(dir_iter->path().filename().string());
-#elif BOOST_VERSION < 104400
-        _return.push_back(dir_iter->filename());
-#elif defined(BOOST_FILESYSTEM_VERSION) && BOOST_FILESYSTEM_VERSION == 2
-        _return.push_back(dir_iter->filename());
-#else
-        _return.push_back(dir_iter->path().filename().string());
-#endif
       }
     }
   } catch (const std::exception& e) {
@@ -268,12 +262,16 @@ void StdFile::listImpl(const std::string& path, std::vector<std::string>& _retur
 }
 
 void StdFile::deleteFile() {
-  boost::filesystem::remove(filename);
+  // Boost's remove() treated any missing path (ENOENT or ENOTDIR) as nothing to do;
+  // newer libstdc++ remove() throws for ENOTDIR, so check the same symlink status first.
+  if (std::filesystem::exists(std::filesystem::symlink_status(filename))) {
+    std::filesystem::remove(filename);
+  }
 }
 
 bool StdFile::createDirectory(std::string path) {
   try {
-    boost::filesystem::create_directories(path);
+    std::filesystem::create_directories(path);
   } catch(const std::exception& e) {
     LOG_OPER("Exception < %s > in StdFile::createDirectory for path %s ",
       e.what(),path.c_str());

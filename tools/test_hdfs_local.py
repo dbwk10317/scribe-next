@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -42,7 +43,8 @@ def main():
         command += [str(ROOT / path) for path in
                     ("test/cpp/hdfs_contracts.cpp", "src/HdfsFile.cpp", "src/file.cpp")]
         command += ["-L" + str(path) for path in libraries]
-        command += ["-lhdfs", "-ljvm", "-lboost_filesystem", "-lboost_system", "-lthrift",
+        stdcxxfs = re.search(r"^STDCXXFS_LIB = (.*)$", (build / "src/Makefile").read_text(), re.M).group(1)
+        command += ["-lhdfs", "-ljvm", *stdcxxfs.split(), "-lthrift",
                     "-o", str(work / "probe")]
         subprocess.run(command, check=True, timeout=60)
         env = dict(os.environ)
