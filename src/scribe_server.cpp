@@ -3,6 +3,7 @@
 // scribe-next modification: C++17 cleanup; RAII guard keeps Log's lock points, unused local removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: std::filesystem::path replaces Boost's for the category check; same result and log text.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -151,6 +152,7 @@ scribeHandler::scribeHandler(unsigned long int server_port, const std::string& c
   : FacebookBase("Scribe"),
     port(server_port),
     numThriftServerThreads(DEFAULT_SERVER_THREADS),
+    connPool(*this),
     checkPeriod(DEFAULT_CHECK_PERIOD),
     configFilename(config_file),
     status(STARTING),
@@ -574,6 +576,8 @@ void scribeHandler::initialize() {
     localconfig.parseConfig(config_file);
     // overwrite the current StoreConf
     config = localconfig;
+    // type::key lookups anywhere in the tree fall back to this root config
+    config.setRoot(&config);
 
     // load the global config
     config.getUnsigned("max_msg_per_second", maxMsgPerSecond);
@@ -832,7 +836,7 @@ std::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
       is_model = newThreadPerCategory && categories;
 
       pstore =
-        std::shared_ptr<StoreQueue>(new StoreQueue(type, store_name, checkPeriod,
+        std::shared_ptr<StoreQueue>(new StoreQueue(*this, type, store_name, checkPeriod,
                                               is_model, multi_category));
     }
   } catch (...) {

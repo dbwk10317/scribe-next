@@ -3,21 +3,20 @@
 #ifndef SCRIBE_TEST_STORE_REVIEW_CONTRACTS_H
 #define SCRIBE_TEST_STORE_REVIEW_CONTRACTS_H
 
-extern ConnPool g_connPool;
-
 static void testConfigParentOwnership(const std::string& filename) {
   // No workers or sockets: configure the actual nested MultiStore hierarchy.
   HandlerFixture handler(filename);
   const_cast<StoreConf&>(handler.handler->getConfig()).setString("null::global", "global");
   pStoreConf root(new StoreConf);
   root->parseConfig(filename);
+  root->setRoot(&handler.handler->getConfig());
   pStoreConf parent, middle, leaf;
   require(root->getStore("store0", parent), "missing top configuration");
   require(parent->getStore("store0", middle), "missing middle configuration");
   require(middle->getStore("store0", leaf), "missing leaf configuration");
   std::weak_ptr<StoreConf> parentWeak(parent), middleWeak(middle), leafWeak(leaf);
   {
-    MultiStore store(nullptr, "fixture", false);
+    MultiStore store(*handler.handler, nullptr, "fixture", false);
     store.configure(parent, pStoreConf());
     root.reset();
     parent.reset();
@@ -42,25 +41,27 @@ static void testConfigParentOwnership(const std::string& filename) {
 
 class ResultNullStore : public NullStore {
  public:
-  explicit ResultNullStore(bool result) : NullStore(nullptr, "fixture", false), result_(result) {}
+  ResultNullStore(ScribeContext& context, bool result)
+      : NullStore(context, nullptr, "fixture", false), result_(result) {}
   bool open() override { return result_; }
   bool isOpen() override { return result_; }
   bool handleMessages(std::shared_ptr<logentry_vector_t>) override { return result_; }
   std::shared_ptr<Store> copy(const std::string&) override {
-    return std::shared_ptr<Store>(new ResultNullStore(result_));
+    return std::shared_ptr<Store>(new ResultNullStore(context, result_));
   }
  private:
   bool result_;
 };
 class ReportMultiStore : public MultiStore {
  public:
-  ReportMultiStore() : MultiStore(nullptr, "fixture", false) {}
-  void addResult(bool result) { stores.push_back(std::shared_ptr<Store>(new ResultNullStore(result))); }
+  explicit ReportMultiStore(ScribeContext& context) : MultiStore(context, nullptr, "fixture", false) {}
+  void addResult(bool result) { stores.push_back(std::shared_ptr<Store>(new ResultNullStore(context, result))); }
 };
 static void testMultiReportDefault() {
+  scribeHandler context(0, "");
   alignas(MultiStore) unsigned char memory[sizeof(MultiStore)];
   std::memset(memory, 0xa5, sizeof(memory));
-  MultiStore* invalid = new(memory) MultiStore(nullptr, "fixture", false);
+  MultiStore* invalid = new(memory) MultiStore(context, nullptr, "fixture", false);
   pStoreConf config(new StoreConf);
   config->setString("report_success", "invalid");
   invalid->configure(config, pStoreConf());
@@ -71,7 +72,7 @@ static void testMultiReportDefault() {
   require(invalid->handleMessages(messages), "empty all-mode aggregation changed");
   invalid->~MultiStore();
   for (const char* mode : {"all", "any"}) {
-    ReportMultiStore store;
+    ReportMultiStore store(context);
     config->setString("report_success", mode);
     store.configure(config, pStoreConf());
     store.addResult(false); store.addResult(true);
@@ -178,7 +179,7 @@ static void runUpdaterReviewDriver(const std::string& filename) {
     const std::string category = command == "FAIL" ? "allocation" : "reviewmapping";
     try {
       if (command == "FAIL") reviewFailNextAllocation = true;
-      const bool result = DynamicBucketUpdater::getHost(fixture.handler.get(), category,
+      const bool result = DynamicBucketUpdater::getHost(*fixture.handler, category,
           60, 42, host, port, "127.0.0.1", static_cast<uint32_t>(remotePort), 500, 500, 500);
       std::cout << "MAPPING " << result << " " << host << " " << port << std::endl;
     } catch (const std::bad_alloc&) {
@@ -207,7 +208,7 @@ static void runConcurrentUpdaterReview(const std::string& filename) {
       while (!start.load()) std::this_thread::yield();
       std::string host = "keep";
       uint32_t port = 19;
-      if (DynamicBucketUpdater::getHost(fixture.handler.get(), "reviewmapping", 60, 42,
+      if (DynamicBucketUpdater::getHost(*fixture.handler, "reviewmapping", 60, 42,
           host, port, "127.0.0.1", static_cast<uint32_t>(remotePort), 500, 500, 500)
           && host == "resolved" && port == 1234) ++successes;
     });
@@ -223,8 +224,8 @@ static void runConcurrentUpdaterReview(const std::string& filename) {
 
 class ReviewNetworkStore : public NetworkStore {
  public:
-  explicit ReviewNetworkStore(const std::string& category)
-      : NetworkStore(nullptr, category, true) {}
+  ReviewNetworkStore(ScribeContext& context, const std::string& category)
+      : NetworkStore(context, nullptr, category, true) {}
   unsigned long defaultPort() const { return serviceListDefaultPort; }
   size_t serverCount() const { return servers.size(); }
   void useTestResolver() { configmod = &resolver; }
@@ -235,7 +236,7 @@ class ReviewNetworkStore : public NetworkStore {
  private:
   // Only the resolver result is scripted. Connection/pool open, send, close,
   // copy and periodicCheck below are the real production implementation.
-  static bool getHost(const std::string& category, const StoreConf* config,
+  static bool getHost(ScribeContext&, const std::string& category, const StoreConf* config,
                       std::string& host, uint32_t& port) {
     require(config != nullptr, "copied dynamic store lost configuration");
     unsigned long value = 0;
@@ -259,7 +260,7 @@ static void testStoreReviewDefaults(const std::string& filename) {
   // allocators/stack layouts that would otherwise happen to contain zero.
   alignas(ReviewNetworkStore) unsigned char storage[sizeof(ReviewNetworkStore)];
   memset(storage, 0xa5, sizeof(storage));
-  auto* store = new (storage) ReviewNetworkStore("first");
+  auto* store = new (storage) ReviewNetworkStore(*fixture.handler, "first");
   const auto port = store->defaultPort();
   store->~ReviewNetworkStore();
   require(port == 0, "unconfigured service-list port must be zero");
@@ -269,7 +270,7 @@ static void testStoreReviewBucket(const std::string& filename) {
   HandlerFixture fixture(filename);
   pStoreConf config(new StoreConf);
   config->parseConfig(filename);
-  BucketStore bucket(nullptr, "model", false);
+  BucketStore bucket(*fixture.handler, nullptr, "model", false);
   bucket.configure(config, pStoreConf());
   std::string expected;
   config->getString("test_error", expected);
@@ -293,7 +294,8 @@ static void testStoreReviewBucket(const std::string& filename) {
 
 class ReviewBufferChildren : public BufferStore {
  public:
-  ReviewBufferChildren() : BufferStore(nullptr, "model", false) {}
+  explicit ReviewBufferChildren(ScribeContext& context)
+      : BufferStore(context, nullptr, "model", false) {}
   const std::string& primaryType() const {
     require(primaryStore != nullptr, "buffer primary fallback is absent");
     return primaryStore->getType();
@@ -311,20 +313,20 @@ static void testStoreReviewInvalidChild(const std::string& filename) {
   std::string kind;
   require(config->getString("test_kind", kind), "missing invalid-child case");
   if (kind == "buffer-primary" || kind == "buffer-secondary") {
-    ReviewBufferChildren buffer;
+    ReviewBufferChildren buffer(*fixture.handler);
     buffer.configure(config, pStoreConf());
     require(buffer.primaryType() == (kind == "buffer-primary" ? "file" : "null"),
             "buffer primary fallback changed");
     require(buffer.secondaryType() == (kind == "buffer-secondary" ? "file" : "null"),
             "buffer secondary fallback changed");
   } else if (kind == "multi") {
-    MultiStore multi(nullptr, "model", false);
+    MultiStore multi(*fixture.handler, nullptr, "model", false);
     multi.configure(config, pStoreConf());
     require(!multi.getStatus().empty(), "invalid multi child lacks status");
     multi.close();
   } else {
     require(kind == "category" || kind == "category-missing", "unknown invalid-child case");
-    CategoryStore category(nullptr, "model", false);
+    CategoryStore category(*fixture.handler, nullptr, "model", false);
     category.configure(config, pStoreConf());
     require(!category.getStatus().empty(), "invalid category model lacks status");
     auto messages = fileMessages({entry("category", "retain-this-message")});
@@ -352,8 +354,9 @@ static void runStoreReviewDriver(const std::string& filename) {
           "review driver requires assigned other loopback port");
   std::string kind;
   require(config->getString("test_kind", kind), "review driver requires case");
-  std::shared_ptr<ReviewNetworkStore> first(new ReviewNetworkStore("first"));
-  std::shared_ptr<Store> stores[] = {first, std::shared_ptr<Store>(new ReviewNetworkStore("second"))};
+  std::shared_ptr<ReviewNetworkStore> first(new ReviewNetworkStore(*fixture.handler, "first"));
+  std::shared_ptr<Store> stores[] = {first, std::shared_ptr<Store>(
+      new ReviewNetworkStore(*fixture.handler, "second"))};
   for (unsigned i = 0; i < 2; ++i) {
     pStoreConf policy(new StoreConf(*config));
     if (kind == "list" || kind == "default-list" || kind == "same-list") {

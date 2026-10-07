@@ -111,7 +111,8 @@ endif
 # scribe-next modification: keep library dependencies after their consumers for --as-needed.
 # scribe-next modification: no Boost libraries; STDCXXFS_LIB is -lstdc++fs only where configure needs it (GCC 8).
 scribed_LDADD = $(INTERNAL_LIBS) $(EXTERNAL_LIBS) $(STDCXXFS_LIB)
-noinst_HEADERS = compat_mutex.h compat_hdfs.h
+# scribe-next modification: context.h declares the server context injected into stores, queues and the pool.
+noinst_HEADERS = compat_mutex.h compat_hdfs.h context.h
 
 if SHARED
 scribed_DEPENDENCIES = libscribe.so libdynamicbucketupdater.so

@@ -7,7 +7,8 @@
 
 class ReviewRetryBuffer : public BufferStore {
  public:
-  ReviewRetryBuffer() : BufferStore(nullptr, "review-retry", false) {}
+  explicit ReviewRetryBuffer(ScribeContext& context)
+      : BufferStore(context, nullptr, "review-retry", false) {}
   void failure() { changeState(DISCONNECTED); }
   void success() { setNewRetryInterval(true); }
   time_t interval() const { return retryInterval; }
@@ -21,7 +22,7 @@ static void testReviewRetry(const std::string& config,
   HandlerFixture fixture(config);
   pStoreConf configuration(new StoreConf);
   configuration->parseConfig(config);
-  ReviewRetryBuffer buffer;
+  ReviewRetryBuffer buffer(*fixture.handler);
   buffer.configure(configuration, pStoreConf());
   std::string actions("FFFFF");
   configuration->getString("test_actions", actions);
@@ -56,8 +57,8 @@ static void testReviewRetry(const std::string& config,
 
 class ReviewPeriodicChild : public NullStore {
  public:
-  ReviewPeriodicChild(uint32_t id, std::vector<uint32_t>& calls)
-      : NullStore(nullptr, "review-shuffle", false), id_(id), calls_(calls) {}
+  ReviewPeriodicChild(ScribeContext& context, uint32_t id, std::vector<uint32_t>& calls)
+      : NullStore(context, nullptr, "review-shuffle", false), id_(id), calls_(calls) {}
   void periodicCheck() override { calls_.push_back(id_); }
  private:
   uint32_t id_;
@@ -66,22 +67,23 @@ class ReviewPeriodicChild : public NullStore {
 
 class ReviewPeriodicBucket : public BucketStore {
  public:
-  ReviewPeriodicBucket(uint32_t size, std::vector<uint32_t>& calls)
-      : BucketStore(nullptr, "review-shuffle", false) {
+  ReviewPeriodicBucket(ScribeContext& context, uint32_t size, std::vector<uint32_t>& calls)
+      : BucketStore(context, nullptr, "review-shuffle", false) {
     // Populate test children directly. No BucketStore configure/copy/routing
     // path is executed; this fixture owns periodicCheck's order only.
     for (uint32_t i = 0; i < size; ++i) {
-      buckets.push_back(std::shared_ptr<Store>(new ReviewPeriodicChild(i, calls)));
+      buckets.push_back(std::shared_ptr<Store>(new ReviewPeriodicChild(context, i, calls)));
     }
   }
 };
 
 static void testReviewShuffle(const std::string& directory) {
+  scribeHandler context(0, "");
   std::ostringstream observations;
   for (uint32_t size : {0u, 1u, 2u, 3u, 4u, 8u, 17u, 100u}) {
     for (unsigned seed : {0u, 1u, 42u, 31337u}) {
       std::vector<uint32_t> calls;
-      ReviewPeriodicBucket bucket(size, calls);
+      ReviewPeriodicBucket bucket(context, size, calls);
       srand(seed);
       bucket.periodicCheck();
       bucket.periodicCheck();

@@ -5,7 +5,6 @@
 #include <set>
 #include <system_error>
 #include <iostream>
-std::shared_ptr<DummyHandler> g_Handler(new DummyHandler);
 void fixture_configure(){}
 std::string fixture_status(){return "";}
 static int fail_step=0,calls=0,bad_destroy=0,bad_join=0,joins=0;
@@ -25,7 +24,8 @@ extern "C" int __wrap_pthread_create(pthread_t* t,const pthread_attr_t* a,void*(
 extern "C" int __wrap_pthread_join(pthread_t t,void** p){++joins;if(!started){++bad_join;return ESRCH;}return __real_pthread_join(t,p);}
 static bool check(int step){
  fail_step=step;calls=bad_destroy=bad_join=joins=0;started=false;bool rejected=false;
- try {StoreQueue queue("fixture","fixture",1);if(step==0||step==5)queue.stop();}
+ ScribeContext context;
+ try {StoreQueue queue(context,"fixture","fixture",1);if(step==0||step==5)queue.stop();}
  catch(const std::system_error& error){rejected=error.code().value()==EAGAIN;}
  bool ok=live.empty()&&!bad_destroy&&!bad_join&&(step?rejected:started&&joins==1);
  std::cout<<"step="<<step<<" rejected="<<rejected<<" live="<<live.size()<<" bad_destroy="<<bad_destroy<<" bad_join="<<bad_join<<std::endl;return ok;

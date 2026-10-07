@@ -1,6 +1,7 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: funnel the shutdown RPC thread and main into one exit; no behaviour change.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,12 +38,16 @@ using namespace apache::thrift::concurrency;
 using namespace scribe::thrift;
 using namespace scribe::concurrency;
 
-std::shared_ptr<TConfiguration> scribe::createThriftConfiguration() {
-  if (!g_Handler->hasValidThriftLimits()) {
+// Defined in scribe_server.cpp. Only the server wiring below (and main) uses it.
+extern std::shared_ptr<scribeHandler> g_Handler;
+
+std::shared_ptr<TConfiguration> scribe::createThriftConfiguration(
+    const ScribeContext& context) {
+  if (!context.hasValidThriftLimits()) {
     throw std::runtime_error("Invalid Thrift wire limits; listener not started");
   }
-  return std::make_shared<TConfiguration>(g_Handler->getThriftMaxMessageSize(),
-                                         g_Handler->getThriftMaxFrameSize());
+  return std::make_shared<TConfiguration>(context.getThriftMaxMessageSize(),
+                                         context.getThriftMaxFrameSize());
 }
 
 // TNonblockingServer owns a separate TMemoryBuffer, which otherwise keeps its
@@ -122,7 +127,7 @@ uint32_t scribe::strhash::hash32(const char *s) {
 // note: this function uses global g_Handler.
 std::shared_ptr<TNonblockingServer> scribe::createServer(
     std::shared_ptr<TNonblockingServerTransport> server_transport) {
-  auto config = createThriftConfiguration();
+  auto config = createThriftConfiguration(*g_Handler);
   std::shared_ptr<TProcessor> processor(new scribeProcessor(g_Handler));
   /* This factory is for binary compatibility. */
   std::shared_ptr<TProtocolFactory> protocol_factory(

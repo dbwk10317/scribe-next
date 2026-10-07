@@ -1,6 +1,7 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; std::mutex pool guards keep lock points, dead null checks removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -38,7 +39,7 @@ using namespace apache::thrift::server;
 using namespace scribe::thrift;
 
 
-ConnPool::ConnPool() {
+ConnPool::ConnPool(ScribeContext& context) : context(context) {
 }
 
 ConnPool::~ConnPool() {
@@ -56,12 +57,12 @@ string ConnPool::makeKey(const string& hostname, unsigned long port) {
 
 bool ConnPool::open(const string& hostname, unsigned long port, int timeout) {
         return openCommon(makeKey(hostname, port),
-                    std::shared_ptr<scribeConn>(new scribeConn(hostname, port, timeout)));
+                    std::shared_ptr<scribeConn>(new scribeConn(context, hostname, port, timeout)));
 }
 
 bool ConnPool::open(const string &service, const server_vector_t &servers, int timeout) {
         return openCommon(service,
-                    std::shared_ptr<scribeConn>(new scribeConn(service, servers, timeout)));
+                    std::shared_ptr<scribeConn>(new scribeConn(context, service, servers, timeout)));
 }
 
 void ConnPool::close(const string& hostname, unsigned long port) {
@@ -169,8 +170,9 @@ int ConnPool::sendCommon(const string &key,
   }
 }
 
-scribeConn::scribeConn(const string& hostname, unsigned long port, int timeout_)
-  : refCount(1),
+scribeConn::scribeConn(ScribeContext& context, const string& hostname, unsigned long port, int timeout_)
+  : context(context),
+  refCount(1),
   serviceBased(false),
   remoteHost(hostname),
   remotePort(port),
@@ -178,8 +180,9 @@ scribeConn::scribeConn(const string& hostname, unsigned long port, int timeout_)
   pthread_mutex_init(&mutex, NULL);
 }
 
-scribeConn::scribeConn(const string& service, const server_vector_t &servers, int timeout_)
-  : refCount(1),
+scribeConn::scribeConn(ScribeContext& context, const string& service, const server_vector_t &servers, int timeout_)
+  : context(context),
+  refCount(1),
   serviceBased(true),
   serviceName(service),
   serverList(servers),
@@ -241,7 +244,7 @@ bool scribeConn::open() {
      */
     socket->setLinger(0, 0);
 
-    auto config = scribe::createThriftConfiguration();
+    auto config = scribe::createThriftConfiguration(context);
     socket->setConfiguration(config);
     framedTransport = std::shared_ptr<TFramedTransport>(new TFramedTransport(socket, config));
     protocol = std::shared_ptr<TBinaryProtocol>(new TBinaryProtocol(framedTransport));
@@ -281,8 +284,8 @@ scribeConn::send(std::shared_ptr<logentry_vector_t> messages) {
   // category/message bytes per entry. The outer four-byte frame is excluded.
   // TFramedTransport::flush itself only limits writes to 2GB. Reject locally
   // without splitting or discarding a retained batch that exceeds our policy.
-  const uint64_t limit = (std::min)(g_Handler->getThriftMaxFrameSize(),
-                                   g_Handler->getThriftMaxMessageSize());
+  const uint64_t limit = (std::min)(context.getThriftMaxFrameSize(),
+                                   context.getThriftMaxMessageSize());
   uint64_t wire_size = 21;
   for (const auto& message : *messages) {
     wire_size += 15 + message->category.size() + message->message.size();
@@ -320,7 +323,7 @@ scribeConn::send(std::shared_ptr<logentry_vector_t> messages) {
     result = resendClient->Log(msgs);
 
     if (result == OK) {
-      g_Handler->incCounter("sent", size);
+      context.incCounter("sent", size);
       LOG_OPER("Successfully sent <%d> messages to remote scribe server %s",
           size, connectionString().c_str());
       return (CONN_OK);

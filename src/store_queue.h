@@ -1,5 +1,6 @@
 // scribe-next modification: C++17 cleanup; explicit single-argument constructor.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +31,7 @@
 #include <atomic>
 
 class Store;
+class ScribeContext;
 
 /*
  * This class implements a queue and a thread for dispatching
@@ -38,7 +40,7 @@ class Store;
  */
 class StoreQueue {
  public:
-  StoreQueue(const std::string& type, const std::string& category,
+  StoreQueue(ScribeContext& context, const std::string& type, const std::string& category,
              unsigned check_period, bool is_model=false, bool multi_category=false);
   StoreQueue(const std::shared_ptr<StoreQueue> example,
              const std::string &category);
@@ -116,6 +118,9 @@ class StoreQueue {
   std::atomic<unsigned long long> targetWriteSize;  // in bytes
   time_t             maxWriteInterval; // in seconds
   bool               mustSucceed;      // Always retry even if secondary fails
+
+  // Server context from the handler; a copied queue uses its example's.
+  ScribeContext& context;
 
   // Store that will handle messages. This can contain other stores.
   std::shared_ptr<Store> store;

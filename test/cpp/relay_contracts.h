@@ -41,14 +41,15 @@ static void requireRelayDestination(const pStoreConf& configuration) {
 }
 
 static void runRelayDriver(const std::string& filename) {
-  // Typed StoreConf lookups may consult g_Handler even before initialize().
+  // The uninitialized handler is the stores' context (counters, pool, limits).
   HandlerFixture fixture(filename);
   pStoreConf configuration(new StoreConf);
   configuration->parseConfig(filename);
   requireRelayDestination(configuration);
   // This handler is only a real counter owner; initialize/worker/server are not
   // called here. Worker integration is separately exercised over loopback RPC.
-  NetworkStore first(nullptr, "first", true), second(nullptr, "second", true);
+  NetworkStore first(*fixture.handler, nullptr, "first", true),
+      second(*fixture.handler, nullptr, "second", true);
   NetworkStore* stores[] = {&first, &second};
   for (auto* store : stores) store->configure(configuration, pStoreConf());
   std::cout << "READY relay-driver" << std::endl;
@@ -108,8 +109,8 @@ static void runRelayLoopbackServer(const std::string& filename,
     std::string type;
     require(stores[0]->getString("type", type), "relay worker fixture requires store type");
     if (type == "network") {
-      // initialize() later installs the root config in g_Handler. Do not let a
-      // global inherited service/list/dynamic key bypass this pre-open guard.
+      // initialize() later makes this the root config of the store tree. Do not
+      // let a global inherited service/list/dynamic key bypass this pre-open guard.
       for (const auto* key : {"smc_service", "service_list", "dynamic_config_type"}) {
         std::string value;
         require(!configuration.getString(std::string("network::") + key, value),

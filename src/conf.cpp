@@ -1,5 +1,6 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; weak parent walk, unused code removed, same lookups.
+// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +24,8 @@
 
 #include "common.h"
 #include "conf.h"
-#include "scribe_server.h"
 
 using namespace std;
-
-extern std::shared_ptr<scribeHandler> g_Handler;
 
 StoreConf::StoreConf() {
 }
@@ -47,6 +45,13 @@ bool StoreConf::getStore(const string& storeName, pStoreConf& _return) {
 
 void StoreConf::setParent(pStoreConf pParent) {
   parent = pParent;
+}
+
+void StoreConf::setRoot(const StoreConf* pRoot) {
+  root = pRoot;
+  for (store_conf_map_t::iterator iter = stores.begin(); iter != stores.end(); ++iter) {
+    iter->second->setRoot(pRoot);
+  }
 }
 
 void StoreConf::getAllStores(vector<pStoreConf>& _return) {
@@ -142,9 +147,9 @@ bool StoreConf::getString(const string& stringName,
     // Keep each locked ancestor alive throughout its lookup.
     ancestor = pconf->parent.lock();
   }
-  // if we didn't find any.  then try g_Handler's config
-  if (!found) {
-    const StoreConf& gconf = g_Handler->getConfig();
+  // if we didn't find any.  then try the server's root config
+  if (!found && root) {
+    const StoreConf& gconf = *root;
     string_map_t::const_iterator iter = gconf.values.find(inheritedName);
     if (iter != gconf.values.end()) {
       _return = iter->second;

@@ -43,7 +43,7 @@ struct FileStoreFixture {
     unsigned long framed = 1, multi = 0;
     configuration->getUnsigned("test_framed", framed);
     configuration->getUnsigned("test_multi", multi);
-    store.reset(new FileStore(nullptr, "fallback", multi != 0, framed != 0));
+    store.reset(new FileStore(*handlerFixture.handler, nullptr, "fallback", multi != 0, framed != 0));
     store->configure(configuration, pStoreConf());
     now = {};
     now.tm_year = 126;
@@ -146,8 +146,8 @@ static void testFileStoreDeleteOpen(const std::string& config,
 // delete/replace/state transitions/counters are unchanged production methods.
 class ReplayPrimary : public Store {
  public:
-  explicit ReplayPrimary(bool partial)
-      : Store(nullptr, "fallback", "test-primary", false), partial_(partial) {}
+  ReplayPrimary(ScribeContext& context, bool partial)
+      : Store(context, nullptr, "fallback", "test-primary", false), partial_(partial) {}
   std::shared_ptr<Store> copy(const std::string&) override {
     throw std::runtime_error("unused primary copy");
   }
@@ -175,8 +175,9 @@ class ReplayPrimary : public Store {
 
 class ReplayBuffer : public BufferStore {
  public:
-  ReplayBuffer(std::shared_ptr<Store> primary, std::shared_ptr<Store> secondary)
-      : BufferStore(nullptr, "fallback", false) {
+  ReplayBuffer(ScribeContext& context, std::shared_ptr<Store> primary,
+               std::shared_ptr<Store> secondary)
+      : BufferStore(context, nullptr, "fallback", false) {
     primaryStore = primary;
     secondaryStore = secondary;
     // Begin at an explicit already-connected replay boundary, without a socket,
@@ -195,8 +196,9 @@ static void testBufferReplay(const std::string& config,
   FileStoreFixture fixture(config);
   unsigned long partial = 0;
   fixture.configuration->getUnsigned("test_partial", partial);
-  std::shared_ptr<ReplayPrimary> primary(new ReplayPrimary(partial != 0));
-  ReplayBuffer buffer(primary, fixture.store);
+  ScribeContext& context = *fixture.handlerFixture.handler;
+  std::shared_ptr<ReplayPrimary> primary(new ReplayPrimary(context, partial != 0));
+  ReplayBuffer buffer(context, primary, fixture.store);
   auto record = [&](const std::string& suffix) {
     saveEntries(directory + "/received" + suffix + ".txt",
                 std::shared_ptr<logentry_vector_t>(new logentry_vector_t(primary->received)));
