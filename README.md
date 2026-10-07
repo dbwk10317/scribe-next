@@ -124,8 +124,14 @@ Mac과 Windows는 서버 실행 환경으로 확인하지 않았습니다.
   - 이 patch는 카운터 잠금이 풀리지 않던 문제를 막습니다([자세히](#thrift-025와-fb303)).
 - 모두 `/usr/local` 아래에 설치합니다.
   - 원본 Scribe도 `/usr/local`을 기본값으로 가정했으므로, 아래 `--with-*path` 옵션은 이를 명시할 뿐입니다.
-- 저장소는 비공개이므로 clone하려면 GitHub 로그인이 필요합니다.
-  - `gh auth login`으로 로그인하거나, SSH key를 등록한 뒤 `git clone git@github.com:dbwk10317/scribe-next.git`을 씁니다.
+- 저장소를 따로 받지 않습니다. 이 README가 들어 있는 폴더가 곧 scribe-next 저장소이며, 그대로 빌드합니다.
+  - 아래 명령은 그 폴더를 `$SCRIBE_SRC`로 기억해 두고 씁니다. 저장소 폴더에서 다음을 실행합니다.
+
+```sh
+SCRIBE_SRC="$(pwd)"
+```
+
+터미널을 새로 열었다면 저장소 폴더에서 위 한 줄을 다시 실행합니다.
 
 > [!IMPORTANT]
 > Thrift compiler, Thrift 통신 라이브러리, fb303은 같은 Thrift 0.25.0 소스에서 만들어야 합니다.
@@ -185,15 +191,14 @@ sudo ldconfig
 마지막 `sudo ldconfig`는 새로 설치한 공유 라이브러리를 시스템이 찾도록 목록을 갱신합니다.
 이후 단계도 같은 `~/scribe-build` 폴더에서 진행합니다.
 
-#### 3. 저장소 받기와 fb303 빌드·설치 (공통)
+#### 3. fb303 빌드·설치 (공통)
 
-scribe-next 저장소를 받고, Thrift 소스에 든 fb303에 이 프로젝트의 patch를 적용해 `fb303-build` 폴더를 만듭니다.
+Thrift 소스에 든 fb303에 이 저장소의 patch를 적용해 `fb303-build` 폴더를 만듭니다.
 그 폴더에서 빌드한 뒤 `/usr/local`에 설치합니다.
 
 ```sh
 cd ~/scribe-build
-git clone https://github.com/dbwk10317/scribe-next.git
-python3 scribe-next/tools/prepare_fb303.py --source thrift-0.25.0/contrib/fb303 --output fb303-build
+python3 "$SCRIBE_SRC/tools/prepare_fb303.py" --source thrift-0.25.0/contrib/fb303 --output fb303-build
 cd fb303-build
 aclocal -I ./aclocal && automake -a --copy && autoconf
 ./configure --prefix=/usr/local --with-thriftpath=/usr/local --with-boost=/usr \
@@ -213,7 +218,7 @@ sudo cp scribe-next-fb303-safety.json /usr/local/share/scribe-next/fb303-safety.
 `bootstrap.sh`는 빌드 설정(configure)을 만들고 실행하며, 넘긴 옵션은 그대로 configure에 전달됩니다.
 
 ```sh
-cd ~/scribe-build/scribe-next
+cd "$SCRIBE_SRC"
 ./bootstrap.sh --prefix=/usr/local --with-thriftpath=/usr/local --with-fb303path=/usr/local
 make -j"$(nproc)"
 sudo make install
@@ -260,7 +265,7 @@ Docker[^docker]로 위 1~4단계를 대신하고, 저장소의 [`Dockerfile`](Do
 docker build -t scribe-next:local .
 ```
 
-- 저장소가 비공개이므로 Dockerfile은 저장소를 clone하지 않고, 지금 checkout을 그대로 빌드합니다.
+- Dockerfile은 저장소를 따로 받지 않고 지금 checkout을 그대로 빌드합니다.
   - commit하지 않은 변경도 이미지에 들어갑니다.
 - 빌드는 위 1~4단계와 같은 순서(Thrift → patch한 fb303 → `bootstrap.sh`·`make`·`make install`)입니다.
 - Thrift 소스를 내려받으므로 네트워크가 필요합니다.
@@ -422,11 +427,10 @@ scribed -c "$SCRIBE_CONFIG"
 `scribed`는 [시작에 실패해도 종료 코드 0](#시작에-실패해도-종료-코드는-0이다)으로 끝나고, store 설정이 틀려도 계속 떠 있습니다.
 그래서 시험 메시지, fb303 상태, 카운터, 실제 파일을 함께 확인합니다.
 
-다른 터미널에서 아래를 실행합니다.
+다른 터미널을 열어 저장소 폴더로 이동한 뒤 아래를 실행합니다.
 Python 3 표준 라이브러리만 쓰며, 저장소의 시험 도구에 든 Thrift 인코더를 빌려 씁니다.
 
 ```sh
-cd ~/scribe-build/scribe-next
 python3 - <<'PY'
 import socket, struct, sys
 sys.path.insert(0, 'tools')
@@ -476,10 +480,9 @@ cat "$SCRIBE_DATA/demo_current"
 
 ### 4. 정지
 
-fb303 `shutdown`을 보냅니다.
+저장소 폴더에서 fb303 `shutdown`을 보냅니다.
 
 ```sh
-cd ~/scribe-build/scribe-next
 python3 - <<'PY'
 import socket, sys
 sys.path.insert(0, 'tools')
@@ -554,87 +557,87 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 #### Thrift 0.25와 fb303
 
-**왜 바꿨나.**
-원본은 Thrift 0.5~0.9 시절 API로 작성돼 지금의 Thrift와 함께 빌드되지 않습니다.
-그래서 통신 경계 코드를 Thrift 0.25.0에 맞췄습니다.
-상태 조회용 fb303도 같은 Thrift 0.25.0 소스에서 빌드합니다.
+- **왜 바꿨나.**
+  원본은 Thrift 0.5~0.9 시절 API로 작성돼 지금의 Thrift와 함께 빌드되지 않습니다.
+  그래서 통신 경계 코드를 Thrift 0.25.0에 맞췄습니다.
+  상태 조회용 fb303도 같은 Thrift 0.25.0 소스에서 빌드합니다.
 
-**기대할 수 있는 것.**
-지금의 배포판에서 빌드하고 실행할 수 있습니다.
-요청·응답 형식과 fb303 조회 방법은 원본과 같아서 구버전 클라이언트·서버와 그대로 통신합니다.
+- **기대할 수 있는 것.**
+  지금의 배포판에서 빌드하고 실행할 수 있습니다.
+  요청·응답 형식과 fb303 조회 방법은 원본과 같아서 구버전 클라이언트·서버와 그대로 통신합니다.
 
-**기존과 달라진 점.**
-Thrift compiler와 통신 라이브러리는 반드시 같은 0.25.0이어야 합니다(다르면 서로 맞지 않음).
-새 Thrift에는 원본 시절과 다른 기본 크기 한도가 있어, [새 설정 키](#새-설정-키) 두 개로 한도를 정합니다.
-Thrift의 thread 구현과 라이브러리가 달라졌으므로, stack 크기와 운영 성능까지 같다고 가정하지 마세요.
+- **기존과 달라진 점.**
+  Thrift compiler와 통신 라이브러리는 반드시 같은 0.25.0이어야 합니다(다르면 서로 맞지 않음).
+  새 Thrift에는 원본 시절과 다른 기본 크기 한도가 있어, [새 설정 키](#새-설정-키) 두 개로 한도를 정합니다.
+  Thrift의 thread 구현과 라이브러리가 달라졌으므로, stack 크기와 운영 성능까지 같다고 가정하지 마세요.
 
-**fb303 patch.**
-Thrift 0.25.0에 든 fb303 코드는 카운터를 새로 추가하다 메모리 할당에 실패하면 카운터 잠금을 풀지 않았습니다.
-그러면 그 뒤로 카운터 조회가 영원히 멈춥니다.
+- **fb303 patch.**
+  Thrift 0.25.0에 든 fb303 코드는 카운터를 새로 추가하다 메모리 할당에 실패하면 카운터 잠금을 풀지 않았습니다.
+  그러면 그 뒤로 카운터 조회가 영원히 멈춥니다.
 
-이 프로젝트의 patch는 잠금이 자동으로 풀리게 해 이 멈춤을 막습니다.
-카운터 이름·값·조회 방법은 바뀌지 않습니다([fb303 카운터 잠금](docs/build.md#fb303-patch)).
+  이 프로젝트의 patch는 잠금이 자동으로 풀리게 해 이 멈춤을 막습니다.
+  카운터 이름·값·조회 방법은 바뀌지 않습니다([fb303 카운터 잠금](docs/build.md#fb303-patch)).
 
-**관련 설정 키.** 없습니다.
+- **관련 설정 키.** 없습니다.
 
-**예시.**
-로그를 쓰다 예외가 나고, 그 순간 새 카운터를 추가하던 메모리 할당이 실패했다고 합시다.
-patch 전 fb303에서는 그 뒤 감시 도구의 `getCounters` 호출이 응답 없이 멈춥니다.
-patch한 fb303에서는 잠금이 풀려 다음 호출이 정상으로 답합니다.
+- **예시.**
+  로그를 쓰다 예외가 나고, 그 순간 새 카운터를 추가하던 메모리 할당이 실패했다고 합시다.
+  patch 전 fb303에서는 그 뒤 감시 도구의 `getCounters` 호출이 응답 없이 멈춥니다.
+  patch한 fb303에서는 잠금이 풀려 다음 호출이 정상으로 답합니다.
 
 #### C++17을 빌드 파일이 직접 정함
 
-**왜 바꿨나.**
-C++17[^cpp17]은 이 이식판이 쓰는 C++ 언어 판(표준)입니다.
-예전에는 이 판이 검증 도구나 RPM 빌드가 따로 지정할 때만 적용됐습니다.
-그래서 직접 `./configure && make`를 하면 컴파일러 기본 판으로 빌드될 수 있었습니다.
+- **왜 바꿨나.**
+  C++17[^cpp17]은 이 이식판이 쓰는 C++ 언어 판(표준)입니다.
+  예전에는 이 판이 검증 도구나 RPM 빌드가 따로 지정할 때만 적용됐습니다.
+  그래서 직접 `./configure && make`를 하면 컴파일러 기본 판으로 빌드될 수 있었습니다.
 
-**기대할 수 있는 것.**
-어떤 방법으로 빌드해도 같은 언어 판으로 빌드됩니다.
+- **기대할 수 있는 것.**
+  어떤 방법으로 빌드해도 같은 언어 판으로 빌드됩니다.
 
-**기존과 달라진 점.**
-빌드 방식은 원본처럼 `configure` + `make`이며 다른 빌드 도구로 바꾸지 않았습니다.
-빌드할 때 `CXXFLAGS`로 언어 판을 직접 주면 그 값이 우선합니다.
-실행 중 동작이나 설정 해석은 바뀌지 않습니다.
+- **기존과 달라진 점.**
+  빌드 방식은 원본처럼 `configure` + `make`이며 다른 빌드 도구로 바꾸지 않았습니다.
+  빌드할 때 `CXXFLAGS`로 언어 판을 직접 주면 그 값이 우선합니다.
+  실행 중 동작이나 설정 해석은 바뀌지 않습니다.
 
-**관련 설정 키.** 없습니다.
+- **관련 설정 키.** 없습니다.
 
-**예시.**
-GCC 8의 기본 판은 C++14 계열(gnu++14)입니다.
-예전에는 Rocky 8에서 그냥 `make`하면 C++17이 아닌 판으로 빌드될 수 있었지만, 이제는 항상 C++17로 빌드됩니다.
+- **예시.**
+  GCC 8의 기본 판은 C++14 계열(gnu++14)입니다.
+  예전에는 Rocky 8에서 그냥 `make`하면 C++17이 아닌 판으로 빌드될 수 있었지만, 이제는 항상 C++17로 빌드됩니다.
 
 #### Boost 제거
 
-**왜 바꿨나.**
-`scribed`가 Boost에서 쓰던 기능은 다음 세 가지뿐이었습니다.
+- **왜 바꿨나.**
+  `scribed`가 Boost에서 쓰던 기능은 다음 세 가지뿐이었습니다.
 
-- 메모리를 자동으로 관리하는 스마트 포인터[^smartptr]
-- 파일 크기·목록·삭제·폴더 만들기 같은 파일 함수 몇 개
-- 서버 목록 문자열을 나누는 함수 하나
+  - 메모리를 자동으로 관리하는 스마트 포인터[^smartptr]
+  - 파일 크기·목록·삭제·폴더 만들기 같은 파일 함수 몇 개
+  - 서버 목록 문자열을 나누는 함수 하나
 
-C++17 표준 라이브러리가 이것을 모두 제공하므로 Boost 의존을 없앴습니다.
+  C++17 표준 라이브러리가 이것을 모두 제공하므로 Boost 의존을 없앴습니다.
 
-**기대할 수 있는 것.**
-`scribed`를 설치하거나 배포할 때 함께 설치·동봉할 Boost 라이브러리가 없습니다.
-Docker 실행 이미지에도 Boost가 없습니다.
+- **기대할 수 있는 것.**
+  `scribed`를 설치하거나 배포할 때 함께 설치·동봉할 Boost 라이브러리가 없습니다.
+  Docker 실행 이미지에도 Boost가 없습니다.
 
-**기존과 달라진 점.**
-빌드하는 컴퓨터에는 여전히 Boost header가 필요합니다.
-Thrift 자신의 header가 Boost header를 불러오기 때문입니다.
-`configure`의 `--with-boost` 옵션은 없어졌으며, 예전 빌드 스크립트에 남아 있으면 경고만 출력하고 계속합니다.
+- **기존과 달라진 점.**
+  빌드하는 컴퓨터에는 여전히 Boost header가 필요합니다.
+  Thrift 자신의 header가 Boost header를 불러오기 때문입니다.
+  `configure`의 `--with-boost` 옵션은 없어졌으며, 예전 빌드 스크립트에 남아 있으면 경고만 출력하고 계속합니다.
 
-로그의 분배·내용·파일 형식과 카운터는 같습니다.
-파일 함수가 실패했을 때의 진단 로그 문구만 표준 라이브러리 표현으로 바뀔 수 있습니다.
+  로그의 분배·내용·파일 형식과 카운터는 같습니다.
+  파일 함수가 실패했을 때의 진단 로그 문구만 표준 라이브러리 표현으로 바뀔 수 있습니다.
 
-서버 목록을 나누는 새 함수는 원본 빌드가 쓰던 Boost 1.58, 그리고 Boost 1.83과 결과를 비교했습니다.
-탭·공백·콜론·NUL을 포함한 7개 문자로 만든 길이 7 이하의 모든 문자열에서 결과가 같았습니다.
+  서버 목록을 나누는 새 함수는 원본 빌드가 쓰던 Boost 1.58, 그리고 Boost 1.83과 결과를 비교했습니다.
+  탭·공백·콜론·NUL을 포함한 7개 문자로 만든 길이 7 이하의 모든 문자열에서 결과가 같았습니다.
 
-**관련 설정 키.** 없습니다.
+- **관련 설정 키.** 없습니다.
 
-**예시.**
-예전 Docker 이미지에서는 `ldd`에 Boost filesystem·system 라이브러리가 보였고, 실행 서버에도 이것을 설치해야 했습니다.
-이제 `ldd "$(command -v scribed)"`에 `libboost_*`가 없습니다.
-GCC 8(Rocky 8)은 표준 파일 함수가 별도 라이브러리에 있어, `configure`가 필요할 때만 `libstdc++fs`를 자동으로 붙입니다.
+- **예시.**
+  예전 Docker 이미지에서는 `ldd`에 Boost filesystem·system 라이브러리가 보였고, 실행 서버에도 이것을 설치해야 했습니다.
+  이제 `ldd "$(command -v scribed)"`에 `libboost_*`가 없습니다.
+  GCC 8(Rocky 8)은 표준 파일 함수가 별도 라이브러리에 있어, `configure`가 필요할 때만 `libstdc++fs`를 자동으로 붙입니다.
 
 ### 고친 원래 버그
 
@@ -660,431 +663,431 @@ GCC 8(Rocky 8)은 표준 파일 함수가 별도 라이브러리에 있어, `con
 
 #### spool 읽기 버퍼의 해제 방식
 
-**왜 바꿨나.**
-buffer store[^buffer]가 spool 파일을 다시 읽을 때 쓰는 메모리를 받는 방법과 돌려주는 방법이 짝이 맞지 않았습니다.
-C++에서 이는 미정의 동작이며 메모리 손상으로 이어질 수 있습니다.
+- **왜 바꿨나.**
+  buffer store[^buffer]가 spool 파일을 다시 읽을 때 쓰는 메모리를 받는 방법과 돌려주는 방법이 짝이 맞지 않았습니다.
+  C++에서 이는 미정의 동작이며 메모리 손상으로 이어질 수 있습니다.
 
-**기대할 수 있는 것.**
-spool을 다시 읽을 때 이 문제로 인한 메모리 손상 위험이 없습니다.
+- **기대할 수 있는 것.**
+  spool을 다시 읽을 때 이 문제로 인한 메모리 손상 위험이 없습니다.
 
-**기존과 달라진 점.**
-읽는 내용, 파일 형식, 손실 집계는 같습니다.
-메모리가 모자라 버퍼를 받지 못할 때의 손실 처리도 같습니다.
+- **기존과 달라진 점.**
+  읽는 내용, 파일 형식, 손실 집계는 같습니다.
+  메모리가 모자라 버퍼를 받지 못할 때의 손실 처리도 같습니다.
 
-**관련 설정 키.**
-`type=buffer`이고 `<secondary>`가 `type=file`(`fs_type=std`, 기본값)인 store입니다.
+- **관련 설정 키.**
+  `type=buffer`이고 `<secondary>`가 `type=file`(`fs_type=std`, 기본값)인 store입니다.
 
-**예시.**
-relay 서버가 30분 동안 내려가 spool이 쌓였다가 살아나면, buffer가 spool 파일을 읽어 다시 보냅니다.
-구버전은 그때마다 짝이 맞지 않게 메모리를 돌려줬고, 신버전은 바르게 돌려줍니다.
+- **예시.**
+  relay 서버가 30분 동안 내려가 spool이 쌓였다가 살아나면, buffer가 spool 파일을 읽어 다시 보냅니다.
+  구버전은 그때마다 짝이 맞지 않게 메모리를 돌려줬고, 신버전은 바르게 돌려줍니다.
 
 #### retry_interval_range=0의 0 나누기
 
-**왜 바꿨나.**
-buffer는 재시도 간격에 무작위 값(jitter[^jitter])을 더하는데, 이 값을 범위로 나눈 나머지로 계산합니다.
-범위가 0이면 0으로 나누게 되어 비정상 종료할 수 있었습니다.
+- **왜 바꿨나.**
+  buffer는 재시도 간격에 무작위 값(jitter[^jitter])을 더하는데, 이 값을 범위로 나눈 나머지로 계산합니다.
+  범위가 0이면 0으로 나누게 되어 비정상 종료할 수 있었습니다.
 
-**기대할 수 있는 것.**
-범위가 0이면 무작위 값 없이 `retry_interval` 간격으로 재시도합니다.
+- **기대할 수 있는 것.**
+  범위가 0이면 무작위 값 없이 `retry_interval` 간격으로 재시도합니다.
 
-**기존과 달라진 점.**
-범위가 1 이상인 정상 설정의 계산은 같습니다.
-`adaptive_backoff=yes`에 `max_random_offset=0`인 경우도 같은 방식으로 고쳤습니다.
+- **기존과 달라진 점.**
+  범위가 1 이상인 정상 설정의 계산은 같습니다.
+  `adaptive_backoff=yes`에 `max_random_offset=0`인 경우도 같은 방식으로 고쳤습니다.
 
-**관련 설정 키.**
-`retry_interval`, `retry_interval_range`, `adaptive_backoff`, `max_random_offset`.
+- **관련 설정 키.**
+  `retry_interval`, `retry_interval_range`, `adaptive_backoff`, `max_random_offset`.
 
-**예시.**
-`retry_interval=30`, `retry_interval_range=0`인 buffer의 primary가 연결에 실패했다고 합시다.
-구버전은 다음 재시도 시간을 계산하다 종료될 수 있습니다.
-신버전은 30초 뒤 다시 시도합니다(실제 시각은 `check_interval` 주기만큼 늦을 수 있음).
+- **예시.**
+  `retry_interval=30`, `retry_interval_range=0`인 buffer의 primary가 연결에 실패했다고 합시다.
+  구버전은 다음 재시도 시간을 계산하다 종료될 수 있습니다.
+  신버전은 30초 뒤 다시 시도합니다(실제 시각은 `check_interval` 주기만큼 늦을 수 있음).
 
 #### 알 수 없는 bucket 하위 store 종류
 
-**왜 바꿨나.**
-bucket store의 하위 블록에 없는 store 종류를 쓰면, 구버전은 만들지 못한 빈 store를 그대로 써서 비정상 종료할 수 있었습니다.
+- **왜 바꿨나.**
+  bucket store의 하위 블록에 없는 store 종류를 쓰면, 구버전은 만들지 못한 빈 store를 그대로 써서 비정상 종료할 수 있었습니다.
 
-**기대할 수 있는 것.**
-설정 오류로 알려 주고 프로세스는 계속 떠 있습니다.
+- **기대할 수 있는 것.**
+  설정 오류로 알려 주고 프로세스는 계속 떠 있습니다.
 
-**기존과 달라진 점.**
-`can't create store of type: netwrok` 같은 설정 오류를 남기고 fb303 상태가 `WARNING`이 됩니다.
-정상 종류를 쓴 bucket의 분배는 같습니다.
+- **기존과 달라진 점.**
+  `can't create store of type: netwrok` 같은 설정 오류를 남기고 fb303 상태가 `WARNING`이 됩니다.
+  정상 종류를 쓴 bucket의 분배는 같습니다.
 
-**관련 설정 키.**
-bucket store의 하위 블록(`<bucket1>` 등) 안의 `type`.
+- **관련 설정 키.**
+  bucket store의 하위 블록(`<bucket1>` 등) 안의 `type`.
 
-**예시.**
-`<bucket1>` 안에 `type=network`를 `type=netwrok`로 잘못 썼다면, 구버전은 종료될 수 있습니다.
-신버전은 위 오류와 `WARNING` 상태로 오타를 알려 줍니다.
+- **예시.**
+  `<bucket1>` 안에 `type=network`를 `type=netwrok`로 잘못 썼다면, 구버전은 종료될 수 있습니다.
+  신버전은 위 오류와 `WARNING` 상태로 오타를 알려 줍니다.
 
 #### list_default_port가 없을 때의 port
 
-**왜 바꿨나.**
-`service_list`에 port 없이 서버 이름만 쓰고 `list_default_port`도 없으면, 구버전은 초기화하지 않은 메모리 값을 port로 썼습니다.
-실행할 때마다 어떤 port로 연결할지 알 수 없었습니다.
+- **왜 바꿨나.**
+  `service_list`에 port 없이 서버 이름만 쓰고 `list_default_port`도 없으면, 구버전은 초기화하지 않은 메모리 값을 port로 썼습니다.
+  실행할 때마다 어떤 port로 연결할지 알 수 없었습니다.
 
-**기대할 수 있는 것.**
-port를 0으로 정하므로 결과가 일정하게 연결 실패입니다.
+- **기대할 수 있는 것.**
+  port를 0으로 정하므로 결과가 일정하게 연결 실패입니다.
 
-**기존과 달라진 점.**
-맞는 port를 자동으로 찾아 주지는 않습니다.
+- **기존과 달라진 점.**
+  맞는 port를 자동으로 찾아 주지는 않습니다.
 
-**관련 설정 키.**
-`service_list`, `list_default_port`.
+- **관련 설정 키.**
+  `service_list`, `list_default_port`.
 
-**예시.**
-`service_list=relay-a.example relay-b.example`만 쓰면 신버전은 연결에 실패합니다.
-`relay-a.example:1463`처럼 port를 쓰거나 `list_default_port=1463`을 더하세요.
+- **예시.**
+  `service_list=relay-a.example relay-b.example`만 쓰면 신버전은 연결에 실패합니다.
+  `relay-a.example:1463`처럼 port를 쓰거나 `list_default_port=1463`을 더하세요.
 
 #### 추가 bucket 검사의 범위 밖 읽기
 
-**왜 바꿨나.**
-`bucket0`…`bucketN`을 직접 정의하면 원본은 정의가 더 있는지 검사합니다.
-그런데 이 검사에는 [원본 결함](#추가-bucket-검사는-이름-대신-문자열-중간을-본다)이 있어, `num_buckets`가 6 이상이면 문자열 밖 메모리를 읽었습니다.
+- **왜 바꿨나.**
+  `bucket0`…`bucketN`을 직접 정의하면 원본은 정의가 더 있는지 검사합니다.
+  그런데 이 검사에는 [원본 결함](#추가-bucket-검사는-이름-대신-문자열-중간을-본다)이 있어, `num_buckets`가 6 이상이면 문자열 밖 메모리를 읽었습니다.
 
-**기대할 수 있는 것.**
-이 경우에도 미정의 동작 없이 시작합니다.
+- **기대할 수 있는 것.**
+  이 경우에도 미정의 동작 없이 시작합니다.
 
-**기존과 달라진 점.**
-신버전은 이때 검사를 건너뜁니다.
-구·신 모두 추가 bucket을 거부하지 않으므로 정상 분배는 같습니다.
+- **기존과 달라진 점.**
+  신버전은 이때 검사를 건너뜁니다.
+  구·신 모두 추가 bucket을 거부하지 않으므로 정상 분배는 같습니다.
 
-**관련 설정 키.**
-`num_buckets`, `bucket0`…`bucketN` 블록.
+- **관련 설정 키.**
+  `num_buckets`, `bucket0`…`bucketN` 블록.
 
-**예시.**
-`num_buckets=8`로 `<bucket0>`부터 `<bucket8>`까지 정의한 설정을 읽을 때, 구버전은 범위 밖 메모리를 읽습니다.
-신버전은 그대로 시작하고, 로그 분배는 같습니다.
+- **예시.**
+  `num_buckets=8`로 `<bucket0>`부터 `<bucket8>`까지 정의한 설정을 읽을 때, 구버전은 범위 밖 메모리를 읽습니다.
+  신버전은 그대로 시작하고, 로그 분배는 같습니다.
 
 #### HDFS 파일 삭제 함수
 
-**왜 바꿨나.**
-HDFS 라이브러리(libhdfs)의 파일 삭제 함수는 옛 판과 지금 판의 인자 수가 다릅니다.
-그대로는 지금의 libhdfs와 빌드되지 않습니다.
+- **왜 바꿨나.**
+  HDFS 라이브러리(libhdfs)의 파일 삭제 함수는 옛 판과 지금 판의 인자 수가 다릅니다.
+  그대로는 지금의 libhdfs와 빌드되지 않습니다.
 
-**기대할 수 있는 것.**
-`fs_type=hdfs`를 쓰는 빌드가 옛 API와 지금 API 모두에 맞게 연결됩니다.
+- **기대할 수 있는 것.**
+  `fs_type=hdfs`를 쓰는 빌드가 옛 API와 지금 API 모두에 맞게 연결됩니다.
 
-**기존과 달라진 점.**
-지금 API에는 하위 항목까지 지우는 값(`recursive=1`)을 넘깁니다.
-삭제 결과를 확인하지 않고 로그만 남기는 원본 처리는 같습니다.
-HDFS 오류 처리 전체를 새로 고친 것은 아닙니다.
+- **기존과 달라진 점.**
+  지금 API에는 하위 항목까지 지우는 값(`recursive=1`)을 넘깁니다.
+  삭제 결과를 확인하지 않고 로그만 남기는 원본 처리는 같습니다.
+  HDFS 오류 처리 전체를 새로 고친 것은 아닙니다.
 
-**관련 설정 키.**
-`fs_type=hdfs`.
+- **관련 설정 키.**
+  `fs_type=hdfs`.
 
-**예시.**
-Hadoop 3.5의 libhdfs로 HDFS 저장 기능을 빌드하면 원본 소스는 컴파일되지 않지만, 신버전은 빌드됩니다.
-확인한 범위는 [HDFS 안내](docs/hdfs.md)에 있습니다.
+- **예시.**
+  Hadoop 3.5의 libhdfs로 HDFS 저장 기능을 빌드하면 원본 소스는 컴파일되지 않지만, 신버전은 빌드됩니다.
+  확인한 범위는 [HDFS 안내](docs/hdfs.md)에 있습니다.
 
 #### 종료할 때 exit를 한 번만
 
-**왜 바꿨나.**
-fb303 `shutdown`을 받으면 그 요청을 처리하는 thread가 프로세스 종료를 시작합니다.
-같은 때 main thread도 서버가 멈춘 것을 보고 종료를 시작했습니다.
-두 곳이 동시에 종료 정리를 하면서 드물게 종료 중 비정상 종료(SIGSEGV)가 났습니다.
+- **왜 바꿨나.**
+  fb303 `shutdown`을 받으면 그 요청을 처리하는 thread가 프로세스 종료를 시작합니다.
+  같은 때 main thread도 서버가 멈춘 것을 보고 종료를 시작했습니다.
+  두 곳이 동시에 종료 정리를 하면서 드물게 종료 중 비정상 종료(SIGSEGV)가 났습니다.
 
-**기대할 수 있는 것.**
-종료 정리는 한 번만 일어나고, 다른 쪽은 그 끝을 기다립니다.
+- **기대할 수 있는 것.**
+  종료 정리는 한 번만 일어나고, 다른 쪽은 그 끝을 기다립니다.
 
-**기존과 달라진 점.**
-종료 코드 0, 종료 로그(`scribe server exiting`), store를 멈추는 순서는 같습니다.
-원본도 같은 구조였으므로 같은 경쟁이 있을 수 있었습니다.
+- **기존과 달라진 점.**
+  종료 코드 0, 종료 로그(`scribe server exiting`), store를 멈추는 순서는 같습니다.
+  원본도 같은 구조였으므로 같은 경쟁이 있을 수 있었습니다.
 
-**관련 설정 키.** 없습니다.
+- **관련 설정 키.** 없습니다.
 
-**예시.**
-구·신 비교 시험(`receiver-restart`)을 개발하던 중, 신버전 수신 서버의 `shutdown` 53번 가운데 1번이 SIGSEGV로 끝났습니다.
-감시 스크립트가 `shutdown` 뒤 종료 코드 0을 기대한다면 이런 드문 실패를 볼 수 있었습니다.
-이제 두 종료 경로가 하나로 모여 이 경쟁이 없습니다.
+- **예시.**
+  구·신 비교 시험(`receiver-restart`)을 개발하던 중, 신버전 수신 서버의 `shutdown` 53번 가운데 1번이 SIGSEGV로 끝났습니다.
+  감시 스크립트가 `shutdown` 뒤 종료 코드 0을 기대한다면 이런 드문 실패를 볼 수 있었습니다.
+  이제 두 종료 경로가 하나로 모여 이 경쟁이 없습니다.
 
 #### max_msg_per_second의 동시 계산
 
-**왜 바꿨나.**
-`max_msg_per_second`는 1초에 받을 메시지 수의 한도입니다.
-구버전은 여러 요청이 동시에 들어올 때 그 초의 개수를 잠금 없이 고쳤습니다.
-이는 미정의 동작이고, 한도보다 많이 받아들일 수 있었습니다.
+- **왜 바꿨나.**
+  `max_msg_per_second`는 1초에 받을 메시지 수의 한도입니다.
+  구버전은 여러 요청이 동시에 들어올 때 그 초의 개수를 잠금 없이 고쳤습니다.
+  이는 미정의 동작이고, 한도보다 많이 받아들일 수 있었습니다.
 
-**기대할 수 있는 것.**
-동시에 들어오는 요청도 정확히 셉니다.
+- **기대할 수 있는 것.**
+  동시에 들어오는 요청도 정확히 셉니다.
 
-**기존과 달라진 점.**
-요청이 하나씩 들어오면 결과가 같습니다.
-한도 근처에서 동시에 들어온 요청만 받는 개수가 다를 수 있습니다.
-한 요청의 메시지 수가 한도의 절반보다 많으면 항상 받는 [원본 예외](#max_msg_per_second의-절반-예외)는 그대로입니다.
+- **기존과 달라진 점.**
+  요청이 하나씩 들어오면 결과가 같습니다.
+  한도 근처에서 동시에 들어온 요청만 받는 개수가 다를 수 있습니다.
+  한 요청의 메시지 수가 한도의 절반보다 많으면 항상 받는 [원본 예외](#max_msg_per_second의-절반-예외)는 그대로입니다.
 
-**관련 설정 키.**
-`max_msg_per_second`(기본 0 = 제한 없음).
+- **관련 설정 키.**
+  `max_msg_per_second`(기본 0 = 제한 없음).
 
-**예시.**
-`max_msg_per_second=1000`이고 그 초에 이미 900개를 받았는데, 100개짜리 요청 두 개가 동시에 들어왔다고 합시다.
-구버전은 둘 다 받을 수 있습니다(합계 1100).
-신버전은 하나를 받고, 다른 하나에는 `TRY_LATER`를 돌려주며 `denied for rate` 카운터를 올립니다.
+- **예시.**
+  `max_msg_per_second=1000`이고 그 초에 이미 900개를 받았는데, 100개짜리 요청 두 개가 동시에 들어왔다고 합시다.
+  구버전은 둘 다 받을 수 있습니다(합계 1100).
+  신버전은 하나를 받고, 다른 하나에는 `TRY_LATER`를 돌려주며 `denied for rate` 카운터를 올립니다.
 
 #### 동적 목적지 변경과 연결 pool
 
-**왜 바꿨나.**
-`dynamic_config_type=thrift_bucket`인 network store는 bucket updater라는 별도 서버에 목적지를 묻고, 바뀌면 연결을 다시 엽니다.
-`use_conn_pool=yes`이면 같은 `host:port`로 가는 연결 하나를 여러 store가 함께 쓰고, 사용자 수(refcount[^refcount])로 닫을 때를 정합니다.
-구버전은 주소를 새 값으로 먼저 바꾼 뒤 연결을 닫아서, 옛 목적지가 아니라 **새 목적지**의 사용자 수를 줄였습니다.
+- **왜 바꿨나.**
+  `dynamic_config_type=thrift_bucket`인 network store는 bucket updater라는 별도 서버에 목적지를 묻고, 바뀌면 연결을 다시 엽니다.
+  `use_conn_pool=yes`이면 같은 `host:port`로 가는 연결 하나를 여러 store가 함께 쓰고, 사용자 수(refcount[^refcount])로 닫을 때를 정합니다.
+  구버전은 주소를 새 값으로 먼저 바꾼 뒤 연결을 닫아서, 옛 목적지가 아니라 **새 목적지**의 사용자 수를 줄였습니다.
 
-**기대할 수 있는 것.**
-목적지가 바뀌면 옛 연결만 닫힙니다.
-같은 목적지를 쓰던 다른 store의 연결이 엉뚱하게 닫혀 batch[^batch]가 한 번 실패하는 일이 없습니다.
+- **기대할 수 있는 것.**
+  목적지가 바뀌면 옛 연결만 닫힙니다.
+  같은 목적지를 쓰던 다른 store의 연결이 엉뚱하게 닫혀 batch[^batch]가 한 번 실패하는 일이 없습니다.
 
-**기존과 달라진 점.**
-분배·파일 내용·최종 전달 결과는 같습니다.
-`use_conn_pool=no`(기본값)는 원래부터 자기 연결만 닫았으므로 차이가 없습니다.
-구버전이 남기던 `LOGIC ERROR` 진단 로그가 이 경우에는 나오지 않습니다.
+- **기존과 달라진 점.**
+  분배·파일 내용·최종 전달 결과는 같습니다.
+  `use_conn_pool=no`(기본값)는 원래부터 자기 연결만 닫았으므로 차이가 없습니다.
+  구버전이 남기던 `LOGIC ERROR` 진단 로그가 이 경우에는 나오지 않습니다.
 
-**관련 설정 키.**
-`use_conn_pool=yes`와 `dynamic_config_type`입니다.
-`bucket_updater_host`·`bucket_updater_port`(또는 `bucket_updater_service`)와 `bucket_updater_ttl`도 해당합니다.
-bucket updater에는 `bucket_updater_ttl`(기본 60초)마다 다시 묻고, 목적지 확인은 `check_interval`마다 합니다.
+- **관련 설정 키.**
+  `use_conn_pool=yes`와 `dynamic_config_type`입니다.
+  `bucket_updater_host`·`bucket_updater_port`(또는 `bucket_updater_service`)와 `bucket_updater_ttl`도 해당합니다.
+  bucket updater에는 `bucket_updater_ttl`(기본 60초)마다 다시 묻고, 목적지 확인은 `check_interval`마다 합니다.
 
-모델 복사본은 [동적 조회 설정을 물려받지 않으므로](#network-복사본은-service_list와-동적-조회-설정을-물려받지-않는다) 직접 설정한 store만 해당합니다.
+  모델 복사본은 [동적 조회 설정을 물려받지 않으므로](#network-복사본은-service_list와-동적-조회-설정을-물려받지-않는다) 직접 설정한 store만 해당합니다.
 
-**예시.**
+- **예시.**
 
-```conf
-# game_purchase의 bucket1은 bucket updater가 알려 주는 서버로 보냅니다.
-<store>
-  category=game_purchase
-  type=bucket
-  num_buckets=1
-  bucket_type=key_hash
-  delimiter=124
+  ```conf
+  # game_purchase의 bucket1은 bucket updater가 알려 주는 서버로 보냅니다.
+  <store>
+    category=game_purchase
+    type=bucket
+    num_buckets=1
+    bucket_type=key_hash
+    delimiter=124
 
-  <bucket0>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/purchase-unkeyed
-    base_filename=game_purchase
-  </bucket0>
+    <bucket0>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/purchase-unkeyed
+      base_filename=game_purchase
+    </bucket0>
 
-  <bucket1>
+    <bucket1>
+      type=network
+      use_conn_pool=yes
+      dynamic_config_type=thrift_bucket
+      bucket_updater_host=bucket-mapper.example
+      bucket_updater_port=9090
+      bucket_updater_ttl=60
+    </bucket1>
+  </store>
+
+  # game_login은 relay-b.example로 고정 전송하며 같은 연결 pool을 씁니다.
+  <store>
+    category=game_login
     type=network
+    remote_host=relay-b.example
+    remote_port=1463
     use_conn_pool=yes
-    dynamic_config_type=thrift_bucket
-    bucket_updater_host=bucket-mapper.example
-    bucket_updater_port=9090
-    bucket_updater_ttl=60
-  </bucket1>
-</store>
+  </store>
+  ```
 
-# game_login은 relay-b.example로 고정 전송하며 같은 연결 pool을 씁니다.
-<store>
-  category=game_login
-  type=network
-  remote_host=relay-b.example
-  remote_port=1463
-  use_conn_pool=yes
-</store>
-```
+  bucket updater가 `game_purchase` bucket1의 목적지를 `relay-a.example:1463`에서 `relay-b.example:1463`으로 바꾸면:
 
-bucket updater가 `game_purchase` bucket1의 목적지를 `relay-a.example:1463`에서 `relay-b.example:1463`으로 바꾸면:
+  | 항목 | 구버전 | 신버전 |
+  | --- | --- | --- |
+  | 사용자 수를 줄이는 연결 | `relay-b`(새 목적지) | `relay-a`(옛 목적지) |
+  | `relay-a` 연결 | 계속 열려 있음 | 다른 사용자가 없으면 닫힘 |
+  | `game_login`의 `relay-b` 연결 | 닫혀서 다음 batch 1회 실패 가능 | 영향 없음 |
+  | 분배·내용·최종 전달 | 같음 | 같음 |
 
-| 항목 | 구버전 | 신버전 |
-| --- | --- | --- |
-| 사용자 수를 줄이는 연결 | `relay-b`(새 목적지) | `relay-a`(옛 목적지) |
-| `relay-a` 연결 | 계속 열려 있음 | 다른 사용자가 없으면 닫힘 |
-| `game_login`의 `relay-b` 연결 | 닫혀서 다음 batch 1회 실패 가능 | 영향 없음 |
-| 분배·내용·최종 전달 | 같음 | 같음 |
+  구버전에서 `game_login`의 연결이 닫히면 다음 batch 1회가 실패해 `requeue` 카운터로 집계되고 다시 연결됩니다.
+  새 목적지를 쓰던 store가 없을 때 구버전은 다음 진단 로그를 남깁니다.
 
-구버전에서 `game_login`의 연결이 닫히면 다음 batch 1회가 실패해 `requeue` 카운터로 집계되고 다시 연결됩니다.
-새 목적지를 쓰던 store가 없을 때 구버전은 다음 진단 로그를 남깁니다.
-
-```text
-LOGIC ERROR: attempting to close connection <relay-b.example:1463> that connPool has no entry for
-```
+  ```text
+  LOGIC ERROR: attempting to close connection <relay-b.example:1463> that connPool has no entry for
+  ```
 
 #### service_list 재연결
 
-**왜 바꿨나.**
-`service_list`를 쓰는 network store는 연결을 열 때마다 목록을 해석해 서버 후보를 만듭니다.
-구버전은 이전 후보를 비우지 않고 매번 전체 목록을 뒤에 덧붙였습니다.
-그래서 오래 돌수록 메모리가 늘고, 죽은 서버를 여러 번 시도해 다른 서버로 넘어가는(failover[^failover]) 시간이 점점 길어졌습니다.
+- **왜 바꿨나.**
+  `service_list`를 쓰는 network store는 연결을 열 때마다 목록을 해석해 서버 후보를 만듭니다.
+  구버전은 이전 후보를 비우지 않고 매번 전체 목록을 뒤에 덧붙였습니다.
+  그래서 오래 돌수록 메모리가 늘고, 죽은 서버를 여러 번 시도해 다른 서버로 넘어가는(failover[^failover]) 시간이 점점 길어졌습니다.
 
-**기대할 수 있는 것.**
-재연결 횟수와 관계없이 후보는 목록에 쓴 서버 수만큼이고, 죽은 서버는 한 번만 시도합니다.
+- **기대할 수 있는 것.**
+  재연결 횟수와 관계없이 후보는 목록에 쓴 서버 수만큼이고, 죽은 서버는 한 번만 시도합니다.
 
-**기존과 달라진 점.**
-구버전은 모든 후보가 똑같이 중복됐으므로, 각 서버가 선택될 확률은 구·신 모두 1/N으로 같습니다.
-`smc_service`를 쓰는 경로는 자체 cache로 목록을 갱신하므로 바뀌지 않았습니다.
+- **기존과 달라진 점.**
+  구버전은 모든 후보가 똑같이 중복됐으므로, 각 서버가 선택될 확률은 구·신 모두 1/N으로 같습니다.
+  `smc_service`를 쓰는 경로는 자체 cache로 목록을 갱신하므로 바뀌지 않았습니다.
 
-**관련 설정 키.**
-`service_list`, `list_default_port`, `timeout`.
-`use_conn_pool` 값과는 무관합니다.
+- **관련 설정 키.**
+  `service_list`, `list_default_port`, `timeout`.
+  `use_conn_pool` 값과는 무관합니다.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  category=game_chat
-  type=buffer
-  retry_interval=30
-  retry_interval_range=10
+  ```conf
+  <store>
+    category=game_chat
+    type=buffer
+    retry_interval=30
+    retry_interval_range=10
 
-  <primary>
-    type=network
-    service_list=relay-a.example:1463 relay-b.example:1463 relay-c.example
-    list_default_port=1463
-    timeout=2000
-  </primary>
+    <primary>
+      type=network
+      service_list=relay-a.example:1463 relay-b.example:1463 relay-c.example
+      list_default_port=1463
+      timeout=2000
+    </primary>
 
-  <secondary>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/spool
-    base_filename=game_chat
-    max_size=67108864
-  </secondary>
-</store>
-```
+    <secondary>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/spool
+      base_filename=game_chat
+      max_size=67108864
+    </secondary>
+  </store>
+  ```
 
-`relay-c.example`이 내려간 상태에서 다섯 번째로 연결을 열 때(실패한 시도 포함)를 비교하면:
+  `relay-c.example`이 내려간 상태에서 다섯 번째로 연결을 열 때(실패한 시도 포함)를 비교하면:
 
-| 항목 | 구버전 | 신버전 |
-| --- | --- | --- |
-| 서버 후보 목록 | 15개(세 서버가 5번씩 중복) | 3개 |
-| 한 번 열 때 `relay-c` 시도 | 최대 5번, 각각 최대 2초 | 최대 1번 |
-| 각 서버가 선택될 확률 | 1/3 | 1/3 |
+  | 항목 | 구버전 | 신버전 |
+  | --- | --- | --- |
+  | 서버 후보 목록 | 15개(세 서버가 5번씩 중복) | 3개 |
+  | 한 번 열 때 `relay-c` 시도 | 최대 5번, 각각 최대 2초 | 최대 1번 |
+  | 각 서버가 선택될 확률 | 1/3 | 1/3 |
 
-`timeout=2000`은 연결 시도 하나의 제한 시간(밀리초)입니다.
+  `timeout=2000`은 연결 시도 하나의 제한 시간(밀리초)입니다.
 
 #### buffer 재전송 일부 성공
 
-**왜 바꿨나.**
-buffer store는 primary[^primary]에 보내지 못한 로그를 secondary spool에 모았다가, primary가 살아나면 spool 파일을 하나씩 다시 보냅니다(replay[^replay]).
-primary가 그 묶음의 앞부분만 처리하고 실패하면, 남은 로그만 spool 파일에 다시 써야 합니다.
-그런데 구버전은 이 파일을 여는 방식이 잘못돼 항상 실패했고, 남은 로그를 `lost`로 세고 spool 파일을 지웠습니다(영구 손실).
+- **왜 바꿨나.**
+  buffer store는 primary[^primary]에 보내지 못한 로그를 secondary spool에 모았다가, primary가 살아나면 spool 파일을 하나씩 다시 보냅니다(replay[^replay]).
+  primary가 그 묶음의 앞부분만 처리하고 실패하면, 남은 로그만 spool 파일에 다시 써야 합니다.
+  그런데 구버전은 이 파일을 여는 방식이 잘못돼 항상 실패했고, 남은 로그를 `lost`로 세고 spool 파일을 지웠습니다(영구 손실).
 
-**기대할 수 있는 것.**
-남은 로그가 같은 형식으로 spool 파일에 다시 써지고, `retry_interval`이 지난 뒤 다시 보냅니다.
-전체 실패는 원래부터 계속 재시도했으므로, 일부 실패도 같은 방식이 된 것입니다.
+- **기대할 수 있는 것.**
+  남은 로그가 같은 형식으로 spool 파일에 다시 써지고, `retry_interval`이 지난 뒤 다시 보냅니다.
+  전체 실패는 원래부터 계속 재시도했으므로, 일부 실패도 같은 방식이 된 것입니다.
 
-**기존과 달라진 점.**
-spool 파일 형식은 같아 구버전도 읽을 수 있습니다.
-보존, exactly-once, 디스크 저장 보장(durable ACK)을 새로 약속하지는 않습니다.
-secondary에 `add_newlines=1`이 있으면 기존 기록 규칙대로 다시 쓴 메시지 끝에 LF가 하나 더 붙습니다.
+- **기존과 달라진 점.**
+  spool 파일 형식은 같아 구버전도 읽을 수 있습니다.
+  보존, exactly-once, 디스크 저장 보장(durable ACK)을 새로 약속하지는 않습니다.
+  secondary에 `add_newlines=1`이 있으면 기존 기록 규칙대로 다시 쓴 메시지 끝에 LF가 하나 더 붙습니다.
 
-**관련 설정 키.**
+- **관련 설정 키.**
 
-- `type=buffer`이고 `<secondary>`가 `type=file`(`fs_type=std`, 기본값)인 경우
-- primary가 batch의 일부만 처리할 수 있는 store일 때
-  - 대표적인 경우는 `type=file` primary가 쓰는 도중 실패하는 경우입니다(예: 디스크가 가득 참).
-  - file store는 `max_write_size` 단위로 나눠 쓰므로, batch가 여러 단위에 걸치면 일부만 쓰일 수 있습니다.
-  - `thriftfile`, `bucket`, `category`/`multifile` primary도 같은 경로를 탈 수 있습니다.
-- `type=network` primary는 batch를 통째로 성공하거나 실패하므로 해당하지 않습니다.
+  - `type=buffer`이고 `<secondary>`가 `type=file`(`fs_type=std`, 기본값)인 경우
+  - primary가 batch의 일부만 처리할 수 있는 store일 때
+    - 대표적인 경우는 `type=file` primary가 쓰는 도중 실패하는 경우입니다(예: 디스크가 가득 참).
+    - file store는 `max_write_size` 단위로 나눠 쓰므로, batch가 여러 단위에 걸치면 일부만 쓰일 수 있습니다.
+    - `thriftfile`, `bucket`, `category`/`multifile` primary도 같은 경로를 탈 수 있습니다.
+  - `type=network` primary는 batch를 통째로 성공하거나 실패하므로 해당하지 않습니다.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  category=game_purchase
-  type=buffer
-  buffer_send_rate=1
-  retry_interval=30
-  retry_interval_range=10
+  ```conf
+  <store>
+    category=game_purchase
+    type=buffer
+    buffer_send_rate=1
+    retry_interval=30
+    retry_interval_range=10
 
-  <primary>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/data
-    base_filename=game_purchase
-    max_size=104857600
-    add_newlines=1
-  </primary>
+    <primary>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/data
+      base_filename=game_purchase
+      max_size=104857600
+      add_newlines=1
+    </primary>
 
-  <secondary>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/spool
-    base_filename=game_purchase
-    max_size=10485760
-  </secondary>
-</store>
-```
+    <secondary>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/spool
+      base_filename=game_purchase
+      max_size=10485760
+    </secondary>
+  </store>
+  ```
 
-spool 파일 하나에 메시지 `m1`, `m2`, `m3`가 있고, 재전송 중 primary가 `m1`만 쓰고 실패한 경우:
+  spool 파일 하나에 메시지 `m1`, `m2`, `m3`가 있고, 재전송 중 primary가 `m1`만 쓰고 실패한 경우:
 
-| 항목 | 구버전 | 신버전 |
-| --- | --- | --- |
-| 남은 `m2`, `m3` | 다시 쓰지 못함 | spool 파일에 다시 씀 |
-| `game_purchase:lost` 카운터 | +2 | 늘지 않음 |
-| spool 파일 | 삭제됨 | 남았다가 다음 재시도 때 전송 |
-| primary 파일의 최종 내용 | `m1`만, `m2`·`m3`는 영구 손실 | 재시도가 성공하면 `m2`·`m3`도 저장 |
+  | 항목 | 구버전 | 신버전 |
+  | --- | --- | --- |
+  | 남은 `m2`, `m3` | 다시 쓰지 못함 | spool 파일에 다시 씀 |
+  | `game_purchase:lost` 카운터 | +2 | 늘지 않음 |
+  | spool 파일 | 삭제됨 | 남았다가 다음 재시도 때 전송 |
+  | primary 파일의 최종 내용 | `m1`만, `m2`·`m3`는 영구 손실 | 재시도가 성공하면 `m2`·`m3`도 저장 |
 
-구버전은 이때 `Failed to open file <...> for writing and truncate` 로그를 남깁니다.
-정상 frame에서는 `bytes lost` 카운터가 구·신 모두 0입니다.
+  구버전은 이때 `Failed to open file <...> for writing and truncate` 로그를 남깁니다.
+  정상 frame에서는 `bytes lost` 카운터가 구·신 모두 0입니다.
 
-spool은 메시지마다 4-byte little-endian[^little] 길이 뒤에 내용을 둡니다.
-secondary에 `add_newlines=1`이 있으면 다시 쓴 frame에 LF가 하나 더 붙습니다.
+  spool은 메시지마다 4-byte little-endian[^little] 길이 뒤에 내용을 둡니다.
+  secondary에 `add_newlines=1`이 있으면 다시 쓴 frame에 LF가 하나 더 붙습니다.
 
-```text
-secondary에 add_newlines가 없을 때(example1.conf 방식): 다시 써도 같음
-  m2 frame:  02 00 00 00  6d 32
-secondary에 add_newlines=1일 때: 다시 쓴 frame에 LF가 하나 더 붙음
-  처음 frame:     03 00 00 00  6d 32 0a          ("m2\n")
-  다시 쓴 frame:  04 00 00 00  6d 32 0a 0a       ("m2\n\n")
-```
+  ```text
+  secondary에 add_newlines가 없을 때(example1.conf 방식): 다시 써도 같음
+    m2 frame:  02 00 00 00  6d 32
+  secondary에 add_newlines=1일 때: 다시 쓴 frame에 LF가 하나 더 붙음
+    처음 frame:     03 00 00 00  6d 32 0a          ("m2\n")
+    다시 쓴 frame:  04 00 00 00  6d 32 0a 0a       ("m2\n\n")
+  ```
 
 ### 코드 정리 (동작 불변)
 
-**왜 바꿨나.**
-원본 코드는 잠금과 메모리를 손으로 관리하는 오래된 방식이라, 예외 상황에서 잠금이 풀리지 않거나 메모리가 새는 곳이 있었습니다.
-지금의 C++ 표준 기능으로 같은 일을 하도록 표현을 바꿨습니다.
+- **왜 바꿨나.**
+  원본 코드는 잠금과 메모리를 손으로 관리하는 오래된 방식이라, 예외 상황에서 잠금이 풀리지 않거나 메모리가 새는 곳이 있었습니다.
+  지금의 C++ 표준 기능으로 같은 일을 하도록 표현을 바꿨습니다.
 
-**기대할 수 있는 것.**
-설정을 여러 번 다시 읽어도 메모리가 쌓이지 않고, 예외가 나도 잠금이 풀립니다.
+- **기대할 수 있는 것.**
+  설정을 여러 번 다시 읽어도 메모리가 쌓이지 않고, 예외가 나도 잠금이 풀립니다.
 
-**기존과 달라진 점.**
-로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회·설정 해석은 같습니다.
-바깥에서 보이는 차이는 아래에 적은 진단 로그 몇 줄과, 원래 미정의 동작이던 경우뿐입니다.
+- **기존과 달라진 점.**
+  로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회·설정 해석은 같습니다.
+  바깥에서 보이는 차이는 아래에 적은 진단 로그 몇 줄과, 원래 미정의 동작이던 경우뿐입니다.
 
-**관련 설정 키.** 없습니다.
+- **관련 설정 키.** 없습니다.
 
-**예시.**
-매일 fb303 `reinitialize`로 설정을 다시 읽는 서버는, 예전에는 다시 읽을 때마다 이전 설정이 메모리에 남았습니다.
-이제는 남지 않고, 설정 해석 결과는 같습니다.
+- **예시.**
+  매일 fb303 `reinitialize`로 설정을 다시 읽는 서버는, 예전에는 다시 읽을 때마다 이전 설정이 메모리에 남았습니다.
+  이제는 남지 않고, 설정 해석 결과는 같습니다.
 
-정리한 항목은 다음과 같습니다.
+  정리한 항목은 다음과 같습니다.
 
-- **로그 받기의 잠금.**
-  잠금을 손으로 잡고 풀던 코드를, 범위를 벗어나면 자동으로 풀리는 방식(RAII[^raii])으로 바꿨습니다.
-  예전에는 중간에 예외가 나면 잠금이 남아 이후 `reinitialize`·`shutdown`·새 category 처리가 멈출 수 있었습니다.
-- **설정 트리의 약한 참조.**
-  부모와 자식 설정이 서로를 붙잡고 있어 `reinitialize`마다 이전 설정이 메모리에 남았습니다.
-  이제 자식은 부모를 붙잡지 않고 가리키기만 하며(weak reference), 설정 상속 결과는 같습니다.
-- **표준 잠금.**
-  store 상태, 연결 pool 목록, HDFS의 잠금을 C++ 표준 잠금(`std::mutex`)으로 바꿨습니다.
-  잠그는 지점과 범위는 같습니다.
-- **컴파일러 검사 강화.**
-  함수를 잘못 덮어쓰거나 복사하면 빌드할 때 오류가 나게 했습니다(`override`, `= delete`).
-  만들어지는 실행 파일의 동작은 같습니다.
-- **표준 스마트 포인터.**
-  메모리를 자동으로 돌려주는 포인터를 Boost 것에서 표준 것으로 바꿨습니다.
-  같은 일을 같은 방식으로 합니다.
-- **spool 읽기 버퍼.**
-  버퍼를 자동으로 돌려주는 표준 방식으로 받고, 메모리가 모자라면 예외 대신 실패 값을 받습니다(nothrow).
-  메모리 부족일 때의 손실 집계는 예전과 같습니다.
-- **전역 의존 제거.**
-  예전에는 store·큐·연결 pool·설정 조회가 프로세스 전체에 하나뿐인 전역 변수를 직접 읽었습니다.
-  이제 서버가 카운터·큐 한도·크기 한도·연결 pool을 담은 "context"를 만들어 각 부품에 넘겨줍니다.
-  부품을 서버 전체 없이 따로 시험할 수 있게 됐고, 서버 하나에 context 하나이므로 값·카운터·연결 공유 범위는 같습니다.
-- **그 밖의 정리.**
-  설정 값을 읽는 무리한 형 변환, 실행되지 않던 검사, 쓰지 않는 코드를 정리했습니다.
-  store thread를 만들지 못하면(원래 미정의 동작) 이제 `Bad config - can't create a store of type: ...` 설정 오류가 됩니다.
-  dynamic bucket updater의 "매핑 없음" 진단 로그는 이제 실제 내용을 찍고, 실행될 수 없던 "socket 생성 실패" 로그는 삭제했습니다.
+  - **로그 받기의 잠금.**
+    잠금을 손으로 잡고 풀던 코드를, 범위를 벗어나면 자동으로 풀리는 방식(RAII[^raii])으로 바꿨습니다.
+    예전에는 중간에 예외가 나면 잠금이 남아 이후 `reinitialize`·`shutdown`·새 category 처리가 멈출 수 있었습니다.
+  - **설정 트리의 약한 참조.**
+    부모와 자식 설정이 서로를 붙잡고 있어 `reinitialize`마다 이전 설정이 메모리에 남았습니다.
+    이제 자식은 부모를 붙잡지 않고 가리키기만 하며(weak reference), 설정 상속 결과는 같습니다.
+  - **표준 잠금.**
+    store 상태, 연결 pool 목록, HDFS의 잠금을 C++ 표준 잠금(`std::mutex`)으로 바꿨습니다.
+    잠그는 지점과 범위는 같습니다.
+  - **컴파일러 검사 강화.**
+    함수를 잘못 덮어쓰거나 복사하면 빌드할 때 오류가 나게 했습니다(`override`, `= delete`).
+    만들어지는 실행 파일의 동작은 같습니다.
+  - **표준 스마트 포인터.**
+    메모리를 자동으로 돌려주는 포인터를 Boost 것에서 표준 것으로 바꿨습니다.
+    같은 일을 같은 방식으로 합니다.
+  - **spool 읽기 버퍼.**
+    버퍼를 자동으로 돌려주는 표준 방식으로 받고, 메모리가 모자라면 예외 대신 실패 값을 받습니다(nothrow).
+    메모리 부족일 때의 손실 집계는 예전과 같습니다.
+  - **전역 의존 제거.**
+    예전에는 store·큐·연결 pool·설정 조회가 프로세스 전체에 하나뿐인 전역 변수를 직접 읽었습니다.
+    이제 서버가 카운터·큐 한도·크기 한도·연결 pool을 담은 "context"를 만들어 각 부품에 넘겨줍니다.
+    부품을 서버 전체 없이 따로 시험할 수 있게 됐고, 서버 하나에 context 하나이므로 값·카운터·연결 공유 범위는 같습니다.
+  - **그 밖의 정리.**
+    설정 값을 읽는 무리한 형 변환, 실행되지 않던 검사, 쓰지 않는 코드를 정리했습니다.
+    store thread를 만들지 못하면(원래 미정의 동작) 이제 `Bad config - can't create a store of type: ...` 설정 오류가 됩니다.
+    dynamic bucket updater의 "매핑 없음" 진단 로그는 이제 실제 내용을 찍고, 실행될 수 없던 "socket 생성 실패" 로그는 삭제했습니다.
 
-겉보기에는 고칠 곳 같지만 원본의 관찰 결과를 만드는 코드는 일부러 건드리지 않았습니다.
+  겉보기에는 고칠 곳 같지만 원본의 관찰 결과를 만드는 코드는 일부러 건드리지 않았습니다.
 
-- 추가 bucket 검사의 문자열 계산과 bucket key 계산 방식
-- 긴 명령행 옵션의 결함과 시작 실패 시 종료 코드 0
-- 빈 메시지만 든 큐를 전달하지 않는 판단
-- 재시도·bucket·서버 후보 순서에 쓰는 무작위 순서(GNU C 라이브러리의 `rand()`)
-- store 큐의 thread와 깨우기 방식(시간 기준이 바뀔 수 있어 그대로 둠)
+  - 추가 bucket 검사의 문자열 계산과 bucket key 계산 방식
+  - 긴 명령행 옵션의 결함과 시작 실패 시 종료 코드 0
+  - 빈 메시지만 든 큐를 전달하지 않는 판단
+  - 재시도·bucket·서버 후보 순서에 쓰는 무작위 순서(GNU C 라이브러리의 `rand()`)
+  - store 큐의 thread와 깨우기 방식(시간 기준이 바뀔 수 있어 그대로 둠)
 
 ### 새 설정 키
 
@@ -1092,97 +1095,97 @@ secondary에 add_newlines=1일 때: 다시 쓴 frame에 LF가 하나 더 붙음
 
 #### 통신 크기 제한과 확인한 호환성
 
-**왜 추가했나.**
-새 Thrift(0.25)는 원본 시절과 다른 기본 크기 한도가 있습니다(frame 16,384,000 bytes, message 104,857,600 bytes).
-그대로 두면 원본이 받던 큰 요청을 거절하게 되므로, 한도를 설정으로 정하게 하고 기본값을 256 MiB로 잡았습니다.
+- **왜 추가했나.**
+  새 Thrift(0.25)는 원본 시절과 다른 기본 크기 한도가 있습니다(frame 16,384,000 bytes, message 104,857,600 bytes).
+  그대로 두면 원본이 받던 큰 요청을 거절하게 되므로, 한도를 설정으로 정하게 하고 기본값을 256 MiB로 잡았습니다.
 
-**기대할 수 있는 것.**
-설정하지 않아도 256 MiB까지의 요청을 받고 보냅니다.
-서버 수신, network store의 relay 송신, dynamic bucket updater 조회에 같은 값이 적용됩니다.
+- **기대할 수 있는 것.**
+  설정하지 않아도 256 MiB까지의 요청을 받고 보냅니다.
+  서버 수신, network store의 relay 송신, dynamic bucket updater 조회에 같은 값이 적용됩니다.
 
-**기존과 달라진 점.**
-256 MiB를 넘는 요청만 처리가 다릅니다.
-**한도를 넘는 relay batch는 나누거나 버리지 않고, 실패로 처리해 계속 다시 시도합니다.**
-이 한도는 프로세스 메모리 상한이 아니며, 원본이 받던 모든 큰 요청의 호환을 보장하지도 않습니다.
+- **기존과 달라진 점.**
+  256 MiB를 넘는 요청만 처리가 다릅니다.
+  **한도를 넘는 relay batch는 나누거나 버리지 않고, 실패로 처리해 계속 다시 시도합니다.**
+  이 한도는 프로세스 메모리 상한이 아니며, 원본이 받던 모든 큰 요청의 호환을 보장하지도 않습니다.
 
-**관련 설정 키와 영향.**
+- **관련 설정 키와 영향.**
 
-```conf
-# 설정 파일의 최상위(어떤 <store> 블록에도 넣지 않는 위치)에 둡니다.
-# 아래 두 줄은 기본값과 같습니다.
-thrift_max_frame_size=268435456
-thrift_max_message_size=268435456
-```
+  ```conf
+  # 설정 파일의 최상위(어떤 <store> 블록에도 넣지 않는 위치)에 둡니다.
+  # 아래 두 줄은 기본값과 같습니다.
+  thrift_max_frame_size=268435456
+  thrift_max_message_size=268435456
+  ```
 
-| 키 | 기본값 | 허용 값 | 바꾸는 방법 |
-| --- | --- | --- | --- |
-| `thrift_max_frame_size` | 268435456 (256 MiB) | 1 ~ 2147483647 | 재시작 |
-| `thrift_max_message_size` | 268435456 (256 MiB) | 1 ~ 2147483647 | 재시작 |
+  | 키 | 기본값 | 허용 값 | 바꾸는 방법 |
+  | --- | --- | --- | --- |
+  | `thrift_max_frame_size` | 268435456 (256 MiB) | 1 ~ 2147483647 | 재시작 |
+  | `thrift_max_message_size` | 268435456 (256 MiB) | 1 ~ 2147483647 | 재시작 |
 
-- 기준은 요청 내용의 크기이며, 앞에 붙는 4-byte 길이 표시는 빼고 셉니다.
-- 두 값이 다르면 작은 쪽이 실제 한도가 됩니다.
-- 값은 십진수 byte 수로만 씁니다.
-  - `0`, 음수, `+` 부호, 16진수, `256M` 같은 단위는 잘못된 값입니다.
-  - 시작할 때 값이 잘못됐으면 `Invalid Thrift wire limits; listener not started`를 남기고 시작에 실패합니다(종료 코드는 0).
-- 시작할 때만 읽습니다.
-  - fb303 `reinitialize`로 바꾸면 `Thrift wire-limit changes require restart`를 남기고 기존 값을 유지합니다.
+  - 기준은 요청 내용의 크기이며, 앞에 붙는 4-byte 길이 표시는 빼고 셉니다.
+  - 두 값이 다르면 작은 쪽이 실제 한도가 됩니다.
+  - 값은 십진수 byte 수로만 씁니다.
+    - `0`, 음수, `+` 부호, 16진수, `256M` 같은 단위는 잘못된 값입니다.
+    - 시작할 때 값이 잘못됐으면 `Invalid Thrift wire limits; listener not started`를 남기고 시작에 실패합니다(종료 코드는 0).
+  - 시작할 때만 읽습니다.
+    - fb303 `reinitialize`로 바꾸면 `Thrift wire-limit changes require restart`를 남기고 기존 값을 유지합니다.
 
-신버전 network store는 보내기 전에 요청 크기를 계산합니다.
-요청 전체에 21 bytes, 메시지마다 15 bytes + category 길이 + 메시지 길이입니다.
-한도를 넘으면 `Relay Log exceeds configured wire limit <268435456> bytes`를 남기고 일시 실패로 처리합니다.
-buffer store 아래라면 spool 파일을 지우지 않고 재시도를 반복하며, 가장 오래된 파일부터 보내므로 뒤의 spool 파일도 모두 멈춥니다.
+  신버전 network store는 보내기 전에 요청 크기를 계산합니다.
+  요청 전체에 21 bytes, 메시지마다 15 bytes + category 길이 + 메시지 길이입니다.
+  한도를 넘으면 `Relay Log exceeds configured wire limit <268435456> bytes`를 남기고 일시 실패로 처리합니다.
+  buffer store 아래라면 spool 파일을 지우지 않고 재시도를 반복하며, 가장 오래된 파일부터 보내므로 뒤의 spool 파일도 모두 멈춥니다.
 
-**예시(계산).**
-짧은 메시지를 많이 보내는 category를 128 MiB spool로 보호하는 경우입니다.
+- **예시(계산).**
+  짧은 메시지를 많이 보내는 category를 128 MiB spool로 보호하는 경우입니다.
 
-```conf
-<store>
-  category=game_pvp
-  type=buffer
-  retry_interval=30
-  retry_interval_range=10
+  ```conf
+  <store>
+    category=game_pvp
+    type=buffer
+    retry_interval=30
+    retry_interval_range=10
 
-  <primary>
-    type=network
-    remote_host=relay-a.example
-    remote_port=1463
-  </primary>
+    <primary>
+      type=network
+      remote_host=relay-a.example
+      remote_port=1463
+    </primary>
 
-  <secondary>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/spool
-    base_filename=game_pvp
-    max_size=134217728
-  </secondary>
-</store>
-```
+    <secondary>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/spool
+      base_filename=game_pvp
+      max_size=134217728
+    </secondary>
+  </store>
+  ```
 
-- spool 파일은 메시지마다 `4-byte 길이 + 메시지`를 저장합니다.
-- 재전송 요청은 메시지마다 `15 + category 길이 + 메시지 길이` bytes가 됩니다.
-- 따라서 **재전송 요청 크기 ≈ spool 파일 크기 + 메시지 수 × (11 + category 길이)** 입니다.
-  - `game_pvp`(8글자)라면 메시지 하나당 약 19 bytes가 늘어납니다.
+  - spool 파일은 메시지마다 `4-byte 길이 + 메시지`를 저장합니다.
+  - 재전송 요청은 메시지마다 `15 + category 길이 + 메시지 길이` bytes가 됩니다.
+  - 따라서 **재전송 요청 크기 ≈ spool 파일 크기 + 메시지 수 × (11 + category 길이)** 입니다.
+    - `game_pvp`(8글자)라면 메시지 하나당 약 19 bytes가 늘어납니다.
 
-| 평균 메시지 길이 | 128 MiB 파일의 메시지 수 | 재전송 요청 크기 | 256 MiB 한도 |
-| --- | --- | --- | --- |
-| 12 bytes | 8,388,608 | 293,601,301 bytes (약 280 MiB) | **넘음: 계속 재시도** |
-| 30 bytes | 약 3,947,580 | 약 209,221,761 bytes (약 199.5 MiB) | 통과 |
+  | 평균 메시지 길이 | 128 MiB 파일의 메시지 수 | 재전송 요청 크기 | 256 MiB 한도 |
+  | --- | --- | --- | --- |
+  | 12 bytes | 8,388,608 | 293,601,301 bytes (약 280 MiB) | **넘음: 계속 재시도** |
+  | 30 bytes | 약 3,947,580 | 약 209,221,761 bytes (약 199.5 MiB) | 통과 |
 
-`game_pvp`라면 평균 메시지가 약 15 bytes(= category 길이 + 7)보다 짧을 때, 가득 찬 128 MiB spool 하나가 256 MiB를 넘습니다.
-이런 category는 secondary `max_size`를 더 작게 잡으세요(예: `max_size=67108864`).
-`max_size`는 쓰고 난 뒤에 검사하므로, 파일이 `max_size`를 조금(대략 `max_write_size`, 기본 1,000,000 bytes 이내) 넘을 수 있습니다.
+  `game_pvp`라면 평균 메시지가 약 15 bytes(= category 길이 + 7)보다 짧을 때, 가득 찬 128 MiB spool 하나가 256 MiB를 넘습니다.
+  이런 category는 secondary `max_size`를 더 작게 잡으세요(예: `max_size=67108864`).
+  `max_size`는 쓰고 난 뒤에 검사하므로, 파일이 `max_size`를 조금(대략 `max_write_size`, 기본 1,000,000 bytes 이내) 넘을 수 있습니다.
 
-secondary에 `max_size`를 쓰지 않으면 file store 기본값 1,000,000,000 bytes가 적용됩니다.
-그러면 장애가 길어질 때 256 MiB를 넘는 spool이 생길 수 있습니다.
-`max_write_size`나 회전 설정만 줄여서는 요청 크기가 보장되지 않습니다.
-한도를 올리려면 받는 서버도 그 크기를 받을 수 있어야 합니다.
+  secondary에 `max_size`를 쓰지 않으면 file store 기본값 1,000,000,000 bytes가 적용됩니다.
+  그러면 장애가 길어질 때 256 MiB를 넘는 spool이 생길 수 있습니다.
+  `max_write_size`나 회전 설정만 줄여서는 요청 크기가 보장되지 않습니다.
+  한도를 올리려면 받는 서버도 그 크기를 받을 수 있어야 합니다.
 
-**확인한 호환성.**
-대표적인 작은 로그로 구 서버 → 새 서버, 새 서버 → 구 서버 전송과 일반 spool 파일의 양방향 읽기를 확인했습니다.
-구 ThriftFile writer → 새 reader와 새 writer → 구 reader도 확인했습니다.
-모든 파일, 손상된 입력, 언어별 client, 장애 상황을 확인한 것은 아닙니다.
+- **확인한 호환성.**
+  대표적인 작은 로그로 구 서버 → 새 서버, 새 서버 → 구 서버 전송과 일반 spool 파일의 양방향 읽기를 확인했습니다.
+  구 ThriftFile writer → 새 reader와 새 writer → 구 reader도 확인했습니다.
+  모든 파일, 손상된 입력, 언어별 client, 장애 상황을 확인한 것은 아닙니다.
 
-근거는 [호환성 정책](docs/compatibility-policy.md), [실제 비교 기록](docs/verification.md), [ThriftFile 처리 기록](docs/compatibility-policy.md#thriftfile-chunk-초과와-empty)에 있습니다.
+  근거는 [호환성 정책](docs/compatibility-policy.md), [실제 비교 기록](docs/verification.md), [ThriftFile 처리 기록](docs/compatibility-policy.md#thriftfile-chunk-초과와-empty)에 있습니다.
 
 ### 검증 도구
 
@@ -1258,364 +1261,364 @@ secondary에 `max_size`를 쓰지 않으면 file store 기본값 1,000,000,000 b
 
 ### Bucket 복사본은 bucket_range와 remove_key를 물려받지 않는다
 
-**어떤 동작인가.**
-bucket store 복사본은 `num_buckets`, `bucket_type`, `delimiter`와 하위 store를 복사하지만, `bucket_range`와 `remove_key`는 복사하지 않습니다.
-그래서 복사본에서는 `bucket_type=key_range`의 범위가 0이 되어 **모든 메시지가 bucket 0으로** 갑니다.
+- **어떤 동작인가.**
+  bucket store 복사본은 `num_buckets`, `bucket_type`, `delimiter`와 하위 store를 복사하지만, `bucket_range`와 `remove_key`는 복사하지 않습니다.
+  그래서 복사본에서는 `bucket_type=key_range`의 범위가 0이 되어 **모든 메시지가 bucket 0으로** 갑니다.
 
-`remove_key=yes`여도 **key가 메시지에 남습니다.**
-`key_hash`·`key_modulo`는 분배는 맞지만, key가 남는 점은 같습니다.
+  `remove_key=yes`여도 **key가 메시지에 남습니다.**
+  `key_hash`·`key_modulo`는 분배는 맞지만, key가 남는 점은 같습니다.
 
-**왜 남겼나.**
-고치면 기존 복사본 로그가 다른 bucket 폴더로 옮겨 가고, 내용에서 key가 빠집니다.
-bucket 폴더별로 파일을 가져가거나, key가 붙은 형식을 파싱하는 프로그램이 다른 결과를 보게 됩니다.
+- **왜 남겼나.**
+  고치면 기존 복사본 로그가 다른 bucket 폴더로 옮겨 가고, 내용에서 key가 빠집니다.
+  bucket 폴더별로 파일을 가져가거나, key가 붙은 형식을 파싱하는 프로그램이 다른 결과를 보게 됩니다.
 
-**무엇을 기대하면 되나.**
-`categories=`·`default`·prefix 모델로 만든 bucket store는 범위 분배와 key 제거를 하지 않는다고 보세요.
-범위 분배나 key 제거가 필요하면 `category=`로 직접 설정합니다.
+- **무엇을 기대하면 되나.**
+  `categories=`·`default`·prefix 모델로 만든 bucket store는 범위 분배와 key 제거를 하지 않는다고 보세요.
+  범위 분배나 key 제거가 필요하면 `category=`로 직접 설정합니다.
 
-**구·신 차이.** 없습니다.
-둘 다 같은 폴더에 같은 내용을 씁니다.
+- **구·신 차이.** 없습니다.
+  둘 다 같은 폴더에 같은 내용을 씁니다.
 
-**관련 설정 키.**
-모델 store의 `bucket_range`, `remove_key`(그리고 `bucket_type=key_range`).
+- **관련 설정 키.**
+  모델 store의 `bucket_range`, `remove_key`(그리고 `bucket_type=key_range`).
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  categories=game_score game_rank
-  type=bucket
-  num_buckets=2
-  bucket_type=key_range
-  bucket_range=20
-  remove_key=yes
-  delimiter=124
-  bucket_subdir=shard
+  ```conf
+  <store>
+    categories=game_score game_rank
+    type=bucket
+    num_buckets=2
+    bucket_type=key_range
+    bucket_range=20
+    remove_key=yes
+    delimiter=124
+    bucket_subdir=shard
 
-  <bucket>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/score
-    base_filename=game_score_all
-    add_newlines=1
-  </bucket>
-</store>
-```
+    <bucket>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/score
+      base_filename=game_score_all
+      add_newlines=1
+    </bucket>
+  </store>
+  ```
 
-category `game_score`로 메시지 `15|hello`를 보내면(`delimiter=124`는 `|`):
+  category `game_score`로 메시지 `15|hello`를 보내면(`delimiter=124`는 `|`):
 
-| 경우 | 선택되는 bucket | 저장 위치 | 저장 내용 |
-| --- | --- | --- | --- |
-| `category=game_score`로 직접 썼다면 | bucket 2 | `score/shard002/game_score_all_00000` | `hello\n` |
-| 위 설정의 실제 결과(복사본) | bucket 0 | `score/shard000/game_score/game_score_00000` | `15\|hello\n` |
+  | 경우 | 선택되는 bucket | 저장 위치 | 저장 내용 |
+  | --- | --- | --- | --- |
+  | `category=game_score`로 직접 썼다면 | bucket 2 | `score/shard002/game_score_all_00000` | `hello\n` |
+  | 위 설정의 실제 결과(복사본) | bucket 0 | `score/shard000/game_score/game_score_00000` | `15\|hello\n` |
 
-저장 위치는 `/var/log/scribed/` 아래입니다.
-직접 쓴 경우 key 15는 범위 20에서 `15 % 20 = 15`라 bucket 2로 가지만, 복사본은 범위가 0이라 bucket 0으로 갑니다.
+  저장 위치는 `/var/log/scribed/` 아래입니다.
+  직접 쓴 경우 key 15는 범위 20에서 `15 % 20 = 15`라 bucket 2로 가지만, 복사본은 범위가 0이라 bucket 0으로 갑니다.
 
 ### 추가 bucket 검사는 이름 대신 문자열 중간을 본다
 
-**어떤 동작인가.**
-`bucket0`부터 `bucketN`까지 직접 정의하면, 원본은 `bucketN+1`이 더 있는지 검사하려고 합니다.
-하지만 계산 실수 때문에 이름 대신 **글자 `"bucket"`의 중간부터를 이름으로 찾습니다.**
+- **어떤 동작인가.**
+  `bucket0`부터 `bucketN`까지 직접 정의하면, 원본은 `bucketN+1`이 더 있는지 검사하려고 합니다.
+  하지만 계산 실수 때문에 이름 대신 **글자 `"bucket"`의 중간부터를 이름으로 찾습니다.**
 
-`num_buckets=1`이면 `cket`, 2이면 `ket`, 3이면 `et`, 4이면 `t`, 5이면 빈 이름을 찾습니다.
-그래서 `bucketN+1`을 정의해도 거부하지 않습니다.
+  `num_buckets=1`이면 `cket`, 2이면 `ket`, 3이면 `et`, 4이면 `t`, 5이면 빈 이름을 찾습니다.
+  그래서 `bucketN+1`을 정의해도 거부하지 않습니다.
 
-**왜 남겼나.**
-올바르게 고치면 지금까지 시작되던 설정이 `bucket store has too many buckets defined`로 거부됩니다.
-그러면 그 store 없이 `WARNING` 상태로 뜨게 됩니다.
+- **왜 남겼나.**
+  올바르게 고치면 지금까지 시작되던 설정이 `bucket store has too many buckets defined`로 거부됩니다.
+  그러면 그 store 없이 `WARNING` 상태로 뜨게 됩니다.
 
-**무엇을 기대하면 되나.**
-`num_buckets`보다 많은 bucket 블록을 써도 오류가 나지 않지만, 넘치는 bucket은 로그를 받지 않습니다.
-필요한 bucket 수는 `num_buckets`로 정하고 실제 분배 결과를 확인하세요.
+- **무엇을 기대하면 되나.**
+  `num_buckets`보다 많은 bucket 블록을 써도 오류가 나지 않지만, 넘치는 bucket은 로그를 받지 않습니다.
+  필요한 bucket 수는 `num_buckets`로 정하고 실제 분배 결과를 확인하세요.
 
-**구·신 차이.**
-`num_buckets` 1~5에서는 같습니다.
-6 이상에서 구버전은 문자열 밖 메모리를 읽고(미정의 동작), 신버전은 [이 검사를 건너뜁니다](#추가-bucket-검사의-범위-밖-읽기).
-둘 다 거부하지 않습니다.
+- **구·신 차이.**
+  `num_buckets` 1~5에서는 같습니다.
+  6 이상에서 구버전은 문자열 밖 메모리를 읽고(미정의 동작), 신버전은 [이 검사를 건너뜁니다](#추가-bucket-검사의-범위-밖-읽기).
+  둘 다 거부하지 않습니다.
 
-**관련 설정 키.**
-`num_buckets`, `bucket0`…`bucketN` 블록.
+- **관련 설정 키.**
+  `num_buckets`, `bucket0`…`bucketN` 블록.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  category=game_match
-  type=bucket
-  num_buckets=2
-  bucket_type=key_hash
-  delimiter=124
+  ```conf
+  <store>
+    category=game_match
+    type=bucket
+    num_buckets=2
+    bucket_type=key_hash
+    delimiter=124
 
-  <bucket0>
-    type=file
-    file_path=/var/log/scribed/match/unkeyed
-    base_filename=game_match
-  </bucket0>
-  <bucket1>
-    type=file
-    file_path=/var/log/scribed/match/shard1
-    base_filename=game_match
-  </bucket1>
-  <bucket2>
-    type=file
-    file_path=/var/log/scribed/match/shard2
-    base_filename=game_match
-  </bucket2>
+    <bucket0>
+      type=file
+      file_path=/var/log/scribed/match/unkeyed
+      base_filename=game_match
+    </bucket0>
+    <bucket1>
+      type=file
+      file_path=/var/log/scribed/match/shard1
+      base_filename=game_match
+    </bucket1>
+    <bucket2>
+      type=file
+      file_path=/var/log/scribed/match/shard2
+      base_filename=game_match
+    </bucket2>
 
-  # num_buckets=2인데 하나 더 정의: 거부되지 않고, 로그도 받지 않습니다.
-  <bucket3>
-    type=file
-    file_path=/var/log/scribed/match/shard3
-    base_filename=game_match
-  </bucket3>
-</store>
-```
+    # num_buckets=2인데 하나 더 정의: 거부되지 않고, 로그도 받지 않습니다.
+    <bucket3>
+      type=file
+      file_path=/var/log/scribed/match/shard3
+      base_filename=game_match
+    </bucket3>
+  </store>
+  ```
 
-설정은 정상으로 시작합니다(검사는 `ket`이라는 이름을 찾음).
-로그는 `unkeyed`, `shard1`, `shard2`로만 가고 `shard3`에는 쓰이지 않습니다.
+  설정은 정상으로 시작합니다(검사는 `ket`이라는 이름을 찾음).
+  로그는 `unkeyed`, `shard1`, `shard2`로만 가고 `shard3`에는 쓰이지 않습니다.
 
 ### ThriftFile 복사본은 use_simple_file을 무시한다
 
-**어떤 동작인가.**
-`type=thriftfile`에 `use_simple_file=1`(0이 아닌 값)을 주면 메시지 내용만 이어 쓰는 raw 형식으로 저장합니다.
-그런데 복사본은 이 값을 복사하지 않아, **길이 정보와 chunk 경계 padding이 붙은 framed 형식**으로 저장합니다.
-category별 복사본을 쓰는 `thriftmultifile`도 같습니다.
+- **어떤 동작인가.**
+  `type=thriftfile`에 `use_simple_file=1`(0이 아닌 값)을 주면 메시지 내용만 이어 쓰는 raw 형식으로 저장합니다.
+  그런데 복사본은 이 값을 복사하지 않아, **길이 정보와 chunk 경계 padding이 붙은 framed 형식**으로 저장합니다.
+  category별 복사본을 쓰는 `thriftmultifile`도 같습니다.
 
-**왜 남겼나.**
-고치면 기존 reader가 읽던 framed 파일 자리에 raw 파일이 생깁니다.
-raw와 framed는 서로 다른 reader가 필요합니다.
+- **왜 남겼나.**
+  고치면 기존 reader가 읽던 framed 파일 자리에 raw 파일이 생깁니다.
+  raw와 framed는 서로 다른 reader가 필요합니다.
 
-**무엇을 기대하면 되나.**
-모델로 만든 thriftfile 복사본은 항상 framed 형식입니다.
-framed 파일을 읽을 때는 writer와 같은 `chunk_size`를 써야 합니다.
+- **무엇을 기대하면 되나.**
+  모델로 만든 thriftfile 복사본은 항상 framed 형식입니다.
+  framed 파일을 읽을 때는 writer와 같은 `chunk_size`를 써야 합니다.
 
-**구·신 차이.** 없습니다.
+- **구·신 차이.** 없습니다.
 
-**관련 설정 키.**
-모델 store의 `use_simple_file`, 그리고 읽을 때 맞춰야 하는 `chunk_size`.
+- **관련 설정 키.**
+  모델 store의 `use_simple_file`, 그리고 읽을 때 맞춰야 하는 `chunk_size`.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  categories=game_chat game_guild
-  type=thriftfile
-  file_path=/var/log/scribed/tfile
-  base_filename=chat_all
-  use_simple_file=1
-</store>
-```
+  ```conf
+  <store>
+    categories=game_chat game_guild
+    type=thriftfile
+    file_path=/var/log/scribed/tfile
+    base_filename=chat_all
+    use_simple_file=1
+  </store>
+  ```
 
-| 경우 | 저장 위치 | 형식 |
-| --- | --- | --- |
-| `category=game_chat`으로 직접 썼다면 | `/var/log/scribed/tfile/chat_all_00000` | raw |
-| 위 설정의 실제 결과(복사본) | `/var/log/scribed/tfile/game_chat/game_chat_00000` | framed |
+  | 경우 | 저장 위치 | 형식 |
+  | --- | --- | --- |
+  | `category=game_chat`으로 직접 썼다면 | `/var/log/scribed/tfile/chat_all_00000` | raw |
+  | 위 설정의 실제 결과(복사본) | `/var/log/scribed/tfile/game_chat/game_chat_00000` | framed |
 
-함께 알아둘 점:
+  함께 알아둘 점:
 
-- 일반 spool 파일의 형식은 ThriftFile 형식과 별개입니다.
-- 이전 개발 버전이 raw 형식 복사본 파일을 이미 만들었다면 그 파일은 그대로 남습니다.
-  - 지금 버전은 변환하지 않으므로, 같은 폴더에 서로 다른 형식의 파일이 있을 수 있습니다.
-  - reader를 고르거나 이전 버전으로 되돌리기 전에 실제 파일 형식을 확인하세요.
-- 길이 표시 4 bytes를 포함한 메시지가 `chunk_size`(기본 16,777,216 bytes)보다 크면 오류 로그만 남고 기록되지 않습니다.
-  - 그런데도 Scribe 응답과 성공 집계는 성공으로 보일 수 있습니다(원본 처리 그대로).
+  - 일반 spool 파일의 형식은 ThriftFile 형식과 별개입니다.
+  - 이전 개발 버전이 raw 형식 복사본 파일을 이미 만들었다면 그 파일은 그대로 남습니다.
+    - 지금 버전은 변환하지 않으므로, 같은 폴더에 서로 다른 형식의 파일이 있을 수 있습니다.
+    - reader를 고르거나 이전 버전으로 되돌리기 전에 실제 파일 형식을 확인하세요.
+  - 길이 표시 4 bytes를 포함한 메시지가 `chunk_size`(기본 16,777,216 bytes)보다 크면 오류 로그만 남고 기록되지 않습니다.
+    - 그런데도 Scribe 응답과 성공 집계는 성공으로 보일 수 있습니다(원본 처리 그대로).
 
 ### Network 복사본은 service_list와 동적 조회 설정을 물려받지 않는다
 
-**어떤 동작인가.**
-network store 복사본은 원래 필드인 `remote_host`, `remote_port`, `use_conn_pool`, `timeout`, `smc_service`만 복사합니다.
-다음 설정은 복사하지 않습니다.
+- **어떤 동작인가.**
+  network store 복사본은 원래 필드인 `remote_host`, `remote_port`, `use_conn_pool`, `timeout`, `smc_service`만 복사합니다.
+  다음 설정은 복사하지 않습니다.
 
-| 복사하지 않는 설정 | 복사본에서 생기는 일 |
-| --- | --- |
-| `service_list`, `list_default_port` | 목록이 비어 연결할 수 없음 |
-| `service_options`, `service_cache_timeout` | 기본값(cache 300초) |
-| `ignore_network_error` | 기본값(no) |
-| `dynamic_config_type`과 갱신 | 모델이 받아 둔 주소를 계속 씀 |
+  | 복사하지 않는 설정 | 복사본에서 생기는 일 |
+  | --- | --- |
+  | `service_list`, `list_default_port` | 목록이 비어 연결할 수 없음 |
+  | `service_options`, `service_cache_timeout` | 기본값(cache 300초) |
+  | `ignore_network_error` | 기본값(no) |
+  | `dynamic_config_type`과 갱신 | 모델이 받아 둔 주소를 계속 씀 |
 
-그래서 **`service_list`를 쓰는 모델의 복사본은 구·신 모두 로그를 전달하지 못합니다.**
-예외는 모델이 `use_conn_pool=yes`이고, 직접 설정한 다른 `service_list` store가 [빈 연결 key](#service_list와-use_conn_pool은-빈-연결-key-하나를-같이-쓴다)로 연결을 열어 둔 경우입니다.
-이때는 그 연결(즉 그 store의 목록 서버)로 보냅니다.
+  그래서 **`service_list`를 쓰는 모델의 복사본은 구·신 모두 로그를 전달하지 못합니다.**
+  예외는 모델이 `use_conn_pool=yes`이고, 직접 설정한 다른 `service_list` store가 [빈 연결 key](#service_list와-use_conn_pool은-빈-연결-key-하나를-같이-쓴다)로 연결을 열어 둔 경우입니다.
+  이때는 그 연결(즉 그 store의 목록 서버)로 보냅니다.
 
-**왜 남겼나.**
-보완하면 전달되지 않던 로그가 갑자기 전달되거나 목적지가 바뀌고, 상태 조회 결과도 달라집니다.
-다음 서버의 데이터 양과 감시 도구가 보던 상태가 바뀝니다.
+- **왜 남겼나.**
+  보완하면 전달되지 않던 로그가 갑자기 전달되거나 목적지가 바뀌고, 상태 조회 결과도 달라집니다.
+  다음 서버의 데이터 양과 감시 도구가 보던 상태가 바뀝니다.
 
-**무엇을 기대하면 되나.**
-`default`·category 모델로 network store를 쓸 때는 `remote_host`/`remote_port`를 쓰거나, category를 직접 설정하세요.
-그리고 실제 목적지와 fb303 상태를 확인하세요.
-공개 원본의 서비스 이름 조회(`smc_service`)는 항상 실패하는 예제 구현이므로, 실제 서비스 탐색이 된다고 가정하지 마세요.
+- **무엇을 기대하면 되나.**
+  `default`·category 모델로 network store를 쓸 때는 `remote_host`/`remote_port`를 쓰거나, category를 직접 설정하세요.
+  그리고 실제 목적지와 fb303 상태를 확인하세요.
+  공개 원본의 서비스 이름 조회(`smc_service`)는 항상 실패하는 예제 구현이므로, 실제 서비스 탐색이 된다고 가정하지 마세요.
 
-**구·신 차이.**
-없습니다.
-직접 설정한 store의 동적 조회와 TTL 갱신은 원본대로 동작합니다.
+- **구·신 차이.**
+  없습니다.
+  직접 설정한 store의 동적 조회와 TTL 갱신은 원본대로 동작합니다.
 
-**관련 설정 키.**
-모델 store의 `service_list`, `list_default_port`, `service_options`, `service_cache_timeout`입니다.
-`ignore_network_error`와 `dynamic_config_type`도 해당합니다.
+- **관련 설정 키.**
+  모델 store의 `service_list`, `list_default_port`, `service_options`, `service_cache_timeout`입니다.
+  `ignore_network_error`와 `dynamic_config_type`도 해당합니다.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  category=default
-  type=buffer
-  retry_interval=30
-  retry_interval_range=10
+  ```conf
+  <store>
+    category=default
+    type=buffer
+    retry_interval=30
+    retry_interval_range=10
 
-  <primary>
-    type=network
-    service_list=relay-a.example:1463 relay-b.example:1463
-    ignore_network_error=yes
-  </primary>
+    <primary>
+      type=network
+      service_list=relay-a.example:1463 relay-b.example:1463
+      ignore_network_error=yes
+    </primary>
 
-  <secondary>
-    type=file
-    fs_type=std
-    file_path=/var/log/scribed/spool
-    base_filename=default_spool
-    max_size=3000000
-  </secondary>
-</store>
-```
+    <secondary>
+      type=file
+      fs_type=std
+      file_path=/var/log/scribed/spool
+      base_filename=default_spool
+      max_size=3000000
+    </secondary>
+  </store>
+  ```
 
-처음 보는 category(예: `game_event`)가 들어올 때마다 복사본이 만들어지지만, 연결할 서버가 없습니다.
-로그는 `/var/log/scribed/spool/game_event/game_event_00000`, `_00001`, …에 계속 쌓입니다.
-`game_event:retries` 카운터가 늘고, fb303 상태는 `WARNING`, 상세 설명은 `Failed to connect`입니다.
-`ignore_network_error`가 적용되는 경우에도 실제 연결 실패가 성공으로 바뀌지는 않습니다.
+  처음 보는 category(예: `game_event`)가 들어올 때마다 복사본이 만들어지지만, 연결할 서버가 없습니다.
+  로그는 `/var/log/scribed/spool/game_event/game_event_00000`, `_00001`, …에 계속 쌓입니다.
+  `game_event:retries` 카운터가 늘고, fb303 상태는 `WARNING`, 상세 설명은 `Failed to connect`입니다.
+  `ignore_network_error`가 적용되는 경우에도 실제 연결 실패가 성공으로 바뀌지는 않습니다.
 
 ### service_list와 use_conn_pool은 빈 연결 key 하나를 같이 쓴다
 
-**어떤 동작인가.**
-`use_conn_pool=yes`인 연결은 이름(key)으로 공유됩니다.
-`remote_host`/`remote_port`는 `host:port`, `smc_service`는 서비스 이름이 key인데, `service_list`는 **빈 문자열**이 key입니다.
-그래서 서로 다른 목록을 쓰는 store들이 **먼저 열린 연결 하나를 같이 씁니다.**
+- **어떤 동작인가.**
+  `use_conn_pool=yes`인 연결은 이름(key)으로 공유됩니다.
+  `remote_host`/`remote_port`는 `host:port`, `smc_service`는 서비스 이름이 key인데, `service_list`는 **빈 문자열**이 key입니다.
+  그래서 서로 다른 목록을 쓰는 store들이 **먼저 열린 연결 하나를 같이 씁니다.**
 
-**왜 남겼나.**
-연결을 목록마다 나누면 전송 대상, 연결 수, 서버 선택 비율이 바뀝니다.
+- **왜 남겼나.**
+  연결을 목록마다 나누면 전송 대상, 연결 수, 서버 선택 비율이 바뀝니다.
 
-**무엇을 기대하면 되나.**
-`service_list`가 서로 다른 store에 `use_conn_pool=yes`를 함께 쓰면, 로그가 다른 목록의 서버로 갈 수 있습니다.
-서로 다른 목록을 쓴다면 실제 목적지를 확인하고, 원래 있던 옵션인 `use_conn_pool=no`(기본값)를 검토하세요.
+- **무엇을 기대하면 되나.**
+  `service_list`가 서로 다른 store에 `use_conn_pool=yes`를 함께 쓰면, 로그가 다른 목록의 서버로 갈 수 있습니다.
+  서로 다른 목록을 쓴다면 실제 목적지를 확인하고, 원래 있던 옵션인 `use_conn_pool=no`(기본값)를 검토하세요.
 
-**구·신 차이.**
-없습니다.
-재연결할 때 후보 목록이 늘어나던 문제는 따로 [고쳤습니다](#service_list-재연결).
+- **구·신 차이.**
+  없습니다.
+  재연결할 때 후보 목록이 늘어나던 문제는 따로 [고쳤습니다](#service_list-재연결).
 
-**관련 설정 키.**
-`service_list`, `use_conn_pool`.
+- **관련 설정 키.**
+  `service_list`, `use_conn_pool`.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  category=game_login
-  type=network
-  service_list=relay-a.example:1463 relay-b.example:1463
-  use_conn_pool=yes
-</store>
+  ```conf
+  <store>
+    category=game_login
+    type=network
+    service_list=relay-a.example:1463 relay-b.example:1463
+    use_conn_pool=yes
+  </store>
 
-<store>
-  category=game_chat
-  type=network
-  service_list=chat-relay-a.example:1463 chat-relay-b.example:1463
-  use_conn_pool=yes
-</store>
-```
+  <store>
+    category=game_chat
+    type=network
+    service_list=chat-relay-a.example:1463 chat-relay-b.example:1463
+    use_conn_pool=yes
+  </store>
+  ```
 
-먼저 연결을 연 store의 목록 서버로 두 category가 모두 전송됩니다.
-예를 들어 `game_login`이 먼저 열었다면 `game_chat` 로그도 `relay-a.example`이나 `relay-b.example`로 갑니다.
+  먼저 연결을 연 store의 목록 서버로 두 category가 모두 전송됩니다.
+  예를 들어 `game_login`이 먼저 열었다면 `game_chat` 로그도 `relay-a.example`이나 `relay-b.example`로 갑니다.
 
 ### 빈 메시지만 든 큐는 전달되지 않는다
 
-**어떤 동작인가.**
-store 큐는 쌓인 **메시지 내용의 총 byte 수**를 보고 처리할지를 정합니다.
-빈 메시지만 있으면 메시지가 있어도 총 크기가 0이라, 주기 처리 때나 종료할 때 전달하지 않습니다.
-서버는 이미 `OK`를 돌려주고 `received good` 카운터를 늘렸는데도, 파일은 비어 있고 `lost` 카운터도 0일 수 있습니다.
+- **어떤 동작인가.**
+  store 큐는 쌓인 **메시지 내용의 총 byte 수**를 보고 처리할지를 정합니다.
+  빈 메시지만 있으면 메시지가 있어도 총 크기가 0이라, 주기 처리 때나 종료할 때 전달하지 않습니다.
+  서버는 이미 `OK`를 돌려주고 `received good` 카운터를 늘렸는데도, 파일은 비어 있고 `lost` 카운터도 0일 수 있습니다.
 
-**왜 남겼나.**
-고치면 `add_newlines=1`인 store에 빈 줄이 새로 저장되고 전달 횟수가 달라집니다.
-줄 단위로 읽는 프로그램이 새로운 빈 줄을 보게 됩니다.
+- **왜 남겼나.**
+  고치면 `add_newlines=1`인 store에 빈 줄이 새로 저장되고 전달 횟수가 달라집니다.
+  줄 단위로 읽는 프로그램이 새로운 빈 줄을 보게 됩니다.
 
-**무엇을 기대하면 되나.**
-빈 메시지만 보내는 용도(예: 살아 있음 신호)는 파일에 남지 않는다고 보세요.
-같은 큐에 비어 있지 않은 메시지가 함께 들어오면 그때는 빈 메시지도 함께 처리됩니다.
-메시지가 하나도 없는 `Log` 요청과는 다른 경우입니다.
+- **무엇을 기대하면 되나.**
+  빈 메시지만 보내는 용도(예: 살아 있음 신호)는 파일에 남지 않는다고 보세요.
+  같은 큐에 비어 있지 않은 메시지가 함께 들어오면 그때는 빈 메시지도 함께 처리됩니다.
+  메시지가 하나도 없는 `Log` 요청과는 다른 경우입니다.
 
-**구·신 차이.** 없습니다.
+- **구·신 차이.** 없습니다.
 
-**관련 설정 키.**
-특정 키는 없습니다.
-`add_newlines` 값에 따라 고쳤을 때의 결과가 달라집니다.
+- **관련 설정 키.**
+  특정 키는 없습니다.
+  `add_newlines` 값에 따라 고쳤을 때의 결과가 달라집니다.
 
-**예시.**
+- **예시.**
 
-```conf
-<store>
-  category=game_heartbeat
-  type=file
-  fs_type=std
-  file_path=/var/log/scribed/data
-  base_filename=game_heartbeat
-  add_newlines=1
-</store>
-```
+  ```conf
+  <store>
+    category=game_heartbeat
+    type=file
+    fs_type=std
+    file_path=/var/log/scribed/data
+    base_filename=game_heartbeat
+    add_newlines=1
+  </store>
+  ```
 
-클라이언트가 category `game_heartbeat`로 빈 메시지만 보내면 `OK`를 받고 `game_heartbeat:received good`가 늡니다.
-하지만 `/var/log/scribed/data/game_heartbeat_00000`은 비어 있습니다.
-같은 큐에 비어 있지 않은 메시지가 함께 들어오면, 그때 빈 메시지도 `\n`으로 저장됩니다.
+  클라이언트가 category `game_heartbeat`로 빈 메시지만 보내면 `OK`를 받고 `game_heartbeat:received good`가 늡니다.
+  하지만 `/var/log/scribed/data/game_heartbeat_00000`은 비어 있습니다.
+  같은 큐에 비어 있지 않은 메시지가 함께 들어오면, 그때 빈 메시지도 `\n`으로 저장됩니다.
 
 ### OK는 메모리 큐에 받았다는 뜻이다
 
-**어떤 동작인가.**
-서버의 `OK` 응답은 로그를 메모리 큐에 받았다는 뜻입니다.
-디스크 저장 완료나 중복 없는 전달을 보장하지 않습니다.
-파일 `flush`도 디스크 기록을 강제하는 `fsync`[^fsync]와 다릅니다.
+- **어떤 동작인가.**
+  서버의 `OK` 응답은 로그를 메모리 큐에 받았다는 뜻입니다.
+  디스크 저장 완료나 중복 없는 전달을 보장하지 않습니다.
+  파일 `flush`도 디스크 기록을 강제하는 `fsync`[^fsync]와 다릅니다.
 
-**왜 남겼나.**
-응답의 뜻을 바꾸면 응답 시점과 처리량이 달라지고, 기존 클라이언트의 재시도 동작에 영향을 줍니다.
+- **왜 남겼나.**
+  응답의 뜻을 바꾸면 응답 시점과 처리량이 달라지고, 기존 클라이언트의 재시도 동작에 영향을 줍니다.
 
-**무엇을 기대하면 되나.**
-`OK`를 받은 직후 프로세스가 갑자기 끝나면(SIGKILL, 전원 차단 등) 큐에 있던 로그는 남지 않을 수 있습니다.
-잃으면 안 되는 로그는 클라이언트 쪽 재전송이나 다른 보존 수단을 함께 생각하세요.
+- **무엇을 기대하면 되나.**
+  `OK`를 받은 직후 프로세스가 갑자기 끝나면(SIGKILL, 전원 차단 등) 큐에 있던 로그는 남지 않을 수 있습니다.
+  잃으면 안 되는 로그는 클라이언트 쪽 재전송이나 다른 보존 수단을 함께 생각하세요.
 
-**구·신 차이.**
-없습니다.
-신버전은 디스크 저장 보장(durable ACK), exactly-once, fsync를 새로 약속하지 않습니다.
+- **구·신 차이.**
+  없습니다.
+  신버전은 디스크 저장 보장(durable ACK), exactly-once, fsync를 새로 약속하지 않습니다.
 
-**관련 설정 키.** 없습니다.
+- **관련 설정 키.** 없습니다.
 
-**예시.**
-클라이언트가 메시지 100개를 보내 `OK`를 받은 직후 서버가 SIGKILL로 끝났다고 합시다.
-store thread가 아직 파일에 쓰지 않은 메시지는 구·신 모두 사라집니다.
+- **예시.**
+  클라이언트가 메시지 100개를 보내 `OK`를 받은 직후 서버가 SIGKILL로 끝났다고 합시다.
+  store thread가 아직 파일에 쓰지 않은 메시지는 구·신 모두 사라집니다.
 
 ### 긴 명령행 옵션은 값을 받지 못한다
 
-**어떤 동작인가.**
-원본은 `--config`와 `--port`를 **값을 받지 않는 옵션**으로 선언했습니다.
-`--config=/etc/scribed/scribed.conf`처럼 쓰면 값을 받지 않는 옵션이라며 사용법만 출력하고 종료(코드 0)합니다.
-`--config /etc/scribed/scribed.conf`처럼 쓰면 값이 옵션에 전달되지 않아 정상 동작을 기대할 수 없습니다.
+- **어떤 동작인가.**
+  원본은 `--config`와 `--port`를 **값을 받지 않는 옵션**으로 선언했습니다.
+  `--config=/etc/scribed/scribed.conf`처럼 쓰면 값을 받지 않는 옵션이라며 사용법만 출력하고 종료(코드 0)합니다.
+  `--config /etc/scribed/scribed.conf`처럼 쓰면 값이 옵션에 전달되지 않아 정상 동작을 기대할 수 없습니다.
 
-**왜 남겼나.**
-명령행 해석 결과도 바깥에서 보이는 동작이므로 원본대로 둡니다.
+- **왜 남겼나.**
+  명령행 해석 결과도 바깥에서 보이는 동작이므로 원본대로 둡니다.
 
-**무엇을 기대하면 되나.**
-항상 짧은 옵션 `-c`, `-p`를 쓰세요.
-옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
+- **무엇을 기대하면 되나.**
+  항상 짧은 옵션 `-c`, `-p`를 쓰세요.
+  옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
 
-**구·신 차이.** 없습니다.
+- **구·신 차이.** 없습니다.
 
-**관련 설정 키.**
-명령행 `--config`, `--port`.
+- **관련 설정 키.**
+  명령행 `--config`, `--port`.
 
-**예시.**
+- **예시.**
 
-```sh
-scribed -c /etc/scribed/scribed.conf -p 1463
-# 옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
-scribed /etc/scribed/scribed.conf
-```
+  ```sh
+  scribed -c /etc/scribed/scribed.conf -p 1463
+  # 옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
+  scribed /etc/scribed/scribed.conf
+  ```
 
 ### 그 밖에 원본 그대로인 주의점
 
