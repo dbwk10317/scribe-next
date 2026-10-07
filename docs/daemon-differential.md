@@ -680,3 +680,158 @@ uid65534와 interface `lo`만을 확인했다. getVersion은 양쪽 2.2다. raw�
 않았다. 운영 container 보존 확인은 해당 없다. modern image 자체의 clean build와
 Ubuntu16 userland 위 old 실행은 이번 범위가 아니다. 한 환경 1회 PASS를 전체 호환성,
 운영 준비나 성능 결론으로 확대하지 않는다.
+
+## 운영 시나리오 case
+
+2026-10-07 · base main `b6f7279`. `--case relay-stream`, `mixed-relay-stream`, `receiver-restart`,
+`receiver-crash`, `sender-restart-spool`, `mixed-sender-restart-spool`, `throttle-retry`는 세 행위자로
+운영 흐름을 old/new 대조한다. driver는 [daemon_scenario_case.py](../tools/daemon_scenario_case.py)이고
+`main()`이 기존 uid65534·lo-only 검사와 `--port`/`--port+1` 비점유 검사 뒤 dispatch한다. production C++,
+기존 template, 기존 case 기대값과 격리 guard는 바꾸지 않았다. `run_differential.sh`의 기본 10개 case 목록에도
+넣지 않았으므로 case 이름을 붙여 실행한다.
+
+- 송신측: `--port`의 scribed. 기존 spool template(buffer, unpooled network primary 127.0.0.1:`--port+1`,
+  std file secondary `spool_00000`, `retry_interval=10`/`retry_interval_range=1`, `max_write_interval=1`)
+- 수신측: `--port+1`의 scribed. 기존 ordinary file template(category=fixture, `max_size=1000000`,
+  `rotate_on_reopen` 없음, `add_newlines=0`)
+- 소비 클라이언트: harness가 수신 디렉터리를 읽기만 한다. consumer view는 정렬한 파일 목록(크기·SHA256),
+  `_current` symlink 대상, `<dir>/<base>_NNNNN` 묶음마다 suffix 순서로 이어 붙인 bytes(streams)다.
+  `add_newlines=0`이라 메시지 경계는 보이지 않으므로 streams는 메시지를 보낸 순서대로 이은 bytes와 비교한다
+
+모든 daemon은 spool case의 `owned_daemon`으로 띄운다(첫 RPC 전 socket 소유권 확인, 실패 시 그 session만 회수).
+종료는 fb303 oneway `shutdown`과 exit0 확인이고, 예외는 receiver-crash에서 소유 session에 보내는 SIGKILL 하나다.
+같은 역할을 다시 띄울 때는 같은 config 내용과 같은 디렉터리를 쓰고 evidence 역할 이름만 `-restarted`로 나눈다.
+파일 관찰은 `wait_output`의 기한 있는 read-only poll이며 입력·RPC를 더하지 않는다. 역할마다 RPC 요청 bytes,
+getVersion/shutdown을 뺀 응답 bytes와 값, phase snapshot, 최종 consumer view, exit/cleanup_exit를 source에서
+정한 기대값 및 상대 lane과 비교한다. spool이 끼는 batch에는 빈 payload를 넣지 않는다. `add_newlines=0` spool에서
+빈 payload는 길이0 frame이고 `StdFile::readNext`가 0을 EOF로 돌려주므로 `readOldest`가 뒤 frame을 읽지 않고
+성공하며 `deleteOldest`가 뒤 메시지까지 지운다(원본 동작, source 읽기 결과이며 실행하지 않았다).
+
+### relay-stream, mixed-relay-stream
+
+수신측을 `category=default`, `max_size=4`로 먼저 띄우고 송신측을 `categories=fixture other`로 띄운다.
+송신측에 Log 3번 `[fixture binary5, other o1, fixture 빈 payload, fixture tail]`, `[fixture second]`,
+`[other o3, fixture Z]`을 보내고 매번 수신 디렉터리가 정확한 상태가 될 때까지 기다린다.
+
+- categories= copy는 시작 때 열린다. 수신측이 있으므로 `BufferStore::open`이 SENDING_BUFFER에서 빈
+  `<cat>/<cat>_00000`을 만들고 첫 `periodicCheck`가 읽기·`deleteOldest` 뒤 STREAMING으로 바꾼다. 송신측 spool에는
+  끝까지 파일이 없다
+- 수신측 default copy는 `<cat>/<cat>_NNNNN`이다(`copyCommon`). `writeMessages`는 쓰고 나서
+  `currentSize > max_size`면 회전한다. 회전을 일으키는 메시지가 각각 4바이트보다 길어서(binary5, second) queue가
+  batch를 어떻게 나눠도 분할이 같다: `fixture_00000`=binary5(5), `fixture_00001`=tail+second(10),
+  `fixture_00002`=Z(1). `fixture_current`는 `_00001`에서 `_00002`로 옮겨 가고 `other_00000`=o1o3(4)은 회전하지 않는다
+- 빈 payload는 fixture nonempty payload 사이에 있다. StoreQueue는 `msgQueueSize > 0`일 때만 drain하므로 빈
+  payload만 남은 queue는 보내지 않지만 여기서는 이웃과 함께 relay된다. 수신 카운터에는 세고 파일 bytes는 없다
+- streams: fixture `A\0B\n\xff` `tail` `second` `Z`, other `o1o3`. 송신측 received good fixture5/other2/전체7,
+  sent7, retries 없음, ALIVE. 수신측 received good 5/2/7
+- mixed는 old 송신→modern 수신, modern 송신→old 수신이며 기대값이 같다
+
+### receiver-restart, receiver-crash
+
+수신측 기동 → 송신측 기동 → batch1 `[binary5, tail]` 스트리밍과 수신 파일 확인 → 수신측 정지 → batch2
+`[second, third]` → 송신측 spool 확인 → 같은 config·디렉터리로 수신측 재기동 → replay·spool 삭제 확인 →
+batch3 `[Z]` 스트리밍. receiver-restart는 수신측을 fb303 shutdown(exit0)으로, receiver-crash는 batch1이 파일에
+보인 뒤 SIGKILL(exit -9)로 멈춘다.
+
+- batch2: unpooled NetworkStore는 예전 socket을 그대로 갖고 있다. `scribeConn::send`가 EOF/RST로
+  TTransportException을 받아 fatal → CONN_FATAL → `NetworkStore::close`. `BufferStore::handleMessages`가
+  `changeState(DISCONNECTED)`에서 retries를 한 번 세고 secondary가 둘을 spool한다
+  (`060000007365636f6e64050000007468697264`). 두 lane log 모두 `No more data to read.`였다
+- 정상 종료와 SIGKILL은 송신측에서 같아 보인다. 어느 쪽이든 kernel이 수신 socket을 닫고 송신측은 다음 send에서야
+  안다. 그래서 두 case의 송신측 기대값(retries1, sent 2→4→5, received good 4→5)이 같다
+- spool 중에도 송신측 getStatus는 ALIVE다. CONN_FATAL 경로는 `setStatus`를 부르지 않고 `NetworkStore::open`만
+  status를 바꾼다
+- 재접속은 `now - lastOpenAttempt > 10`인 periodicCheck다. 재기동 수신측은 `rotate_on_reopen` 기본값이라
+  `openInternal(false)`가 가장 큰 suffix를 다시 열어 같은 `fixture_00000`에 이어 쓴다. 새 process 카운터는 빈
+  상태에서 received good 3(second, third, Z)이다
+- consumer view: `fixture_00000` 21바이트 하나, `fixture_current → fixture_00000`, stream은 batch1~3 순서
+
+### sender-restart-spool, mixed-sender-restart-spool
+
+수신측 없이 송신측이 batch1 `[binary5, tail]`을 spool에 쓴다(open 실패 "Failed to connect" → WARNING, retries1,
+spool 17바이트 `050000004100420aff040000007461696c`). 송신측을 fb303 shutdown(exit0)하고 회수한 뒤 spool bytes가
+그대로인지 다시 본다(`BufferStore::close`는 secondary를 닫을 뿐 지우지 않는다). 수신측을 띄우고 같은 config·spool
+디렉터리로 송신측을 다시 띄운다. 새 송신측은 open이 성공해 SENDING_BUFFER로 가고 첫 periodicCheck가 이전 process의
+파일을 `readOldest`로 읽어 보내고 지운 뒤 STREAMING이 된다. 새 process 카운터는 sent2뿐이고 retries가 없다.
+batch2 `[Z]` 스트리밍 뒤 수신 파일은 `A\0B\n\xfftailZ`, sent3이다.
+
+mixed는 spool을 쓴 송신측과 다시 읽는 송신측의 lane을 바꾼다(old가 쓰고 modern이 replay, modern이 쓰고 old가
+replay). 수신측은 modern으로 고정한다. 앞의 mixed-spool은 같은 version이 쓰고 읽었다. 실제 daemon 비교에서는 이
+case가 처음으로 두 version이 서로 쓴 ordinary spool 파일을 디스크에서 읽는다(component 수준은 test_ordinary_spool.py).
+
+### throttle-retry
+
+수신측 `max_msg_per_second=4`, 수신·송신 모두 `target_write_size=1`(addMessage가 바로 queue thread를 깨워 Log마다
+즉시 relay·기록한다). `throttleDeny`는 `time()`이 바뀌면 count를 0으로 하고 `num_messages > max/2`인 batch는 세지
+않고 항상 허용한다. 그래서 두 batch로는 거절이 생기지 않는다: 2 이하 두 개의 합은 4 이하이고, 3개 batch는
+면제되어 count에 들어가지 않는다(요청 초안의 3건+2건도 둘 다 허용). 한 수신 초 안에 송신측 Log 3번
+`[binary5, tail]`, `[second, third]`, `[Z]`를 보내고 앞 두 번은 수신 파일에 보인 뒤 다음을 보낸다. relay batch는
+나뉘어도 각각 2건 이하이므로 count 2 → 4, `Z`는 4+1>4로 TRY_LATER와 `denied for rate`1이다.
+
+TRY_LATER는 `scribeConn::send`에서 fatal이 아니라 CONN_TRANSIENT이므로 NetworkStore는 열린 채 남는다.
+BufferStore는 DISCONNECTED(retries1)로 가서 `Z`를 spool하고, retry_interval 뒤 `NetworkStore::open`이 이미 열린
+연결로 true를 돌려 같은 연결로 replay한다(두 lane log에 재접속 없음). 새 초라 허용된다. 송신측 sent 4→5, 상태
+ALIVE, 수신측 received good5(거절된 batch는 addMessage 전이라 세지 않음), 수신 파일은 다섯 메시지 순서다.
+
+harness는 같은 clock으로 다음 초 경계 직후(+0.02초)에 시작한다. `Z` Log 응답이 시작과 같은 정수 초가 아니면
+경계를 넘은 것으로 보고 실패한다. 경계를 넘으면 count가 리셋되어 `Z`가 바로 허용되고 spool이 생기지 않는다.
+이번 run에서 세 Log가 끝날 때까지 약2ms였으므로 시작 뒤 약0.98초 안에 끝나지 못할 때만 실패한다. 부하가 큰
+host에서 thread가 그만큼 멈추면 실패할 수 있고, 그때는 기대값을 바꾸지 않고 timing 기록과 함께 실패로 남는다.
+
+### 시간 창
+
+retry는 `now - lastOpenAttempt > 10`(정수 초)이라 마지막 실패를 일으킨 입력 시각 t에 대해 빨라야 `int(t)+11`이다.
+spool case처럼 t부터 8초 안에 spool 관찰, 송신측 카운터, 재기동 수신측의 빈 카운터 확인까지 끝나야 하며 넘으면
+실패한다. 재기동 전 카운터가 retry 뒤 값이 되거나 retries가 2가 되는 것을 막기 위해서다. sender-restart-spool의
+첫 송신측도 시작부터 8초 안에 카운터를 읽고 멈춘다. replay·스트리밍 관찰은 각 20초 기한이다. 스트리밍만 하는
+마지막 단계의 송신측 `sent`는 수신측이 초 경계에서 파일을 쓰고 harness가 수신측 카운터를 먼저 읽은 뒤 읽는다.
+replay 뒤 `sent`는 spool 삭제(`deleteOldest`가 send 성공 뒤) 관찰 뒤에 읽으므로 순서가 보장된다.
+
+### 증명하지 않는 것
+
+- `OK`는 queue 수락이다. fsync·power-loss durability나 exactly-once를 주장하지 않는다. SIGKILL은 batch1이 파일에
+  보인 뒤에만 보내므로 기록 전 queue 유실은 시험하지 않는다
+- 모든 replay는 한 번에 전부 성공하는 `deleteOldest` 경로다. 부분 replay(`replaceOldest`/`openTruncate`)는
+  old(app|trunc open 실패)와 modern(trunc)이 의도적으로 다르며 여기서 실행하거나 비교하지 않는다
+- retries가 2 이상인 반복 실패, 수신측 부재 중 송신측 재시작 반복, 여러 송신측, pooled connection,
+  service_list, adaptive_backoff, 큰 batch(dummy send), 빈 frame spool, half-limit 면제 batch 자체, disk full과
+  운영 config·부하 재현은 다루지 않는다
+
+### 2026-10-07 WSL 개발 run (최종 측정 아님)
+
+이 결과는 case를 맞추기 위한 개발 run이다. 공식 old/new 측정은 다른 단계가 main에 들어간 뒤 깨끗한 환경에서 따로 한다.
+WSL2 Rocky9.8(20 CPU), Docker에서 이 branch를 그대로 빌드한 modern image와 기존 `scribe-next-old-build:xenial`로
+runtime image를 만들었다. runtime image는 `Dockerfile.runtime` 사본의 FROM만 바꾸면 현재 root Dockerfile의
+`USER scribe`와 `ENTRYPOINT` 때문에 build·실행이 되지 않아 사본에 `USER root`, `ENTRYPOINT []`, `CMD []`를 더했다
+(container는 여전히 `--user 65534:65534`로 돈다). 저장소의 recipe는 바꾸지 않았다.
+
+| case | 방향 | 최종 코드 결과 |
+| --- | --- | --- |
+| relay-stream | old 송수신, modern 송수신 | PASS 1회 |
+| mixed-relay-stream | old 송신→modern 수신, modern 송신→old 수신 | PASS 1회 |
+| receiver-restart | old, modern | 4회 중 PASS 3회, 1회 실패(아래) |
+| receiver-crash | old, modern | PASS 1회 |
+| sender-restart-spool | old, modern | PASS 1회 |
+| mixed-sender-restart-spool | old 기록→modern replay, modern 기록→old replay, 수신 modern | PASS 1회 |
+| throttle-retry | old, modern | PASS 1회. 시작부터 `Z` Log 응답까지 1.83ms/1.91ms |
+| spool, mixed-spool(기존) | 기존 그대로 | 변경 전 checkout 1회, 최종 코드 1회 PASS |
+
+이보다 앞서 `role_targets` 정리(기대값 변화 없음) 전 코드로 새 7개 case를 1회씩 돌려 모두 PASS였다.
+9개 case 한 번에 약189초다. 각 comparison.json은 passed이고 두 lane의 log에서 위 경로(`No more data to read.`
+뒤 DISCONNECTED, `returned error code <1>`와 `throttle denying request with <1> messages`, 재기동 송신측의 SENDING_BUFFER
+replay, 수신측 회전 `old size <5>`/`<10>`)를 확인했다. old/new 사이에 기대값이나 bytes 차이는 없었다.
+
+receiver-restart 실패 1회는 모든 phase·카운터·consumer view가 맞은 뒤 마지막 modern 재기동 수신측의 fb303
+shutdown이 exit -11(SIGSEGV)이었던 것이다. stderr에는 `scribe server exiting`까지 남았다. shutdown RPC는 ThreadManager
+worker(기본 `num_thrift_server_threads` 3)에서 `scribe::stopServer()`의 `exit(0)`을 부르고, 그동안 main thread는
+`server->stop()`으로 끝난 `serve()`에서 돌아와 main을 return한다. 두 exit 경로가 static destructor를 동시에 도는
+경쟁으로 추정하지만 core가 없어 확인하지 못했다. 이 구조는 원본 `fcd294f`와 같고 두 lane의 정상 종료 stderr
+대부분에 `scribe server exiting`이 남는다. 이번 개발 run 전체(변경 전 spool 포함)의 harness shutdown은 modern 53번
+중 1번, old 49번 중 0번 실패했다.
+harness 밖 진단(lane마다 단독 시작·shutdown 300번, relay 송수신 쌍 80번)에서는 재현되지 않았다. exit0 기대값과
+`src/`는 바꾸지 않았다. old에도 같은 경쟁이 있을 수 있으나 이번에 관찰한 것은 modern 1회뿐이다.
+
+offline 시험은 `test.test_daemon_differential`과 `test.test_daemon_spool` 30개(기존26+새4)이며 실제 실행 횟수와
+구분한다. 새 4개는 source 규칙(throttle 면제·회전 분할·spool frame·역할 lane), synthetic report 통과와 잘못된
+case 이름·consumer bytes 누락·counter·symlink·lane 변형 거부, spool 관찰 실패 시 수신측 재기동 없음, dispatch의
+두 port 검사다. raw는 WSL `~/scenarios-cmp`에 두었다가 지웠고 저장소에 넣지 않았다.

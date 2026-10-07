@@ -14,6 +14,7 @@ TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'daemon_diff
 MAX_REPLY = 262144
 PAYLOADS = [b'A\x00B\n\xff', b'', b'tail']
 METHODS = ['getName','getVersion','getStatus','getStatusDetails','getCounters','Log','Log','getCounters','shutdown']
+SCENARIO_CASES = ('relay-stream','mixed-relay-stream','receiver-restart','receiver-crash','sender-restart-spool','mixed-sender-restart-spool','throttle-retry')
 EXPECTED_DELTA = {'fixture:received good':3,'scribe_overall:received good':3,'unknown:received bad':1,'scribe_overall:received bad':1,'scribe_overall:received blank category':1}
 
 def case_data(case):
@@ -483,7 +484,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','mixed-spool','file-stores','performance','fb303','mapping','game-profile'),default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','mixed-spool','file-stores','performance','fb303','mapping','game-profile')+SCENARIO_CASES,default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -512,7 +513,7 @@ def main():
             if not isinstance(key,(str,type(u''))) or not isinstance(value,(str,type(u''))) or not key or '=' in key or '\0' in key+value:
                 parser.error('environment requires valid string key/value entries')
     port_free()
-    if CASE in ('spool','mixed-spool','game-profile'):
+    if CASE in ('spool','mixed-spool','game-profile')+SCENARIO_CASES:
         if PORT==65535: parser.error('%s case requires two unprivileged ports'%CASE)
         port_free(PORT+1)
     if CASE=='mapping':
@@ -539,6 +540,11 @@ def main():
         old=daemon_game_profile_case.run_lane(sys.modules[__name__],daemon_spool_case,'old')
         new=daemon_game_profile_case.run_lane(sys.modules[__name__],daemon_spool_case,'modern')
         result=daemon_game_profile_case.compare_lanes(sys.modules[__name__],old,new)
+    elif CASE in SCENARIO_CASES:
+        import daemon_scenario_case,daemon_spool_case
+        old=daemon_scenario_case.run_lane(sys.modules[__name__],daemon_spool_case,CASE,'old')
+        new=daemon_scenario_case.run_lane(sys.modules[__name__],daemon_spool_case,CASE,'modern')
+        result=daemon_scenario_case.compare_lanes(sys.modules[__name__],old,new,CASE)
     elif CASE=='performance':
         import daemon_performance_case,daemon_spool_case
         result=daemon_performance_case.run_comparison(sys.modules[__name__],daemon_spool_case)

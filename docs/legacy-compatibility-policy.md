@@ -41,7 +41,7 @@ add_newlines=1이면 기존 writer 규칙대로 다시 쓴 나머지에 LF가 �
 
 ## 유지하는 안전·이식 경계
 
-malloc/delete[] 불일치 수정(현재는 nothrow new로 할당한 unique_ptr 버퍼이며 할당 실패 시 손실 집계는 같음), retry modulo0 guard, 알 수 없는 bucket child의
+malloc/delete[] 불일치 수정(현재는 nothrow new로 할당한 unique_ptr 버퍼이며 할당 실패 시 손실 집계는 같음), 종료 exit 단일화(shutdown RPC thread의 exit와 main의 return이 static 소멸자를 동시에 실행하던 crash 방지, exit code 0 동일), retry modulo0 guard, 알 수 없는 bucket child의
 null guard, omitted list_default_port의 초기값0, C++17 GNU shuffle 순서와 API/
 HDFS arity 이식은 유지한다. 원본 UB/crash에는 보존할 정의된 값이 없다.
 원본 ThriftFile empty/oversized delegate/drop/log/success 정책은 유지한다.

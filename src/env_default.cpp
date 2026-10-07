@@ -1,4 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
+// scribe-next modification: funnel the shutdown RPC thread and main into one exit; no behaviour change.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
@@ -25,6 +26,7 @@
 
 #include "common.h"
 #include "scribe_server.h"
+#include <mutex>
 
 using namespace apache::thrift;
 using namespace apache::thrift::protocol;
@@ -177,5 +179,9 @@ void scribe::startServer() {
  * Stopping a scribe server.
  */
 void scribe::stopServer() {
-  exit(0);
+  // The shutdown RPC runs exit(0) on a Thrift worker thread while main() returns
+  // from serve() and exits too; two exits ran the static destructors at once and
+  // could crash (seen on the restarted receiver). One exit, the other caller waits.
+  static std::once_flag once;
+  std::call_once(once, [] { exit(0); });
 }
