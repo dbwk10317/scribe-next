@@ -28,6 +28,9 @@ SPOOL_SPEC.loader.exec_module(spool)
 GAME_SPEC = importlib.util.spec_from_file_location("daemon_game_profile_case", ROOT / "tools/daemon_game_profile_case.py")
 game = importlib.util.module_from_spec(GAME_SPEC)
 GAME_SPEC.loader.exec_module(game)
+SCENARIO_SPEC = importlib.util.spec_from_file_location("daemon_scenario_case", ROOT / "tools/daemon_scenario_case.py")
+scenario = importlib.util.module_from_spec(SCENARIO_SPEC)
+SCENARIO_SPEC.loader.exec_module(scenario)
 FIXTURES = ROOT / "test/fixtures/first_daemon_differential"
 
 
@@ -545,6 +548,121 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
                 self.assertEqual(ports.call_args_list,[unittest.mock.call(),unittest.mock.call(14631)])
                 self.assertEqual(run.call_args_list,[unittest.mock.call(client,spool,'old'),unittest.mock.call(client,spool,'modern')])
                 compare.assert_called_once_with(client,{'lane':'old'},{'lane':'modern'})
+
+    def scenario_report(self,case,label):
+        # Synthetic expectations only: built from the source-derived specification.
+        spec=scenario.specification(client,case);targets=scenario.role_targets(client,case,label)
+        report={'case':case,'lane':label,'targets':targets,'status':'passed'}
+        report.update(copy.deepcopy(spec['phases']));report['consumer']=copy.deepcopy(spec['consumer'])
+        for role,requests in spec['roles'].items():
+            report[role]={'target_lane':targets[role],'status':'passed','exit':spec['exits'][role],
+                          'cleanup_exit':spec['exits'][role],
+                          'command':['/unused/'+targets[role],'-c','/unused/'+label+'-'+role+'.conf'],
+                          'records':[self.game_record(name,seq,fields,value) for seq,(name,fields,value) in enumerate(requests,1)]}
+        return report
+
+    def test_scenario_expectations_follow_source_rules(self):
+        def throttle(sizes,limit=4):
+            # scribeHandler::throttleDeny within one second: >limit/2 is always allowed, uncounted.
+            count=0;allowed=[]
+            for n in sizes:
+                if n>limit//2:allowed.append(True)
+                elif count+n>limit:allowed.append(False)
+                else:count+=n;allowed.append(True)
+            return allowed
+        self.assertEqual(throttle([3,2]),[True,True])  # a 3-then-2 pair is never denied
+        sender=scenario.specification(client,'throttle-retry')['roles']['sender']
+        sizes=[struct.unpack('>i',fields[4:8])[0] for name,fields,value in sender if name==b'Log']
+        self.assertEqual((sizes,throttle(sizes)),([2,2,1],[True,True,False]))
+        relay=scenario.specification(client,'relay-stream')
+        self.assertEqual([(f['path'],f['bytes']) for f in relay['consumer']['files']],
+                         [('fixture/fixture_00000',5),('fixture/fixture_00001',10),('fixture/fixture_00002',1),('other/other_00000',4)])
+        self.assertIn({'path':'fixture/fixture_current','target':'fixture_00002'},relay['consumer']['current'])
+        self.assertEqual(relay['phases']['stream-1']['symlinks'][0],{'path':'fixture/fixture_current','target':'fixture_00001'})
+        self.assertEqual(relay['consumer']['streams'],{'fixture/fixture':b'A\0B\n\xfftailsecondZ'.hex(),'other/other':b'o1o3'.hex()})
+        batches=scenario.relay_batches(client)
+        self.assertIn((b'fixture',b''),batches[0]);self.assertEqual({c for b in batches for c,p in b},{b'fixture',b'other'})
+        # Every receiver rotation (max_size=4) is caused by one message longer than 4 bytes.
+        self.assertEqual([p for b in batches for c,p in b if c==b'fixture' and len(p)>4],[b'A\0B\n\xff',b'second'])
+        restart=scenario.specification(client,'receiver-restart');crash=scenario.specification(client,'receiver-crash')
+        self.assertEqual(restart['phases']['spooled']['files'][0]['hex'],'060000007365636f6e64050000007468697264')
+        self.assertEqual(restart['roles']['sender'],crash['roles']['sender'])
+        self.assertEqual((restart['exits']['receiver'],crash['exits']['receiver']),(0,-signal.SIGKILL))
+        self.assertEqual([r[0] for r in crash['roles']['receiver']],[b'getVersion',b'getStatus',b'getCounters',b'getCounters'])
+        self.assertEqual(restart['consumer']['current'],[{'path':'fixture_current','target':'fixture_00000'}])
+        restarted=scenario.specification(client,'sender-restart-spool')
+        self.assertEqual(restarted['phases']['spooled']['files'][0]['hex'],spool.SPOOL.hex())
+        self.assertEqual(restarted['phases']['after_sender_exit'],restarted['phases']['spooled'])
+        self.assertEqual(restarted['roles']['sender-restarted'][1][2],{'scribe_overall:sent':2})
+        self.assertEqual(scenario.role_targets(client,'mixed-sender-restart-spool','modern'),
+                         {'sender':'modern','sender-restarted':'old','receiver':'modern'})
+        self.assertEqual(scenario.role_targets(client,'mixed-relay-stream','old'),{'sender':'old','receiver':'modern'})
+        with self.assertRaisesRegex(ValueError,'file name'):
+            scenario.consumer_view(client,{'files':[{'path':'meta','bytes':0,'hex':'','sha256':''}],'symlinks':[]})
+        for case,template,edits in (('relay-stream',client.TEMPLATE,scenario.RECEIVER_EDITS),
+                                    ('relay-stream',ROOT/'tools/daemon_spool.conf.template',scenario.SENDER_EDITS),
+                                    ('throttle-retry',client.TEMPLATE,scenario.RECEIVER_EDITS),
+                                    ('throttle-retry',ROOT/'tools/daemon_spool.conf.template',scenario.SENDER_EDITS)):
+            config=scenario.config(client,case,template,'/unused',14631,edits)
+            for old,new in edits[case]:self.assertIn(new+'\n',config);self.assertNotIn(old+'\n',config)
+
+    def test_synthetic_scenario_reports_pass_and_reject_mutations(self):
+        targets={lane:{'command':['/unused/'+lane]} for lane in ('old','modern')}
+        with patch.object(client,'ROOT','/unused'),patch.object(client,'TARGETS',targets):
+            for case in client.SCENARIO_CASES:
+                with self.subTest(case=case):
+                    old=self.scenario_report(case,'old');new=self.scenario_report(case,'modern')
+                    result=scenario.compare_lanes(client,old,new,case)
+                    self.assertEqual(result['status'],'passed');self.assertTrue(all(result['checks'].values()))
+                    self.assertEqual(case.startswith('mixed-'),'target_commands' in result)
+                    counter=next(i for i,r in enumerate(old['sender']['records']) if r['method']=='getCounters')
+                    wrong=dict(old['sender']['records'][counter]['value'],**{'scribe_overall:sent':99})
+                    for mutate in (lambda r:r.update(case='spool'),
+                                   lambda r:r['consumer']['streams'].popitem(),
+                                   lambda r:r['consumer'].update(files=r['consumer']['files'][1:]),
+                                   lambda r:r['sender']['records'].__setitem__(counter,self.game_record(b'getCounters',counter+1,b'\0',wrong)),
+                                   lambda r:r['final_receiver']['symlinks'][0].update(target='fixture_00009'),
+                                   lambda r:r['consumer']['current'][0].update(target='fixture_00009'),
+                                   lambda r:r['receiver'].update(target_lane='modern' if r['receiver']['target_lane']=='old' else 'old'),
+                                   lambda r:r['receiver'].pop('cleanup_exit')):
+                        broken=copy.deepcopy(old);mutate(broken)
+                        with self.assertRaises(ValueError):scenario.compare_lanes(client,broken,new,case)
+                    with self.assertRaises(ValueError):scenario.compare_lanes(client,new,old,case)
+
+    def test_scenario_failed_spool_checkpoint_never_restarts_receiver(self):
+        roles=[]
+        @contextmanager
+        def owned(c,lane,role,config,port,*rest,**kw):
+            roles.append(role);yield Mock(),Mock(),{'records':[],'started_at':client.time.time()},'/unused'
+        spec=scenario.specification(client,'receiver-restart')['roles']
+        values=[v for n,f,v in spec['receiver'][:3]]+[v for n,f,v in spec['sender'][:2]]+[spec['receiver'][3][2],0]
+        with tempfile.TemporaryDirectory() as directory,patch.object(client,'ROOT',directory), \
+                patch.object(client,'port_free'),patch.object(spool,'owned_daemon',side_effect=owned), \
+                patch.object(spool,'shutdown'),patch.object(client,'call',side_effect=values), \
+                patch.object(spool,'wait_output',side_effect=[{},ValueError('missing spool')]):
+            with self.assertRaisesRegex(ValueError,'missing spool'):scenario.run_lane(client,spool,'receiver-restart','old')
+            report=json.loads((Path(directory)/'evidence/old/scenario-result.json').read_text())
+        self.assertEqual(roles,['receiver','sender']);self.assertEqual(report['status'],'failed')
+
+    def test_scenario_dispatch_keeps_isolation_and_two_port_guards(self):
+        for case in client.SCENARIO_CASES:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as directory:
+                targets=Path(directory)/'targets.json'
+                targets.write_text(json.dumps({lane:{'command':[sys.executable]} for lane in ('old','modern')}))
+                args=['harness','--run-isolated-daemons','--targets',str(targets),'--output',str(Path(directory)/'new'),'--case',case]
+                modules={client.__name__:client,'daemon_spool_case':spool,'daemon_scenario_case':scenario}
+                with patch.object(sys,'argv',args),patch.dict(sys.modules,modules), \
+                        patch.object(client,'network_check') as isolation,patch.object(client,'port_free') as ports, \
+                        patch.object(client,'ROOT'),patch.object(client,'PORT'),patch.object(client,'CASE'),patch.object(client,'TARGETS'), \
+                        patch.object(scenario,'run_lane',side_effect=[{'lane':'old'},{'lane':'modern'}]) as run, \
+                        patch.object(scenario,'compare_lanes',return_value={'status':'passed'}) as compare, \
+                        patch('builtins.print'),patch.object(client.subprocess,'Popen') as launch:
+                    client.main()
+                    isolation.assert_called_once_with();launch.assert_not_called()
+                    self.assertEqual(ports.call_args_list,[unittest.mock.call(),unittest.mock.call(14631)])
+                    self.assertEqual(run.call_args_list,[unittest.mock.call(client,spool,case,'old'),
+                                                        unittest.mock.call(client,spool,case,'modern')])
+                    compare.assert_called_once_with(client,{'lane':'old'},{'lane':'modern'},case)
 
 
 if __name__ == "__main__":

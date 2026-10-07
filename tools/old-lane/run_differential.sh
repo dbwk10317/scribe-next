@@ -5,7 +5,7 @@
 set -eu
 CHECKOUT=$(realpath "$1"); OUT=$2; shift 2
 IMAGE=${IMAGE:-scribe-next-differential:latest}
-[ $# -gt 0 ] || set -- file stores rotation restart spool mixed-spool file-stores fb303 mapping game-profile
+[ $# -gt 0 ] || set -- file stores rotation restart spool mixed-spool file-stores fb303 mapping game-profile relay-stream mixed-relay-stream receiver-restart receiver-crash sender-restart-spool mixed-sender-restart-spool throttle-retry
 mkdir -m 0777 "$OUT"; OUT=$(realpath "$OUT")
 cat > "$OUT/targets.json" <<'EOF'
 {
