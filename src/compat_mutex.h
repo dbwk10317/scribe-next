@@ -48,28 +48,15 @@ class RWGuard {
   }
   ~RWGuard() { mutex_.release(); }
 
-  RWGuard(const RWGuard&) = delete;
-  RWGuard& operator=(const RWGuard&) = delete;
-
- private:
-  const ReadWriteMutex& mutex_;
-};
-
-// Read guard whose upgrade() is the same non-atomic release-then-acquireWrite;
-// the destructor releases whichever lock is held at scope exit.
-class RWUpgradeGuard {
- public:
-  explicit RWUpgradeGuard(const ReadWriteMutex& mutex) : mutex_(mutex) {
-    mutex_.acquireRead();
-  }
-  ~RWUpgradeGuard() { mutex_.release(); }
-  void upgrade() {
+  // Preserve the original non-atomic release/reacquire handoff. This also
+  // releases a held write lock before reacquiring it on repeated transitions.
+  void releaseAndAcquireWrite() {
     mutex_.release();
     mutex_.acquireWrite();
   }
 
-  RWUpgradeGuard(const RWUpgradeGuard&) = delete;
-  RWUpgradeGuard& operator=(const RWUpgradeGuard&) = delete;
+  RWGuard(const RWGuard&) = delete;
+  RWGuard& operator=(const RWGuard&) = delete;
 
  private:
   const ReadWriteMutex& mutex_;

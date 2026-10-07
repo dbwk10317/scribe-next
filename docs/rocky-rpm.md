@@ -1,5 +1,7 @@
 # Rocky daemon 전용 개발 RPM
 
+아래 `dc0e327`와 RPM hashes는 당시 검증 이력이다. 후속 안전성 변경과 fb303 patch 뒤에는 최종 commit으로 새 RPM을 생성하고 그 source_revision·package hash·격리 검증 manifest를 별도로 기록한다. 이전 RPM에 후속 수정이 포함됐다고 해석하지 않는다.
+
 2026-10-06. Source `dc0e3274c914bab81009be8cf3e2b07bfbd860bd`의 원본 version 1.5.0에
 개발 release `0.1.gdc0e327.el8`/`.el9`를 붙여 Rocky 8.10/9.8에서 각각 빌드했다.
 production source 수정 없이 기존 bootstrap/configure/make와 rpmbuild를 사용한다.
@@ -14,7 +16,7 @@ production source 수정 없이 기존 bootstrap/configure/make와 rpmbuild를 �
 service scriptlet은 포함하지 않는다. 기존 `scribe` Python client 설치를 덮어쓰지 않는다.
 
 Thrift 0.25.0 runtime, matching fb303 static code와 Boost 1.83 runtime을 private
-`deps` prefix로 실제 빌드·링크한다. 기존 `/opt/tools` 라이브러리를 옮겨 성공을 만들지
+`deps` prefix로 실제 빌드·링크한다. [fb303 safety patch](fb303-counter-safety.md)는 별도 source copy에만 적용한다. 기존 `/opt/tools` 라이브러리를 옮겨 성공을 만들지
 않는다. Boost filesystem의 atomic dependency도 포함한다. compiler/runtime 버전과
 source hash는 [Rocky 빌드 안내](rocky-build.md)를 따른다.
 
@@ -38,7 +40,8 @@ Boost LICENSE_1_0.txt의 7개 원문을 `%license`로 수록했다. 실제 설�
 
 ```sh
 # MAJOR=8 or 9; BASE is the matching pinned RESF digest in rocky-build.md
-# CONTEXT contains the two packaging Dockerfiles only
+# CONTEXT contains packaging Dockerfiles plus tools/prepare_fb303.py and
+# dependencies/fb303-0.25.0-counter-lock.patch under their basenames
 # TOP is a new writable project-owned RPM output directory
 
 docker build -f "$CONTEXT/Dockerfile.dependencies" \

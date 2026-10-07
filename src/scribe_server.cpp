@@ -29,7 +29,6 @@
 
 using namespace apache::thrift::concurrency;
 using scribe::concurrency::RWGuard;
-using scribe::concurrency::RWUpgradeGuard;
 
 using namespace facebook::fb303;
 using namespace facebook;
@@ -418,7 +417,7 @@ void scribeHandler::addMessage(
 
 
 ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
-  RWUpgradeGuard lock(*scribeHandlerLock);
+  RWGuard monitor(*scribeHandlerLock);
   if(status == STOPPING) {
     return TRY_LATER;
   }
@@ -449,7 +448,7 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
     // Try creating a new store for this category if we didn't find one
     if (store_list == NULL) {
       // Need write lock to create a new category
-      lock.upgrade();
+      monitor.releaseAndAcquireWrite();
 
       // This may cause some duplicate messages if some messages in this batch
       // were already added to queues

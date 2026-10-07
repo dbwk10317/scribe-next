@@ -211,6 +211,8 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                  *(cls.build / "src" / library for library,members in libraries),
                  *(f"-L{path}" for path in libdirs), "-lfb303", "-lthrift", "-lthriftnb",
                  *hdfs_libs, "-levent", "-lboost_filesystem", "-lboost_system", "-Wl,--wrap=_Znwm", "-Wl,--wrap=time",
+                 "-Wl,--wrap=pthread_rwlock_rdlock", "-Wl,--wrap=pthread_rwlock_wrlock",
+                 "-Wl,--wrap=pthread_rwlock_unlock",
                  "-o", cls.fixture], ROOT, cls.env)
 
     def run_fixture(self, mode, config_text=None, input_files=None):

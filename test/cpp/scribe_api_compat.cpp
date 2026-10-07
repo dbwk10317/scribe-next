@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #include "common.h"
 #include "scribe_server.h"
+#include <cstring>
 
 using apache::thrift::protocol::TBinaryProtocol;
 using apache::thrift::protocol::TProtocol;
@@ -16,6 +17,31 @@ static void require(bool value, const char* message) {
   if (!value) {
     throw std::runtime_error(message);
   }
+}
+
+class StatusNullStore : public NullStore {
+ public:
+  StatusNullStore() : NullStore(nullptr, "fixture", false) {}
+  void statusForTest(const std::string& value) { setStatus(value); }
+};
+class StatusBufferStore : public BufferStore {
+ public:
+  StatusBufferStore() : BufferStore(nullptr, "fixture", false) {}
+  void statusForTest(const std::string& value) { setStatus(value); }
+  void childrenForTest(boost::shared_ptr<Store> secondary, boost::shared_ptr<Store> primary) {
+    secondaryStore = secondary; primaryStore = primary;
+  }
+};
+static void testBufferStatusPublication() {
+  StatusBufferStore buffer;
+  require(!buffer.getStatus().empty(), "unconfigured buffer must report pending status safely");
+  boost::shared_ptr<StatusNullStore> secondary(new StatusNullStore), primary(new StatusNullStore);
+  buffer.childrenForTest(secondary, primary);
+  secondary->statusForTest("secondary"); buffer.statusForTest("buffer"); primary->statusForTest("primary");
+  require(buffer.getStatus()=="secondary", "secondary status priority changed");
+  secondary->statusForTest(""); require(buffer.getStatus()=="buffer", "buffer status priority changed");
+  buffer.statusForTest(""); require(buffer.getStatus()=="primary", "primary status priority changed");
+  primary->statusForTest(""); require(buffer.getStatus().empty(), "healthy buffer status changed");
 }
 
 class TestHandler : public scribeHandler {
@@ -430,7 +456,15 @@ static void testRouting(const std::string& filename) {
 int main(int argc, char** argv) {
   try {
     require(argc == 4, "usage: fixture mode config temporary-directory");
-    if (std::string(argv[1]) == "loopback-server") {
+    if (std::string(argv[1]) == "review-buffer-status") {
+      testBufferStatusPublication();
+    } else if (std::string(argv[1]) == "review-conf-parent") {
+      testConfigParentOwnership(argv[2]);
+    } else if (std::string(argv[1]) == "review-multi-report") {
+      testMultiReportDefault();
+    } else if (std::string(argv[1]) == "review-log-read" || std::string(argv[1]) == "review-log-write") {
+      testLogExceptionLock(argv[2], std::string(argv[1]) == "review-log-write");
+    } else if (std::string(argv[1]) == "loopback-server") {
       runLoopbackServer(argv[2], argv[3]);
       return 0;
     } else if (std::string(argv[1]) == "relay-driver") {

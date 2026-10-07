@@ -3,16 +3,164 @@
 #ifndef SCRIBE_TEST_STORE_REVIEW_CONTRACTS_H
 #define SCRIBE_TEST_STORE_REVIEW_CONTRACTS_H
 
+extern ConnPool g_connPool;
+
+#include <boost/weak_ptr.hpp>
+
+static void testConfigParentOwnership(const std::string& filename) {
+  // No workers or sockets: configure the actual nested MultiStore hierarchy.
+  HandlerFixture handler(filename);
+  const_cast<StoreConf&>(handler.handler->getConfig()).setString("null::global", "global");
+  pStoreConf root(new StoreConf);
+  root->parseConfig(filename);
+  pStoreConf parent, middle, leaf;
+  require(root->getStore("store0", parent), "missing top configuration");
+  require(parent->getStore("store0", middle), "missing middle configuration");
+  require(middle->getStore("store0", leaf), "missing leaf configuration");
+  boost::weak_ptr<StoreConf> parentWeak(parent), middleWeak(middle), leafWeak(leaf);
+  {
+    MultiStore store(nullptr, "fixture", false);
+    store.configure(parent, pStoreConf());
+    root.reset();
+    parent.reset();
+    middle.reset();
+    leaf.reset();
+    require(!parentWeak.expired(), "live Store lost its configuration");
+    pStoreConf liveLeaf = leafWeak.lock();
+    std::string value;
+    require(liveLeaf->getString("local", value) && value == "leaf", "direct inheritance priority");
+    require(liveLeaf->getString("qualified", value) && value == "leaf-qualified", "qualified local priority");
+    require(liveLeaf->getString("nearest", value) && value == "middle", "nearest ancestor priority");
+    require(liveLeaf->getString("outer", value) && value == "parent", "grandparent inheritance");
+    require(liveLeaf->getString("global", value) && value == "global", "global fallback");
+    require(!liveLeaf->getString("category", value), "category became inheritable");
+    require(!liveLeaf->getString("categories", value), "categories became inheritable");
+    require(liveLeaf->getString("type", value) && value == "null", "direct type changed");
+  }
+  require(parentWeak.expired() && middleWeak.expired() && leafWeak.expired(),
+          "released Store hierarchy retains cyclic configuration ownership");
+}
+
+
+class ResultNullStore : public NullStore {
+ public:
+  explicit ResultNullStore(bool result) : NullStore(nullptr, "fixture", false), result_(result) {}
+  bool open() override { return result_; }
+  bool isOpen() override { return result_; }
+  bool handleMessages(boost::shared_ptr<logentry_vector_t>) override { return result_; }
+  boost::shared_ptr<Store> copy(const std::string&) override {
+    return boost::shared_ptr<Store>(new ResultNullStore(result_));
+  }
+ private:
+  bool result_;
+};
+class ReportMultiStore : public MultiStore {
+ public:
+  ReportMultiStore() : MultiStore(nullptr, "fixture", false) {}
+  void addResult(bool result) { stores.push_back(boost::shared_ptr<Store>(new ResultNullStore(result))); }
+};
+static void testMultiReportDefault() {
+  alignas(MultiStore) unsigned char memory[sizeof(MultiStore)];
+  std::memset(memory, 0xa5, sizeof(memory));
+  MultiStore* invalid = new(memory) MultiStore(nullptr, "fixture", false);
+  pStoreConf config(new StoreConf);
+  config->setString("report_success", "invalid");
+  invalid->configure(config, pStoreConf());
+  require(invalid->getStatus() == "MULTI: Invalid report_success value.", "invalid report diagnostic changed");
+  require(invalid->isOpen(), "invalid initial configuration has indeterminate report mode");
+  require(invalid->open(), "empty all-mode open changed");
+  boost::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
+  require(invalid->handleMessages(messages), "empty all-mode aggregation changed");
+  invalid->~MultiStore();
+  for (const char* mode : {"all", "any"}) {
+    ReportMultiStore store;
+    config->setString("report_success", mode);
+    store.configure(config, pStoreConf());
+    store.addResult(false); store.addResult(true);
+    const bool expected = std::string(mode) == "any";
+    require(store.open() == expected && store.isOpen() == expected &&
+            store.handleMessages(messages) == expected, "valid all/any aggregation changed");
+    boost::shared_ptr<Store> copy = store.copy("copied");
+    require(copy->isOpen() == expected, "copy lost report mode");
+  }
+}
+
 // GNU link wrapping injects one local allocation failure; every other allocation
 // uses the real operator new. Only the single-threaded updater driver arms it.
-static bool reviewFailNextAllocation = false;
+static thread_local bool reviewFailNextAllocation = false;
+static thread_local std::size_t reviewFailAllocationSize = 0;
 extern "C" void* __real__Znwm(std::size_t size);
 extern "C" void* __wrap__Znwm(std::size_t size) {
-  if (reviewFailNextAllocation) {
+  if (reviewFailNextAllocation && (!reviewFailAllocationSize || size == reviewFailAllocationSize)) {
     reviewFailNextAllocation = false;
     throw std::bad_alloc();
   }
   return __real__Znwm(size);
+}
+
+// Observe only the calling thread's actual handler lock; wrappers forward all
+// operations. Failure injection is local to that thread and one allocation.
+static thread_local bool reviewTrackLogLock = false, reviewFailOnWrite = false;
+static thread_local pthread_rwlock_t* reviewLogMutex = nullptr;
+static thread_local int reviewLogBalance = 0, reviewLogEventCount = 0;
+static thread_local char reviewLogEvents[8];
+extern "C" int __real_pthread_rwlock_rdlock(pthread_rwlock_t*);
+extern "C" int __real_pthread_rwlock_wrlock(pthread_rwlock_t*);
+extern "C" int __real_pthread_rwlock_unlock(pthread_rwlock_t*);
+extern "C" int __wrap_pthread_rwlock_rdlock(pthread_rwlock_t* mutex) {
+  const int result = __real_pthread_rwlock_rdlock(mutex);
+  if (reviewTrackLogLock && result == 0) {
+    reviewLogMutex = mutex; ++reviewLogBalance;
+    reviewLogEvents[reviewLogEventCount++] = 'R';
+  }
+  return result;
+}
+extern "C" int __wrap_pthread_rwlock_wrlock(pthread_rwlock_t* mutex) {
+  const int result = __real_pthread_rwlock_wrlock(mutex);
+  if (reviewTrackLogLock && mutex == reviewLogMutex && result == 0) {
+    ++reviewLogBalance; reviewLogEvents[reviewLogEventCount++] = 'W';
+    if (reviewFailOnWrite) { reviewFailOnWrite = false; reviewFailNextAllocation = true; }
+  }
+  return result;
+}
+extern "C" int __wrap_pthread_rwlock_unlock(pthread_rwlock_t* mutex) {
+  const int result = __real_pthread_rwlock_unlock(mutex);
+  if (reviewTrackLogLock && mutex == reviewLogMutex && result == 0) {
+    --reviewLogBalance; reviewLogEvents[reviewLogEventCount++] = 'U';
+  }
+  return result;
+}
+static void testLogExceptionLock(const std::string& filename, bool write) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "Log fixture configuration");
+  std::vector<LogEntry> messages;
+  if (write) messages.push_back(entry(std::string(128, 'x'), "unknown"));
+  messages.push_back(entry("accepted", "payload"));
+  reviewLogMutex = nullptr; reviewLogBalance = 0; reviewLogEventCount = 0;
+  // Fail the explicit new LogEntry, before StoreQueue acquires its lock.
+  // In write mode the earlier unknown category causes the original handoff;
+  // its bad-category counter completes before this selected allocation.
+  reviewFailAllocationSize = sizeof(LogEntry);
+  reviewTrackLogLock = true; reviewFailOnWrite = write; reviewFailNextAllocation = !write;
+  bool threw = false;
+  try { fixture.handler->scribeHandler::Log(messages); }
+  catch (const std::bad_alloc&) { threw = true; }
+  reviewTrackLogLock = false; reviewFailOnWrite = false; reviewFailNextAllocation = false;
+  reviewFailAllocationSize = 0;
+  const int balance = reviewLogBalance;
+  // Clean up the pre-fix witness in the same owning thread before reporting,
+  // so the failed test never strands workers or blocks its teardown.
+  if (balance == 1) __real_pthread_rwlock_unlock(reviewLogMutex);
+  require(threw, "Log allocation exception was not exercised");
+  require(balance == 0, "Log exception retained its handler lock");
+  require(std::string(reviewLogEvents, reviewLogEventCount) == (write ? "RUWU" : "RU"),
+          "Log read-release-write handoff changed");
+  fixture.handler->reinitialize();  // Actual subsequent write lock must succeed.
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "Log exception prevented reinitialize");
+  messages = {entry("accepted", "payload")};
+  require(fixture.handler->scribeHandler::Log(messages) == ResultCode::OK, "Log did not recover");
+  require(fixture.handler->getCounter("accepted:received good") == 1, "recovered Log counter changed");
 }
 
 static void runUpdaterReviewDriver(const std::string& filename) {

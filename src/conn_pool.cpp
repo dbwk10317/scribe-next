@@ -1,5 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
-// scribe-next modification: C++17 cleanup; std::mutex guards keep lock points, dead null checks removed.
+// scribe-next modification: C++17 cleanup; std::mutex pool guards keep lock points, dead null checks removed.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -82,6 +82,19 @@ int ConnPool::send(const string &service,
   return sendCommon(service, messages);
 }
 
+// Keep one connection locked through status inspection or a send, including exceptions.
+namespace {
+class ConnectionGuard {
+ public:
+  explicit ConnectionGuard(scribeConn& connection) : connection(connection) { connection.lock(); }
+  ~ConnectionGuard() { connection.unlock(); }
+  ConnectionGuard(const ConnectionGuard&) = delete;
+  ConnectionGuard& operator=(const ConnectionGuard&) = delete;
+ private:
+  scribeConn& connection;
+};
+}
+
 bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn) {
 
   // note on locking:
@@ -98,6 +111,7 @@ bool ConnPool::openCommon(const string &key, boost::shared_ptr<scribeConn> conn)
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
     old_conn = (*iter).second;
+    ConnectionGuard connection_guard(*old_conn);
     if (old_conn->isOpen()) {
       old_conn->addRef();
       return true;
@@ -145,11 +159,10 @@ int ConnPool::sendCommon(const string &key,
   std::unique_lock<std::mutex> map_lock(mapMutex);
   conn_map_t::iterator iter = connMap.find(key);
   if (iter != connMap.end()) {
-    (*iter).second->lock();
+    boost::shared_ptr<scribeConn> connection = iter->second;
+    ConnectionGuard connection_guard(*connection);
     map_lock.unlock();
-    int result = (*iter).second->send(messages);
-    (*iter).second->unlock();
-    return result;
+    return connection->send(messages);
   } else {
     LOG_OPER("send failed. No connection pool entry for <%s>", key.c_str());
     return (CONN_FATAL);
@@ -162,6 +175,7 @@ scribeConn::scribeConn(const string& hostname, unsigned long port, int timeout_)
   remoteHost(hostname),
   remotePort(port),
   timeout(timeout_) {
+  pthread_mutex_init(&mutex, NULL);
 }
 
 scribeConn::scribeConn(const string& service, const server_vector_t &servers, int timeout_)
@@ -170,9 +184,11 @@ scribeConn::scribeConn(const string& service, const server_vector_t &servers, in
   serviceName(service),
   serverList(servers),
   timeout(timeout_) {
+  pthread_mutex_init(&mutex, NULL);
 }
 
 scribeConn::~scribeConn() {
+  pthread_mutex_destroy(&mutex);
 }
 
 void scribeConn::addRef() {
@@ -192,11 +208,11 @@ void scribeConn::setRef(unsigned r) {
 }
 
 void scribeConn::lock() {
-  mutex.lock();
+  pthread_mutex_lock(&mutex);
 }
 
 void scribeConn::unlock() {
-  mutex.unlock();
+  pthread_mutex_unlock(&mutex);
 }
 
 bool scribeConn::isOpen() {

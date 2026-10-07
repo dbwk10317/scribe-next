@@ -1,5 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
-// scribe-next modification: C++17 cleanup; std::mutex for the pool and connection locks.
+// scribe-next modification: C++17 cleanup; std::mutex for the pool lock. The connection lock stays pthread for the ERRORCHECK fixture.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,7 +69,7 @@ class scribeConn {
   std::string remoteHost;
   unsigned long remotePort;
   int timeout; // connection, send, and recv timeout
-  std::mutex mutex;
+  pthread_mutex_t mutex;
 };
 
 // key is hostname:port or the service

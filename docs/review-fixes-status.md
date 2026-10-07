@@ -265,3 +265,101 @@ installed help가 통과했다. component의 일반 및 ASan+UBSan+LSan 8개 sub
 모두 통과했다. 이번 LSan 결과는 실제 서버의 이 제한된 component이며 이전 cloud
 lane의 LSan 미실행이나 전체 daemon/HDFS 검증으로 합산하지 않는다. raw evidence는
 checkout 밖 `batch7-before.log`와 `batch7-after`에 보관했다.
+
+## ConnPool send/reopen 객체 수명과 상태 lock
+
+2026-10-06, base main `fa0c60415964cd4f28b7b658dd054ecb22caffe5`.
+실제 ConnPool methods와 transport-free connection stub의 barrier 교차에서 send가
+기존 연결을 잠근 동안 reopen이 lock 없이 isOpen을 읽고 map entry를 교체했다.
+send는 교체된 새 객체를 unlock했다. 수정 전 unsafe_isOpen/wrong_unlock이 모두1로
+실패했고, fixture 최초 중첩 lock 작성 오류의 timeout은 별도 실패 기록으로 남겼다.
+
+send는 map lock 아래 strong reference와 connection guard를 획득한 뒤 map lock을
+풀고 같은 객체로 send/unlock한다. reopen의 기존 연결 상태 확인도 map→connection
+순서로 직렬화한다. key·refCount 이전/증가·마지막 close 정책은 그대로다.
+같은 guard는 send 예외 경로에서도 connection lock을 해제한다.
+
+수정 후 deterministic concurrent/exception 두 subcase는 하나의 regression test로
+통과했고, fresh default 전체8단계·221 tests·failure/error/skip0·DESTDIR/help도
+통과했다. 실제 pool methods와 fixture의 제한된 TSan은 exit0/경고 없음이다.
+이 stub 결과는 transport/network daemon의 전체 race 부재나 성능 결과가 아니다.
+raw는 별도 task evidence의 astra-review/pool-* 및 conn-pool-after에 보존한다.
+
+## Buffer status와 worker configuration publication
+
+2026-10-06, base main `63bfd23f123f40b7a74c22252c9244369c8dc796`.
+구성 전 actual BufferStore status는 null assertion으로 실패했다. 별도 actual
+StoreQueue/barrier-store component는 worker configure 도중 status가 부분 상태를
+읽어 early_status=1로 실패했다. 최초 mock include 준비 오류도 별도 raw에 남겼다.
+
+비-model StoreQueue status 조회는 worker가 configure 동안 이미 보유하는 cmdMutex로
+직렬화하며 예외 시에도 unlock한다. 따라서 조회는 구성 임계 구역 완료까지 기다린다.
+model은 기존 synchronous 구성 경로를 유지한다. Buffer의 아직 없는 child는 기존
+자기 오류 또는 구성 전 상태를 반환한다. 완료 뒤 secondary→self→primary 순서와
+건강한 empty status는 변경하지 않는다. null 검사만으로 publication을 대신하지 않는다.
+
+fresh default 전체8단계·223 tests·failure/error/skip0·DESTDIR/help가 통과했다.
+actual Buffer 상태·우선순위와 barrier publication은 서로 다른 두 regression이다.
+제한된 actual Queue/component TSan도 exit0이며 전체 daemon race 부재의 주장이 아니다.
+raw는 astra-review/publication-* 및 buffer-publication-after에 별도 보존한다.
+
+## Queue byte/threshold atomic snapshots
+
+2026-10-06, base main `b24e4545855c141d67810bdb09a3f415216c5738`.
+actual StoreQueue component의 size read/enqueue write 및 configure target write/
+enqueue threshold read를 별도 TSan 실행으로 재현했다. 두 경우 모두 exit66이었다.
+msgQueueSize와 targetWriteSize만 relaxed atomic snapshot으로 동기화한다.
+queue vector와 기존 mutex 순서, payload byte 합·unsigned 계산·limit 비교·empty-only
+주기/shutdown 정책은 그대로다. 설정 parser는 지역 값으로 읽은 뒤 target을 publish한다.
+
+수정 후 두 제한된 component TSan은 exit0이고 ordinary snapshot bounds/종료 bytes도
+통과했다. fresh default 전체8단계·224 tests·failure/error/skip0·DESTDIR/help가
+통과했다. 기존 legacy queue/spool/relay 계약 시험을 포함한다. 전체 daemon TSan이나
+성능 결과가 아니며 raw는 astra-review/queue-snapshots-* 및 queue-snapshots-after에 있다.
+
+## Queue worker/同期 자원 초기화 실패
+
+2026-10-06, base main `7bc1d440ac74ae2ca112ca0551d8b438b2d53711`.
+actual Queue와 pthread failure wrapper에서 create EAGAIN을 무시한 객체 생성과
+worker 없는 join을 재현했다. 반환값을 검사하고 성공한 mutex/cond만 역순 정리한
+뒤 system_error를 던진다. 기존 handler의 생성 실패 처리에 연결되며 worker 없는
+큐를 공개하지 않는다. 정상 worker, queue 순서와 thread 구조는 그대로다.
+
+정상 생성 및 cmd/msg/hasWork mutex, cond, worker create의 5개 실패 subcase가
+하나의 새 regression으로 통과했다. 각 실패에서 초기화 자원 잔존0, 잘못된
+destroy/join0을 확인했다. fresh default 전체8단계·225 tests·failure/error/skip0·
+DESTDIR/help가 통과했다. 제한된 actual Queue/component ASan/UBSan/LSan도 정상
+실행 경로에서 exit0이었다. 기본 traced runner의 최초 LSan fatal/exit23은 별도로
+보존했고 보안·ptrace 설정이나 leak 검사를 끄지 않았다. 전체 daemon sanitizer
+성공은 아니다. raw는 astra-review/worker-init-* 및 worker-init-after에 있다.
+
+## StoreConf 부모 소유권 순환 제거 (2026-10-06 추가 리뷰)
+
+- parsed 부모 설정은 자식 설정을 강하게 소유한다. `Store::configure`의 역방향 강한 부모 참조가 정상 중첩 MultiStore에서도 순환을 만들었다. 부모 Store는 자식 Store와 자기 설정을 보유하며 Buffer/Bucket/Multi의 자식 configure도 그 설정을 부모로 전달한다. Category/model의 기존 부모 전달·copy 동작은 변경하지 않았다. 재초기화는 이전 worker를 종료한 뒤 설정을 다시 읽는다.
+- 설정의 역방향 참조만 `boost::weak_ptr`로 바꾸고, 조회 중에는 `lock()`한 부모를 강하게 유지한다. Store가 살아 있는 정상 경로의 직접 값, 현재 qualified 값, 가까운 부모, 상위 부모, 전역 fallback 및 category/categories/type 비상속 규칙을 유지한다. 별도 Store 소유 없이 설정 자식만 보유한 경우 부모 수명을 연장하지 않는다는 소유권 경계가 명확해졌다.
+- 실제 3단계 MultiStore 구성은 수정 전 모든 외부 참조 해제 후에도 설정이 남아 회귀 실패했다. 수정 후 부모 Store만 소유한 동안 상속이 유지되고 종료 시 세 설정 모두 weak expiry를 확인했다.
+- 새 clean 기본 Linux validator **226개, 실패0/error0/skip0, 8단계와 install/help 통과**. 별도 실제 `conf.cpp`·API fixture ASan/UBSan과 전역 할당의 LSan(`detect_leaks=1`) 정상 경로 exit0. 다른 production/dependency objects는 비계측이며 전체 daemon sanitizer 성공으로 확대하지 않는다.
+- 로컬 근거: `evidence/conf-parent-after`, `evidence/astra-review/conf-parent-before.log`, `conf-parent-sanitizer.log`.
+
+## MultiStore 초기 report_success 값 (2026-10-06 추가 리뷰)
+
+- 생성자의 `report_success`를 기존 미지정 configure 기본값 `SUCCESS_ALL`로 초기화했다. 최초 잘못된 report_success에서 기존 오류 상태를 유지하고, 유효한 all/any 설정과 copy의 집계 정책을 그대로 둔다.
+- 실제 placement 생성 저장 공간을 0xa5로 채운 뒤 invalid configure → isOpen 경로에서 수정 전 UBSan invalid enum 읽기 exit1을 재현했다. 같은 실제 store.cpp 계측 fixture는 수정 후 ASan/UBSan/LSan(`detect_leaks=1`) exit0이며 invalid 오류 문구, empty-all fold, 혼합 성공/실패 all·any 및 copy를 확인했다. 다른 production/dependency objects는 비계측이다.
+- 새 clean 기본 Linux validator **227개, 실패0/error0/skip0, 8단계와 install/help 통과**. 로컬 근거: `evidence/multi-report-after`, `evidence/astra-review/multi-report-before.log`, `multi-report-sanitizer-after.log`.
+
+## Log 예외의 handler 잠금 해제 (2026-10-06 추가 리뷰)
+
+- `Log`의 기존 read 획득부터 모든 정상·early-return·예외 경로를 `RWGuard`가 소유한다. `releaseAndAcquireWrite()`는 기존 read/write 잠금을 먼저 해제한 뒤 write를 획득하며 atomic upgrade나 downgrade를 도입하지 않는다. 여러 unknown category의 반복 write 해제·재획득과 STOPPING 재확인 위치도 유지한다.
+- 실제 handler의 `new LogEntry` 할당을 호출 thread에서 한 번 실패시켰다. 알려진 category는 read 잠금, 앞선 unknown category 뒤의 알려진 category는 재획득한 write 잠금을 보유한다. 원본 server export(SHA256 `521b1d2cdf97d84a7da42501262bfbb74de92571a13457472557d66c9b793bb6`)와 현재 fixture의 두 before 경우 모두 handler 잠금 잔류로 실패했다. 수정 후 실제 POSIX 호출 순서 `RU`/`RUWU`, 예외 뒤 재초기화·Log/counter 복구를 확인했다.
+- fixture의 실패 조건은 LogEntry allocation size로 제한했다. 기존 updater 실패 주입은 그대로 유지하며 test 호출 thread 외 할당은 실패시키지 않는다. 새 clean 기본 Linux validator **228개, 실패0/error0/skip0, 8단계와 install/help 통과**. 별도 실제 server·fixture ASan/UBSan/LSan(`detect_leaks=1`)의 read/write 두 경우 exit0. 다른 production/dependency objects는 비계측이다.
+- 추가 발견은 분리한다: 처음 사용한 무차별 next-allocation 주입은 최적화된 sanitizer 경로에서 fb303 `FacebookBase::incrementCounter`의 map node allocation에 도달했다. 실제 handler 잠금은 `RUWU`로 해제되고 재초기화도 완료했으나, fb303의 수동 counter-map 잠금이 남아 후속 Log이 30초 timeout했다. stack을 같은 diagnostic binary의 symbols로 확인했다. 이 의존성의 할당 예외 안전성은 이번 Scribe handler 수정으로 해결됐다고 주장하지 않으며 미수정 후속 항목이다. sanitizer flag나 보안 설정은 완화하지 않았다.
+- 로컬 근거: `evidence/log-lock-targeted-after`, `evidence/astra-review/log-lock-targeted-before.log`, `log-lock-targeted-sanitizer-after.log`; 최초 실패와 원인 근거 `log-lock-sanitizer-diagnostic.log`, `log-lock-sanitizer-stack.log`, `log-lock-allocation-stack-symbols.txt`도 보존했다.
+
+## fb303 counter-map 예외 안전성 후속 (2026-10-06)
+
+- 위 Log batch에서 남긴 의존성 잠금 결함을 별도 source copy의 프로젝트 patch로 처리했다. Thrift/fb303 0.25.0 version, canonical source cpp/header와 system package를 변경하지 않았다. 공식 master `50bbda109593a0b5c7634ac21c5d98eee97fe7ec`의 cpp hash도 고정 release와 같아 해당 구현에는 공식 RAII 수정이 없다. 좁은 공식 issue 검색은 결과0이었으나 모든 issue/PR의 부재로 확대하지 않는다.
+- increment/set/getCounters/getCounter의 기존 map → value 획득과 역순 해제만 Guard로 소유한다. 정상 반환·signed value·default amount·snapshot partial output 계약과 공개 정의 심볼13개, 헤더가 동일하다. 상세 준비 경로는 [fb303 안내](fb303-counter-safety.md)를 따른다.
+- 기존 실제 archive는 increment/set/snapshot 할당 예외 후 counter 접근이 모두 막혔다. 새 archive의 실제4개 시험은 세 예외 복구와 정상 동시2,000회 증가를 통과했다. 새 전체 기본 Linux **232개, 실패0/error0/skip0, 8단계와 install/help PASS**. 실제 patched FacebookBase·fixture ASan/UBSan/LSan 네 경우 exit0. 최초 loader 경로 누락(exit127)은 원시 실패로 보존했고 matching Thrift runtime 경로만 정상 지정했다.
+- 앞서 timeout했던 무차별 할당 실패의 actual Log/counter fixture도 같은 최적화/sanitizer 옵션으로 재초기화·후속 Log/counter를 완료했다. Thrift/other dependency objects는 비계측이며 전체 daemon sanitizer 보장은 아니다.
+- 새 준비 source 첫 configure는 aux files 부재, 다음 autoreconf는 기존 aclocal include 누락으로 실패했다. 기존 fb303 recipe의 `aclocal -I ./aclocal`, `automake -a --copy`, `autoconf` 정상 경로를 사용해 별도 copy를 빌드했으며 실패를 성공으로 세지 않았다.
+- 근거는 기존 `evidence/astra-review/fb303-*` 아래에 보관한다. 이 patch 병합 후 최종 main의 Rocky 기본/shared/HDFS 및 private dev RPM artifacts는 별도로 다시 생성·검증하고 그 exact source revision과 hash를 결과 manifest에 기록해야 한다. 이전 RPM/DC0E327과 PR39 HDFS 근거를 이번 HEAD의 artifacts로 부르지 않는다.

@@ -64,6 +64,23 @@ class StoreReviewPeer(relay.RelayPeer):
 
 
 class StoreReviewContracts:
+    def test_review_log_allocation_exceptions_release_read_and_reacquired_write(self):
+        for mode in ("review-log-read", "review-log-write"):
+            with self.subTest(mode=mode):
+                self.run_fixture(mode, "port=1463\nmax_msg_per_second=0\n"
+                                 "<store>\ncategory=accepted\ntype=null\n</store>\n")
+
+    def test_review_multi_invalid_initial_report_and_valid_all_any_copy(self):
+        self.run_fixture("review-multi-report")
+
+    def test_review_nested_configuration_inherits_and_releases_with_store_owner(self):
+        self.run_fixture("review-conf-parent", "port=1463\n<store>\ntype=multi\n"
+                         "null::local=parent\nnull::nearest=parent\nnull::outer=parent\n"
+                         "category=parent-category\ncategories=parent-categories\n"
+                         "<store0>\ntype=multi\nnull::nearest=middle\n"
+                         "<store0>\ntype=null\nlocal=leaf\nnull::qualified=leaf-qualified\n"
+                         "</store0>\n</store0>\n</store>\n")
+
     def updater_review_peer(self):
         directory = Path(tempfile.mkdtemp(prefix="updater-review-", dir=self.temporary))
         return UpdaterReviewPeer(self.fixture, self.env, directory)

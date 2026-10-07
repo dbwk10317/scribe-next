@@ -1732,6 +1732,11 @@ switch (state) {
 }
 
 std::string BufferStore::getStatus() {
+  // Before asynchronous configuration, no child store has been published yet.
+  if (!secondaryStore || !primaryStore) {
+    std::string current = Store::getStatus();
+    return current.empty() ? "Buffer store is not configured" : current;
+  }
 
   // This order is intended to give precedence to the errors
   // that are likely to be the worst. We can handle a problem
@@ -2648,7 +2653,8 @@ bool NullStore::empty(struct tm* now) {
 MultiStore::MultiStore(StoreQueue* storeq,
                       const std::string& category,
                       bool multi_category)
-  : Store(storeq, category, "multi", multi_category) {
+  : Store(storeq, category, "multi", multi_category),
+    report_success(SUCCESS_ALL) {
 }
 
 MultiStore::~MultiStore() {

@@ -2,6 +2,9 @@
 
 
 class ReviewQueueContracts:
+    def test_review_buffer_unconfigured_status_and_complete_status_priority(self):
+        self.run_fixture("review-buffer-status")
+
     def test_review_concurrent_throttle_preserves_quota_and_legacy_exemptions(self):
         for limit in (100, 0):
             with self.subTest(limit=limit):

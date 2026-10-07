@@ -25,6 +25,8 @@
 
 #include "common.h"
 #include "scribe_server.h"
+#include <memory>
+#include <system_error>
 
 using namespace std;
 using namespace boost;
@@ -69,7 +71,7 @@ StoreQueue::StoreQueue(const boost::shared_ptr<StoreQueue> example,
     multiCategory(example->multiCategory),
     categoryHandled(category),
     checkPeriod(example->checkPeriod),
-    targetWriteSize(example->targetWriteSize),
+    targetWriteSize(example->targetWriteSize.load(std::memory_order_relaxed)),
     maxWriteInterval(example->maxWriteInterval),
     mustSucceed(example->mustSucceed) {
 
@@ -98,9 +100,9 @@ void StoreQueue::addMessage(boost::shared_ptr<LogEntry> entry) {
 
     pthread_mutex_lock(&msgMutex);
     msgQueue->push_back(entry);
-    msgQueueSize += entry->message.size();
+    msgQueueSize.fetch_add(entry->message.size(), std::memory_order_relaxed);
 
-    waitForWork = (msgQueueSize >= targetWriteSize) ? true : false;
+    waitForWork = (msgQueueSize.load(std::memory_order_relaxed) >= targetWriteSize.load(std::memory_order_relaxed)) ? true : false;
     pthread_mutex_unlock(&msgMutex);
 
     // Wake up store thread if we have enough messages
@@ -187,6 +189,13 @@ std::string StoreQueue::getCategoryHandled() {
 
 
 std::string StoreQueue::getStatus() {
+  if (isModel) {
+    return store->getStatus();
+  }
+  // Worker configuration already holds cmdMutex; inspect only a complete publication.
+  pthread_mutex_lock(&cmdMutex);
+  std::unique_ptr<pthread_mutex_t, decltype(&pthread_mutex_unlock)>
+      command_guard(&cmdMutex, &pthread_mutex_unlock);
   return store->getStatus();
 }
 
@@ -261,17 +270,17 @@ void StoreQueue::threadMember() {
     //
     if (stop ||
         (this_loop - last_handle_messages >= maxWriteInterval) ||
-        msgQueueSize >= targetWriteSize) {
+        msgQueueSize.load(std::memory_order_relaxed) >= targetWriteSize.load(std::memory_order_relaxed)) {
 
       if (failedMessages) {
         // process any messages we were not able to process last time
         messages = failedMessages;
         failedMessages = boost::shared_ptr<logentry_vector_t>();
-      } else if (msgQueueSize > 0) {
+      } else if (msgQueueSize.load(std::memory_order_relaxed) > 0) {
         // process message in queue
         messages = msgQueue;
         msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);
-        msgQueueSize = 0;
+        msgQueueSize.store(0, std::memory_order_relaxed);
       }
 
       // reset timer
@@ -331,24 +340,39 @@ void StoreQueue::storeInitCommon() {
   // model store doesn't need this stuff
   if (!isModel) {
     msgQueue = boost::shared_ptr<logentry_vector_t>(new logentry_vector_t);
-    pthread_mutex_init(&cmdMutex, NULL);
-    pthread_mutex_init(&msgMutex, NULL);
-    pthread_mutex_init(&hasWorkMutex, NULL);
-    pthread_cond_init(&hasWorkCond, NULL);
-
-    if (pthread_create(&storeThread, NULL, threadStatic, (void*) this) != 0) {
-      throw std::runtime_error("pthread_create failed in StoreQueue");
+    bool cmd_ready = false, msg_ready = false, work_ready = false, cond_ready = false;
+    const auto check = [](int result, const char* operation) {
+      if (result) throw std::system_error(result, std::generic_category(), operation);
+    };
+    try {
+      check(pthread_mutex_init(&cmdMutex, NULL), "queue cmdMutex init");
+      cmd_ready = true;
+      check(pthread_mutex_init(&msgMutex, NULL), "queue msgMutex init");
+      msg_ready = true;
+      check(pthread_mutex_init(&hasWorkMutex, NULL), "queue hasWorkMutex init");
+      work_ready = true;
+      check(pthread_cond_init(&hasWorkCond, NULL), "queue hasWorkCond init");
+      cond_ready = true;
+      check(pthread_create(&storeThread, NULL, threadStatic, (void*) this), "queue worker create");
+    } catch (...) {
+      if (cond_ready) pthread_cond_destroy(&hasWorkCond);
+      if (work_ready) pthread_mutex_destroy(&hasWorkMutex);
+      if (msg_ready) pthread_mutex_destroy(&msgMutex);
+      if (cmd_ready) pthread_mutex_destroy(&cmdMutex);
+      throw;
     }
   }
 }
 
 void StoreQueue::configureInline(pStoreConf configuration) {
   // Constructor defaults are fine if these don't exist
-  configuration->getUnsignedLongLong("target_write_size", targetWriteSize);
   unsigned long max_write_interval;
   if (configuration->getUnsigned("max_write_interval", max_write_interval)) {
     maxWriteInterval = max_write_interval;
   }
+  unsigned long long target = targetWriteSize.load(std::memory_order_relaxed);
+  configuration->getUnsignedLongLong("target_write_size", target);
+  targetWriteSize.store(target, std::memory_order_relaxed);
   if (maxWriteInterval == 0) {
     maxWriteInterval = 1;
   }

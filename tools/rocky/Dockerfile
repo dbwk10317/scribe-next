@@ -6,6 +6,8 @@ RUN dnf -y install gcc gcc-c++ make cmake autoconf automake libtool bison flex \
     perl-ExtUtils-MakeMaker python3.12 python3.12-setuptools python3.12-pip \
     tar bzip2 xz git binutils rpm-build && dnf clean all
 COPY thrift-0.25.0.tar.gz boost_1_83_0.tar.bz2 git-2.53.0.tar.xz /sources/
+COPY prepare_fb303.py /project/tools/prepare_fb303.py
+COPY fb303-0.25.0-counter-lock.patch /project/dependencies/fb303-0.25.0-counter-lock.patch
 RUN cd /sources && \
     echo '66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  thrift-0.25.0.tar.gz' | sha256sum -c - && \
     echo '6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e  boost_1_83_0.tar.bz2' | sha256sum -c - && \
@@ -27,12 +29,15 @@ RUN cd /sources && tar -xzf thrift-0.25.0.tar.gz && \
       -DWITH_JAVA=OFF -DWITH_JAVASCRIPT=OFF -DWITH_NODEJS=OFF -DWITH_PYTHON=OFF \
       -DWITH_OPENSSL=OFF -DWITH_LIBEVENT=ON -DWITH_ZLIB=OFF && \
     cmake --build thrift-build --parallel 4 && cmake --install thrift-build
-RUN cd /sources/thrift-0.25.0/contrib/fb303 && \
-    aclocal -I ./aclocal && automake -a && autoconf && \
+RUN python3.12 -B /project/tools/prepare_fb303.py \
+      --source /sources/thrift-0.25.0/contrib/fb303 --output /sources/scribe-next-fb303-safe && \
+    cd /sources/scribe-next-fb303-safe && aclocal -I ./aclocal && automake -a --copy && autoconf && \
     ./configure --prefix=/opt/fb303-0.25.0 --with-thriftpath=/opt/thrift-0.25.0 \
       --with-boost=/opt/tools --without-java --without-php --without-python && \
     make clean && make -j4 CXXFLAGS='-O2 -std=c++17' \
-      CPPFLAGS='-I/opt/thrift-0.25.0/include -I/opt/tools/include' && make install
+      CPPFLAGS='-I/opt/thrift-0.25.0/include -I/opt/tools/include' && make install && \
+    mkdir -p /opt/fb303-0.25.0/share/scribe-next && \
+    cp scribe-next-fb303-safety.json /opt/fb303-0.25.0/share/scribe-next/fb303-safety.json
 RUN cd /sources && tar -xJf git-2.53.0.tar.xz && cd git-2.53.0 && \
     make -j4 prefix=/opt/git-2.53.0 NO_TCLTK=YesPlease all && \
     make prefix=/opt/git-2.53.0 NO_TCLTK=YesPlease install && \

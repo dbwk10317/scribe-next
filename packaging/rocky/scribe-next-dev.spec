@@ -58,6 +58,8 @@ cp %{boost_source}/LICENSE_1_0.txt licenses/boost/
 
 %check
 ./src/scribed --help
+export THRIFT_PREFIX=%{private}/deps/thrift FB303_PREFIX=%{private}/deps/fb303 TOOLS_PREFIX=%{private}/deps/tools
+PYTHONPATH=test python3.12 -B -m unittest test_fb303_counter_safety
 
 %files
 %license LICENSE licenses
