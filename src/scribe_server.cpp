@@ -118,10 +118,19 @@ int main(int argc, char **argv) {
         print_usage(argv[0]);
         exit(0);
       case 'c':
-        config_file = optarg;
-        break;
       case 'p':
-        port = strtoul(optarg, NULL, 0);
+        // The original long options take no value, so "--config FILE" and
+        // "--port N" reach here with optarg NULL and read it (undefined).
+        // Keep the no-value declaration but exit through the usage path.
+        if (optarg == NULL) {
+          print_usage(argv[0]);
+          exit(0);
+        }
+        if (next_option == 'c') {
+          config_file = optarg;
+        } else {
+          port = strtoul(optarg, NULL, 0);
+        }
         break;
       }
     }
@@ -563,8 +572,7 @@ void scribeHandler::initialize() {
     // Get the config data and parse it.
     // If a file has been explicitly specified we'll take the conf from there,
     // which is very handy for testing and one-off applications.
-    // Otherwise we'll try to get it from the service management console and
-    // fall back to a default file location. This is for production.
+    // Otherwise we fall back to the default file location.
     StoreConf localconfig;
     string config_file;
 
@@ -637,9 +645,8 @@ void scribeHandler::initialize() {
     }
 
 
-    // Build a new map of stores, and move stores from the old map as
-    // we find them in the config file. Any stores left in the old map
-    // at the end will be deleted.
+    // Configure every store in the config file into the (already emptied)
+    // category maps. Nothing is carried over from the previous configuration.
     std::vector<pStoreConf> store_confs;
     config.getAllStores(store_confs);
     for (std::vector<pStoreConf>::iterator iter = store_confs.begin();

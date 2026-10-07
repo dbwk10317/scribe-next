@@ -16,7 +16,7 @@
 
 using namespace std;
 
-HdfsFile::HdfsFile(const std::string& name) : FileInterface(name, false), inputBuffer_(NULL), bufferSize_(0) {
+HdfsFile::HdfsFile(const std::string& name) : FileInterface(name, false) {
   LOG_OPER("[hdfs] Connecting to HDFS for %s", name.c_str());
 
   // First attempt to parse the hdfs cluster from the path name specified.

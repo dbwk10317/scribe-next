@@ -1,12 +1,12 @@
-// scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: allow zero retry jitter and preserve GNU shuffle behavior without the removed API.
 // scribe-next modification: retain default-port initialization and bounded legacy bucket checks.
 // scribe-next modification: guard absent child/model stores before dereferencing them.
 // scribe-next modification: close the previous pooled destination and replace list servers on reopen.
 // scribe-next modification: C++17 cleanup; std::mutex status guard, typed config reads, -Wall tidy; same values.
-// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers (Thrift's are already std); no behaviour change.
 // scribe-next modification: std::filesystem and a local splitAnyOf() replace Boost; same directories and tokens.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: Multi/Category copy() own the new store before copying children, so a child exception cannot leak it.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1651,10 +1651,9 @@ void BufferStore::periodicCheck() {
  * config parameter 'adaptive_backoff'.
  *
  *
- * When adaptive_backoff=yes this function uses an Additive Increase and
- * Multiplicative Decrease strategy which is commonly used in networking
- * protocols for congestion avoidance, while achieving fairness and good
- * throughput for multiple senders.
+ * When adaptive_backoff=yes this function uses an Additive Decrease and
+ * Multiplicative Increase strategy on the retry interval (the mirror image
+ * of the AIMD used by networking protocols for congestion avoidance).
  * The algorithm works as follows. Whenever the buffer store is able to
  * achieve CONT_SUCCESS_THRESHOLD continuous successful sends to the
  * primary store its retry interval is decreased by ADD_DEC_FACTOR.
@@ -1669,7 +1668,7 @@ void BufferStore::periodicCheck() {
  *
  *
  * In case adaptive_backoff=no, the new retry interval is calculated
- * using the config parameters 'avg_retry_interval' and
+ * using the config parameters 'retry_interval' and
  * 'retry_interval_range'
  */
 void BufferStore::setNewRetryInterval(bool success) {
@@ -2675,6 +2674,7 @@ MultiStore::~MultiStore() {
 
 std::shared_ptr<Store> MultiStore::copy(const std::string &category) {
   MultiStore *store = new MultiStore(context, storeQueue, category, multiCategory);
+  std::shared_ptr<Store> copied(store);
   store->report_success = this->report_success;
   std::shared_ptr<Store> tmp_copy;
   for (std::vector<std::shared_ptr<Store> >::iterator iter = stores.begin();
@@ -2684,7 +2684,7 @@ std::shared_ptr<Store> MultiStore::copy(const std::string &category) {
     store->stores.push_back(tmp_copy);
   }
 
-  return std::shared_ptr<Store>(store);
+  return copied;
 }
 
 bool MultiStore::open() {
@@ -2857,12 +2857,13 @@ CategoryStore::~CategoryStore() {
 
 std::shared_ptr<Store> CategoryStore::copy(const std::string &category) {
   CategoryStore *store = new CategoryStore(context, storeQueue, category, multiCategory);
+  std::shared_ptr<Store> copied(store);
 
   if (modelStore) {
     store->modelStore = modelStore->copy(category);
   }
 
-  return std::shared_ptr<Store>(store);
+  return copied;
 }
 
 bool CategoryStore::open() {

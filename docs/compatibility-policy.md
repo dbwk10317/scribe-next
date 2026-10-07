@@ -15,13 +15,14 @@ UB·crash 방지와 빌드 이식은 유지한다. 원본 UB에는 보존할 정
 | BucketStore copy | `remove_key`·`bucket_range`를 복사하지 않는다. key_range clone은 원본 bucket0 routing과 key 포함 bytes를 유지한다 |
 | ThriftFileStore copy | `use_simple_file`을 복사하지 않아 clone은 framed다. 직접 설정한 simple store만 raw다 |
 | NetworkStore copy | 원래 field만 복사한다. list·옵션·cache·ignore-error·dynamic updater를 상속하지 않아 전송 실패·warning이나 모델 endpoint 사용이 남는다 |
+| BufferStore copy | `flush_streaming`·`buffer_bypass_max_ratio`를 복사하지 않는다. clone은 `flush_streaming=no`와 기본 비율로 동작해 replay 중 새 메시지가 spool을 거친다 |
 | service_list pool key | 빈 pool key를 공유한다. 서로 다른 list가 첫 연결을 공유할 수 있다 |
 | empty-only queue | payload byte 합이 0이면 주기 처리·종료 때 전달하지 않는다. `OK`·received여도 output·lost가 0일 수 있다 |
 | 추가 bucket 검사 | 원본 literal pointer 길이 안의 suffix만 검사한다. `bucketN+1`을 새로 거절하지 않는다 |
 | spool의 빈 frame | `add_newlines` 없는 secondary의 빈 메시지는 길이 0 frame이다. replay는 이를 EOF로 보고 앞부분만 보낸 뒤 파일을 지운다. 뒤 메시지는 전달되지 않고 lost가 늘지 않는다 |
 | spool의 손상 frame | 짧은 header·orphan category도 정상 끝으로 처리한다. 정상 entry 뒤 payload가 잘리면 파일 전체 크기를 `bytes lost`로 센다 |
 | 열린 spool 삭제 | `deleteOldest`는 writer를 닫지 않고 경로를 지운다. 이후 쓰기는 unlink된 inode로 갈 수 있다 |
-| 긴 CLI 옵션 | `--config`·`--port`는 값을 받지 않는다 |
+| 긴 CLI 옵션 | `--config`·`--port`는 값을 받지 않는다. 원본이 그 자리에서 NULL을 읽던 UB는 사용법 출력·종료 코드 0으로 대신한다([안전 수정](#안전이식-수정)) |
 | 시작 실패 | 종료 코드는 0이다 |
 
 되돌림의 영향은 다음과 같다.
@@ -54,11 +55,12 @@ UB·crash 방지와 빌드 이식은 유지한다. 원본 UB에는 보존할 정
 
 ## 고친 동작
 
-정상 설정의 분배·파일 형식·전달 결과는 바꾸지 않는다.
+분배·파일 형식은 바꾸지 않는다. 아래 세 가지는 승인된 호환성 예외이며 일시 실패·메모리·손실 집계가 원본과 다르다.
+[안전·이식 수정](#안전이식-수정)은 정상 설정에서 결과가 같다.
 
 ### 원본 오류 세 가지
 
-PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지 않는다고 리뷰로 확인한 세 가지다.
+PR #25가 되돌린 수정 중 사용자가 유지하기로 승인한 세 가지다. 분배·파일 형식은 같지만 전달 결과·카운터는 아래처럼 달라진다.
 [남긴 원본 버그](#남긴-원본-버그) 표의 나머지 동작은 원본 그대로다.
 
 #### 동적 목적지의 pooled close 순서
@@ -66,7 +68,7 @@ PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지
 - `periodicCheck`가 새 endpoint를 대입하기 전에 close해 이전 key를 해제한다
 - 원본은 `use_conn_pool=yes`에서 새 key를 해제했다. 이전 연결은 refcount가 남아 계속 열려 있었다
 - 새 key를 이미 쓰던 다른 store가 있으면 그 연결이 닫혀 그 store의 다음 batch 한 번이 실패·requeue됐다. 없으면 `LOGIC ERROR` 진단만 남았다
-- 이제 이전 연결만 닫히고 그 일시 실패가 없다. routing·파일 내용·전달은 같다
+- 이제 이전 연결만 닫히고 그 일시 실패가 없다. routing·파일 내용은 같다. 그 store가 `must_succeed=no`였다면 원본은 실패한 batch를 lost로 셌으므로 전달 결과·`lost`도 달라진다
 - unpooled 경로는 원래 맞아 차이가 없다
 
 #### service_list 재연결 후보
@@ -82,7 +84,7 @@ PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지
 - `openTruncate`가 `out|trunc`로 연다. 원본 `out|app|trunc`는 열리지 않는다
 - 원본은 file primary가 replay batch 일부만 받으면 `replaceOldest`가 항상 실패해 나머지를 lost로 세고 spool 파일을 지웠다
 - 이제 나머지를 같은 frame 형식으로 spool에 다시 쓰고 다음 check에 재시도한다
-- 전체 거절은 원래 계속 재시도했으므로 부분 실패도 같아진다
+- 전체 거절은 원래 계속 재시도했으므로 부분 실패도 같아진다. 원본은 나머지를 버리고 `lost`를 늘렸으므로 전달 결과·내용·카운터가 다르다
 - network primary는 batch를 all-or-nothing으로 보내 이 경로에 오지 않는다
 - `lost`가 남은 entry 수만큼 줄고(대표 시험 2→0) 정상 frame의 `bytes lost`는 0 그대로다
 - spool 파일이 지워지지 않고 남아 이후 전달된다
@@ -106,10 +108,13 @@ PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지
 | `max_msg_per_second` | 초당 개수를 별도 mutex 아래에서 센다. 절반 초과 batch 예외는 원본대로다 |
 | C++17 shuffle | 제거된 `random_shuffle`을 GNU forward Fisher–Yates `rand()` loop로 대체. 순서와 다음 `rand()`가 같다 |
 | fb303 counter 잠금 | 할당 예외 뒤 counter 잠금이 남지 않게 patch([빌드](build.md#fb303-patch)) |
+| 긴 CLI 옵션의 NULL | `--config FILE`·`--port N`은 원본이 NULL `optarg`를 읽었다(UB). 이제 `--config=FILE`과 같은 사용법 출력·종료 코드 0이다. `-c`·`-p`는 같다 |
 
 잠금·수명 정리도 결과를 바꾸지 않는다.
 
 - `Log`의 handler 잠금을 RAII로 소유해 예외에도 풀린다
+- StoreQueue의 `msgMutex`·`cmdMutex`도 scope guard가 푼다. 큐 push의 할당 예외 뒤 mutex가 잠긴 채 남지 않는다(`test/cpp/queue_lock_exceptions.cpp`)
+- Multi·Category `copy()`는 새 store를 먼저 `shared_ptr`에 맡기고 child를 복사한다. child 복사 예외에 부모·앞선 child가 새지 않는다
 - bucket updater는 예외에도 잠금을 풀고, Thrift `TException`을 기존 RPC 실패 경로로 처리한다. singleton 조회는 잠금 안에서 한다
 - ConnPool의 send·reopen은 map → connection 순서로 잠근다
 - 구성 중인 store의 status 조회는 worker의 `cmdMutex`로 직렬화한다
