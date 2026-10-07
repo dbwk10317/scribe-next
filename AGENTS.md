@@ -45,9 +45,19 @@ service_list 재연결 후보 누적, StdFile partial replay 보존)만 [정책]
 ## 작고 검증 가능한 변경
 
 기존 함수·driver·autotools와 표준 라이브러리를 먼저 사용한다.
-요청과 이식에 필요한 부분만 바꾸고 일괄 formatting, 전체 Boost 제거, build system 교체,
+요청과 이식에 필요한 부분만 바꾸고 일괄 formatting, build system 교체,
 새 framework·registry·transport·thread 설계, 미리 만드는 기능과 의존성을 추가하지 않는다.
 빌드 복구와 외부 동작 변경을 한 변경에 섞지 않는다.
+
+2026-10-07 사용자 승인으로 아래 세 단계의 현대화를 이 순서대로, 각각 별도 PR로 진행한다.
+
+1. 내부 `boost::shared_ptr`/`boost::weak_ptr`를 `std::shared_ptr`/`std::weak_ptr`로 일괄 치환한다
+2. Boost 의존성을 제거한다(`boost::filesystem`은 `std::filesystem`, `boost::split`은 같은 결과를 내는 자체 분리 함수)
+3. store·queue·connection pool·config가 전역 `g_Handler`/`g_connPool`에 의존하지 않도록 context를 주입한다
+
+각 단계는 외부 계약, lock 순서·범위, 시간 기준, `rand()` 사용, 파일·wire bytes, 카운터를 바꾸지 않는다.
+완료 조건은 `tools/validate_linux.py` 전체 시험 통과와 `tools/old-lane` 구·신 비교 10개 case 통과다.
+StoreQueue의 thread·조건 변수를 `std::thread`로 바꾸는 단계는 여전히 보류다.
 
 관련 호출 경로를 읽고 완료 조건을 정한 뒤 수정한다. 버그 수정은 실패 재현과 수정 후 확인을 남긴다.
 한 변경에 맞는 최소 시험을 실행하며 반복·subcase를 고유 시험 수로 합산하지 않는다.

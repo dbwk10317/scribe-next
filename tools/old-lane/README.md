@@ -2,7 +2,7 @@
 
 `daemon_differential.py`의 old lane(공개 원본 `fcd294f` + Thrift/fb303 0.9.0)을 다시 만들고
 modern lane과 함께 실행한다. 설명과 결과는 [daemon-differential](../../docs/daemon-differential.md#docker-재현-lane)에 있다.
-전제: modern image `scribe-next-modern:rocky9`(이 저장소 `/usr/local/bin/scribed`, python3)가 이미 있다.
+전제: modern image `scribe-next-modern:rocky9`는 저장소 root의 [Dockerfile](../../Dockerfile)로 만든다(`docker build -t scribe-next-modern:rocky9 .`). 이 저장소의 `/usr/local/bin/scribed`와 python3를 담는다.
 명령은 저장소 root에서 Linux shell로 실행하고 `$WORK`는 저장소 밖 새 디렉터리다.
 
 ```sh
