@@ -114,6 +114,7 @@ PR #25가 되돌린 수정 중 사용자가 유지하기로 승인한 세 가지
 
 - `Log`의 handler 잠금을 RAII로 소유해 예외에도 풀린다
 - StoreQueue의 `msgMutex`·`cmdMutex`도 scope guard가 푼다. 큐 push의 할당 예외 뒤 mutex가 잠긴 채 남지 않는다(`test/cpp/queue_lock_exceptions.cpp`)
+- 생성 뒤 `stop()` 없이 파괴되는 StoreQueue(handler 등록 중 할당 예외)는 소멸자가 `stopping`만 세우고 worker를 깨워 join한 뒤 mutex를 파괴한다. 명령 push 없이 `stop()`과 같은 종료 순서를 따르며, 정상 `stop()` 뒤에는 아무것도 하지 않는다(`test/cpp/queue_init_failures.cpp` step 6)
 - Multi·Category `copy()`는 새 store를 먼저 `shared_ptr`에 맡기고 child를 복사한다. child 복사 예외에 부모·앞선 child가 새지 않는다
 - bucket updater는 예외에도 잠금을 풀고, Thrift `TException`을 기존 RPC 실패 경로로 처리한다. singleton 조회는 잠금 안에서 한다
 - ConnPool의 send·reopen은 map → connection 순서로 잠근다

@@ -74,6 +74,8 @@ scribe-next는 그 [공개 원본](https://github.com/facebookarchive/scribe/tre
 4번을 지키려고, 로그 결과를 바꾸는 원본 버그는 [일부러 남겨 두었습니다](#일부러-남겨-둔-원래-버그).
 여기서 로그 결과는 어느 파일에 무엇이 저장되고 어디로 전달되는가를 말합니다.
 반대로 비정상 종료처럼 "원본과 같은 결과"가 없는 문제는 [안전하게 고쳤습니다](#고친-원래-버그).
+예외로 고친 세 가지(연결 pool의 닫는 순서, `service_list` 재연결 후보, 파일 재전송의 일부 실패)는 분배와 파일 형식은 같지만,
+원본이 버리던 로그가 전달되거나 다시 시도되므로 그 조건에서는 전달 결과와 `lost`·`requeue` 카운터 값이 원본과 달라집니다.
 다만 사용 중인 모든 언어·Thrift 버전의 클라이언트 조합을 검증한 것은 아닙니다.
 
 > [!IMPORTANT]
@@ -143,7 +145,7 @@ SCRIBE_SRC="$(pwd)"
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y git build-essential autoconf automake libtool pkg-config cmake bison flex \
+sudo apt-get install -y git curl build-essential autoconf automake libtool pkg-config cmake bison flex \
   libevent-dev libboost-dev python3 python3-setuptools
 ```
 
@@ -257,10 +259,19 @@ Boost 라이브러리(`libboost_*`)는 보이지 않아야 합니다.
 빌드할 때 쓴 폴더(`$SCRIBE_SRC`, `~/scribe-build`)의 `make uninstall`과 Thrift의 설치 목록(`install_manifest.txt`)을 쓰므로, 그 폴더가 남아 있어야 합니다.
 `scribed`를 먼저 멈춘 뒤([실행의 정지](#4-정지)) 실행합니다.
 
+[systemd 서비스](#5-systemd-서비스로-등록)로 등록했다면 먼저 서비스와 그 파일을 지웁니다.
+`/var/log/scribed`에는 받은 로그가 들어 있으니 필요하면 옮긴 뒤 지우세요.
+
+```sh
+sudo systemctl disable --now scribed
+sudo rm -f /etc/systemd/system/scribed.service
+sudo systemctl daemon-reload
+sudo rm -rf /etc/scribe /var/lib/scribed /var/log/scribed
+sudo userdel scribe
+```
+
 ```sh
 cd "$SCRIBE_SRC" && sudo make uninstall
-SCRIBE_PY="$(cd / && python3 -c 'import scribe, os; print(os.path.dirname(scribe.__file__))')"
-sudo rm -rf "$SCRIBE_PY" "$(dirname "$SCRIBE_PY")"/scribe-2.0-*.egg-info
 cd ~/scribe-build/fb303-build && sudo make uninstall
 cd ~/scribe-build && sudo xargs rm -f < thrift-build/install_manifest.txt
 sudo rm -rf /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303 /usr/local/share/scribe-next
@@ -270,9 +281,11 @@ sudo ldconfig
 rm -rf ~/scribe-build
 ```
 
-- 1~3번째 줄은 `scribed`와 정적 RPC 라이브러리, 그리고 시스템 Python에 들어간 `scribe` package와 그 metadata를 지웁니다.
-  - `make uninstall`은 Python package를 지우지 않으므로 경로를 찾아 직접 지웁니다.
-- 4~7번째 줄은 fb303, Thrift, 그리고 그 둘이 남긴 빈 폴더와 patch 기록을 지웁니다.
+- 1번째 줄은 `scribed`와 정적 RPC 라이브러리, 그리고 시스템 Python에 들어간 `scribe` package와 그 metadata를 지웁니다.
+  - `make install`이 Python package로 설치한 파일 목록을 `lib/py/installed_files.txt`에 적어 두고, `make uninstall`은 그 목록의 파일만 지웁니다.
+    가상환경이나 사용자 디렉터리에 있는 같은 이름의 package는 건드리지 않습니다.
+  - 이 목록이 없는 이전 설치라면 아래 "빌드 폴더를 이미 지웠다면"의 Python 경로를 직접 지웁니다.
+- 2~5번째 줄은 fb303, Thrift, 그리고 그 둘이 남긴 빈 폴더와 patch 기록을 지웁니다.
   - `install_manifest.txt`는 파일만 적어 두므로 header 폴더는 따로 지웁니다.
 - `scribe-local.conf`는 Rocky(1-B)에서만 만들었습니다. Ubuntu에서는 없는 파일이라 그 줄은 아무것도 하지 않습니다.
 - 1단계의 배포판 패키지(빌드 도구, libevent, Boost header)는 다른 소프트웨어도 쓸 수 있어 지우지 않습니다.
@@ -288,7 +301,14 @@ sudo rm -rf /usr/local/bin/scribed /usr/local/bin/thrift \
   /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303 /usr/local/share/scribe-next
 ```
 
-Python package는 위와 같이 `SCRIBE_PY`로 찾아 지웁니다.
+Python package는 `PY_PREFIX`(기본값 `/usr`) 아래 시스템 Python 경로에만 들어갑니다.
+`import scribe`로 경로를 찾으면 가상환경이나 사용자 디렉터리의 다른 package를 지울 수 있으므로, 설치 경로를 직접 지정합니다.
+Rocky는 `site-packages`, Ubuntu는 `dist-packages`를 씁니다.
+
+```sh
+sudo rm -rf /usr/lib/python3.*/site-packages/scribe /usr/lib/python3.*/site-packages/scribe-2.0-*.egg-info \
+  /usr/lib/python3/dist-packages/scribe /usr/lib/python3/dist-packages/scribe-2.0-*.egg-info
+```
 
 저장소 폴더의 빌드 산출물은 `make distclean`으로 다 지워지지 않습니다(`configure`, `Makefile.in` 등이 남습니다).
 `sudo make install`이 root 소유로 만든 `lib/py/scribe.egg-info`도 있으므로, 저장소 폴더에서 다음으로 지웁니다.
@@ -301,7 +321,8 @@ sudo git clean -fdx
 [실행](#실행)에서 만든 `$HOME/scribe-demo.conf`와 `$HOME/scribe-data`는 설치와 무관한 본인 파일이므로 필요 없으면 직접 지웁니다.
 
 지운 뒤 `command -v scribed`는 아무것도 출력하지 않고, `python3 -c 'import scribe'`는 `ModuleNotFoundError`로 끝나야 합니다.
-2026-10-07에 Rocky Linux 9에서 1-B~5단계를 그대로 실행한 뒤 첫 번째 블록으로 지웠을 때, `/usr/local`과 시스템 Python은 설치 전과 같아졌습니다.
+2026-10-07에 Rocky Linux 9에서 1-B~5단계를 그대로 실행한 뒤 지웠을 때, `/usr/local`과 시스템 Python은 설치 전과 같아졌습니다.
+당시 Python package는 `import scribe`로 찾은 경로를 지웠고, 지금의 `make uninstall` 목록 방식은 같은 `setup.py` 설치를 Rocky 9의 `/usr`와 임시 `DESTDIR`에서 재현해 확인했습니다.
 Ubuntu 24.04에서는 삭제를 따로 실행하지 않았습니다.
 
 ### Docker 방식
@@ -470,7 +491,7 @@ scribed -c "$SCRIBE_CONFIG"
 ```
 
 - `scribed`는 실행한 터미널에 붙은 채 동작하고, 진행 로그를 그 터미널에 출력합니다.
-- 서비스 등록이나 자동 시작은 제공하지 않습니다.
+- 부팅 때 자동으로 시작하고 `systemctl restart scribed`로 다루려면 [systemd 서비스로 등록](#5-systemd-서비스로-등록)을 보세요.
 - 예제는 포트를 localhost로 제한하지 않으므로, 실행 환경의 접근 범위를 먼저 확인하세요.
 
 **설정의 `port`가 명령행 `-p`보다 우선합니다.**
@@ -566,6 +587,51 @@ PY
 SIGTERM(예: `kill`)이나 Ctrl+C에는 따로 처리하는 코드가 없어, 프로세스가 그 자리에서 끝납니다.
 이때 메모리 큐에 있던 로그는 잃을 수 있습니다.
 원본과 같은 동작입니다.
+아래 systemd 서비스는 그래서 `systemctl stop`·`restart` 때 SIGTERM 대신 이 `shutdown`을 먼저 보냅니다.
+
+### 5. systemd 서비스로 등록
+
+Ubuntu 24.04와 Rocky Linux 9에서 같은 방법으로 등록합니다.
+[원래 Scribe 방식](#원래-scribe-방식)으로 `/usr/local/bin/scribed`를 설치했다고 가정합니다.
+
+```sh
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin scribe
+sudo install -D -m 644 "$SCRIBE_SRC/examples/docker.conf" /etc/scribe/scribe.conf
+sudo install -D -m 644 "$SCRIBE_SRC/examples/scribed.service" /etc/systemd/system/scribed.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now scribed
+```
+
+- 서비스는 root가 아닌 시스템 사용자 `scribe`로 실행됩니다.
+- 설정은 `/etc/scribe/scribe.conf`입니다. [`examples/docker.conf`](examples/docker.conf)가 바로 쓸 수 있는 기본 설정이며, Docker 방식과 같은 파일입니다.
+  본인 설정을 쓰려면 이 경로에 두거나, 설치 줄의 원본 경로만 바꾸세요. `port=`는 꼭 있어야 합니다.
+- 파일 store는 `/var/log/scribed`, buffer의 spool은 `/var/lib/scribed`에 씁니다.
+  두 폴더는 systemd가 `scribe` 소유로 만듭니다. 그 밖의 경로는 서비스가 쓸 수 없게 막혀 있으므로(`ProtectSystem=strict`), 다른 곳에 쓰려면 `sudo systemctl edit scribed`로 `[Service]`에 `ReadWritePaths=/다른/경로`를 추가하세요.
+- 진행 로그는 터미널 대신 journal에 남습니다.
+
+이후에는 평소 systemd 명령으로 다룹니다.
+
+```sh
+sudo systemctl restart scribed
+sudo systemctl stop scribed
+systemctl status scribed
+journalctl -u scribed -n 50 -f
+```
+
+`stop`·`restart`는 [정지](#4-정지)와 같은 fb303 `shutdown`을 설정의 `port`로 먼저 보내, 큐에 남은 로그를 처리하고 store를 닫은 뒤 끝나게 합니다.
+그 요청이 닿지 않으면 systemd가 기본 대기 시간(90초) 뒤 SIGTERM으로 끝냅니다.
+
+[동작 확인](#3-동작-확인)의 시험 메시지를 보내면 `/var/log/scribed/demo/demo_current`에 저장됩니다(기본 설정은 모든 category를 받습니다).
+
+알아둘 점은 다음과 같습니다.
+
+- `scribed`는 [시작에 실패해도 종료 코드 0](#시작에-실패해도-종료-코드는-0이다)으로 끝나므로, 설정이 틀리면 서비스는 조용히 `inactive`가 되고 다시 시작하지 않습니다(`Restart=on-failure`).
+  `systemctl status scribed`와 `journalctl -u scribed`로 `STATUS:` 줄을 확인하세요.
+- Rocky의 firewalld는 1463을 막습니다. 다른 서버에서 로그를 받으려면 `sudo firewall-cmd --permanent --add-port=1463/tcp && sudo firewall-cmd --reload`를 실행하세요.
+- `ExecStop`은 `python3`을 씁니다. 1단계에서 설치한 Python 표준 라이브러리만 쓰므로 Thrift Python package는 필요 없습니다.
+
+이 unit은 2026-10-07에 Rocky Linux 9(systemd 252)에서, `scribed` 대신 설정의 포트를 열고 `shutdown` frame을 받으면 끝나는 시험용 프로그램으로 `enable --now`·`restart`·`stop`과 폴더 소유자를 확인했습니다.
+실제 `scribed` 바이너리와 Ubuntu 24.04, SELinux enforcing 환경에서는 실행하지 않았습니다.
 
 ### 파일 회전 기본
 
@@ -906,7 +972,9 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   같은 목적지를 쓰던 다른 store의 연결이 엉뚱하게 닫혀 batch[^batch]가 한 번 실패하는 일이 없습니다.
 
 - **기존과 달라진 점.**
-  분배·파일 내용·최종 전달 결과는 같습니다.
+  분배·파일 내용은 같습니다.
+  구버전에서 엉뚱하게 닫힌 연결 때문에 실패한 batch는 `must_succeed=yes`(기본값)면 다시 보내므로 최종 전달 결과도 같습니다.
+  그 store가 `must_succeed=no`였다면 구버전은 그 batch를 버리고 `lost`로 셌으므로, 그 경우에는 최종 전달 결과와 `lost` 카운터가 달라집니다.
   `use_conn_pool=no`(기본값)는 원래부터 자기 연결만 닫았으므로 차이가 없습니다.
   구버전이 남기던 `LOGIC ERROR` 진단 로그가 이 경우에는 나오지 않습니다.
 
@@ -962,9 +1030,11 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   | 사용자 수를 줄이는 연결 | `relay-b`(새 목적지) | `relay-a`(옛 목적지) |
   | `relay-a` 연결 | 계속 열려 있음 | 다른 사용자가 없으면 닫힘 |
   | `game_login`의 `relay-b` 연결 | 닫혀서 다음 batch 1회 실패 가능 | 영향 없음 |
-  | 분배·내용·최종 전달 | 같음 | 같음 |
+  | 분배·내용 | 같음 | 같음 |
+  | 실패한 batch의 최종 전달 | `must_succeed=yes`: 재전송, `no`: 손실(`lost`) | 실패 없음 |
 
   구버전에서 `game_login`의 연결이 닫히면 다음 batch 1회가 실패해 `requeue` 카운터로 집계되고 다시 연결됩니다.
+  `game_login`이 `must_succeed=no`였다면 그 batch는 `lost`로 집계되고 전달되지 않습니다.
   새 목적지를 쓰던 store가 없을 때 구버전은 다음 진단 로그를 남깁니다.
 
   ```text
@@ -1133,6 +1203,8 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
     큐에 메시지나 명령을 넣는 동안 잡는 잠금도 범위를 벗어나면 자동으로 풀립니다.
     예전에는 넣는 중 메모리 부족 예외가 나면 큐 잠금이 남아 그 category의 로그 받기와 store thread가 멈출 수 있었습니다.
     잠그는 순서와 범위는 같습니다.
+    또 새 category의 큐를 만든 직후 등록 중에 메모리 부족이 나면, 예전에는 store thread가 도는 채로 큐가 사라져 비정상 종료할 수 있었습니다.
+    이제 큐는 사라지기 전에 평소 정지와 같은 순서로 store thread를 끝내고 기다립니다.
   - **복사본의 소유권.**
     multi·category store의 복사본은 하위 store를 복사하기 전에 스마트 포인터가 소유합니다.
     하위 store 복사 중 예외가 나도 부모와 먼저 복사한 하위 store가 새지 않습니다.

@@ -1,0 +1,32 @@
+# scribe-next: systemd unit for scribed (Ubuntu 24.04, Rocky Linux 9).
+# User:    sudo useradd --system --no-create-home --shell /usr/sbin/nologin scribe
+# Install: sudo install -D -m 644 examples/scribed.service /etc/systemd/system/scribed.service
+# Config:  /etc/scribe/scribe.conf (examples/docker.conf is a working default).
+# Files:   /var/log/scribed (file stores) and /var/lib/scribed (buffer spool) are created for the
+#          scribe user. Writing anywhere else needs a drop-in with ReadWritePaths=.
+[Unit]
+Description=Scribe log aggregation server (scribe-next)
+After=network.target
+
+[Service]
+Type=simple
+User=scribe
+Group=scribe
+LogsDirectory=scribed
+StateDirectory=scribed
+ExecStart=/usr/local/bin/scribed -c /etc/scribe/scribe.conf
+# scribed has no SIGTERM handler, so ask fb303 for a clean shutdown first (what examples/scribe_ctrl stop
+# does). The port comes from the config file because its port= overrides -p. "-" ignores a failed send
+# (daemon already gone); systemd then falls back to SIGTERM after TimeoutStopSec.
+ExecStop=-/usr/bin/python3 -c "import socket;port=int([l.split('=',1)[1] for l in open('/etc/scribe/scribe.conf') if l.split('=',1)[0].strip()=='port'][0]);socket.create_connection(('127.0.0.1',port)).sendall(bytes([0,0,0,18,0,0,0,8])+b'shutdown'+bytes([4,0,0,0,1,0]))"
+# scribed exits 0 even when it fails to start (original behaviour), so a bad config is not retried;
+# check journalctl -u scribed.
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

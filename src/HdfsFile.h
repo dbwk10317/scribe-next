@@ -1,5 +1,5 @@
 // scribe-next modification: return an empty string from the unavailable HDFS stub.
-// scribe-next modification: C++17 cleanup; override, deleted copies, std::mutex, stub tidy-up.
+// scribe-next modification: C++17 cleanup; override, deleted copies, stub tidy-up.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -10,7 +10,6 @@
 #define HDFS_FILE_H
 
 #ifdef USE_SCRIBE_HDFS
-#include <mutex>
 #include "hdfs.h"
 
 class HdfsFile : public FileInterface {

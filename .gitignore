@@ -57,3 +57,4 @@ compile_commands.json
 *.swp
 *.swo
 *~
+/lib/py/installed_files.txt
