@@ -83,7 +83,7 @@ Thrift의 configure는 CXX에 `-std=c++11`을 붙였지만 실제 compile 명령
 
 caller가 지정한 CFLAGS/CXXFLAGS는 각각 독립적으로 보존하며 빈 값도 지정한 값이다. 지정하지 않은 flag만 기존 opt(`-Wall -O3`)/debug(`-Wall -g`) 기본값을 받는다. 따라서 `--disable-opt`가 caller의 C++17·최적화·sanitizer flag를 덮어쓰지 않는다. 두 IDL에 constants 선언이 없을 때 고정 compiler가 생성하지 않는 `*_constants.cpp`만 static/shared source 목록에서 제외했다. IDL 변경·wire 변경이나 수동 generated-code 수정은 아니다. constants를 IDL에 새로 추가하는 별도 변경이 생기면 실제 generator 출력과 source 목록을 함께 재검증한다.
 
-현재 source를 재현할 bootstrap/configure 명령은 [README의 검증된 Linux C++ recipe](linux-build-mvp.md#수동-빌드-예제)를 따른다. `--with-boost`, `--with-boost-system=boost_system`, `--with-boost-filesystem=boost_filesystem`과 Thrift/fb303·include/link prefix를 모두 명시한다. build manifest의 `command_templates.scribe_configure`와 v13의 Ubuntu raw configure/build records가 과거 성공의 근거이며 새 review source의 완료 결과와 구분한다.
+현재 source를 재현할 bootstrap/configure 명령은 [README의 검증된 Linux C++ recipe](linux-build-mvp.md#수동-빌드-예제)를 따른다. Thrift/fb303 prefix와 Boost header를 포함한 include/link 경로를 모두 명시한다. 현대화 2단계(Boost 제거) 뒤에는 `--with-boost` 계열 configure 옵션이 없다. build manifest의 `command_templates.scribe_configure`와 v13의 Ubuntu raw configure/build records가 과거 성공의 근거이며 새 review source의 완료 결과와 구분한다.
 
 ## 재실행과 남은 경계
 

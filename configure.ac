@@ -60,10 +60,8 @@ FB_WITH_PATH([smc_home], [smcpath], [${EXTERNAL_PATH}/services/trunk/src])
 FB_WITH_PATH([fb_home], [fbpath], [${EXTERNAL_PATH}/libfacebook])
 FB_WITH_PATH([hadoop_home], [hadooppath], [/usr/local])
 
-# Require boost 1.36 with system and filesytem libraries
-AX_BOOST_BASE([1.36])
-AX_BOOST_SYSTEM
-AX_BOOST_FILESYSTEM
+# scribe-next modification: std::filesystem replaces Boost system/filesystem; find -lstdc++fs if needed.
+SCRIBE_STDCXXFS_LIB
 
 # Generates Makefile from Makefile.am. Modify when new subdirs are added.
 # Change Makefile.am also to add subdirectly.

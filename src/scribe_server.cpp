@@ -2,6 +2,7 @@
 // scribe-next modification: main exits through scribe::stopServer so it never races the shutdown RPC thread.
 // scribe-next modification: C++17 cleanup; RAII guard keeps Log's lock points, unused local removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: std::filesystem::path replaces Boost's for the category check; same result and log text.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@
 #include "common.h"
 #include "scribe_server.h"
 #include <climits>
+#include <filesystem>
 
 using namespace apache::thrift::concurrency;
 using scribe::concurrency::RWGuard;
@@ -256,7 +258,7 @@ bool scribeHandler::createCategoryFromModel(
 
   // Make sure the category name is sane.
   try {
-    string clean_path = boost::filesystem::path(category).string();
+    string clean_path = std::filesystem::path(category).string();
 
     if (clean_path.compare(category) != 0) {
       LOG_OPER("Category not a valid boost filename");

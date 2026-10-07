@@ -66,7 +66,7 @@ StoreQueue의 thread·조건 변수를 `std::thread`로 바꾸는 단계는 여�
 ## 빌드와 결과 기록
 
 - Linux x86_64, C++17, 같은 버전의 Thrift compiler/runtime 0.25.0와 맞춰 준비한 fb303를 사용한다
-- Boost system/filesystem, libevent와 실제 dependency prefix/include/link 경로를 명시한다. 직접 configure할 때는 `--with-boost`, `--with-boost-system=boost_system`, `--with-boost-filesystem=boost_filesystem`을 지정한다
+- libevent와 실제 dependency prefix/include/link 경로를 명시한다. scribed는 Boost 라이브러리를 링크하지 않고 configure에 `--with-boost` 옵션도 없다. Thrift 0.25.0 빌드와 그 header가 요구하는 Boost header는 기본 include 경로나 `CPPFLAGS`로 제공하며, 시험의 C++03 원본 비교 기준은 `TOOLS_PREFIX`의 Boost filesystem을 쓴다. GCC 8의 `-lstdc++fs`는 configure가 정한다
 - 사용자 CFLAGS/CXXFLAGS의 명시값과 빈 값을 보존한다. generated code는 규칙으로 생성하고 손으로 고치지 않는다
 - 기본 검증은 `tools/validate_linux.py`를 프로젝트 밖의 새 출력 폴더에 실행한다. 이는 임시 설치이며 service 기동이 아니다
 - 선택 shared RPC와 HDFS는 기본 빌드와 구분한다. HDFS 기능을 삭제하거나 기본 검사만으로 HDFS 성공을 주장하지 않는다

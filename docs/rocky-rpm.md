@@ -15,19 +15,20 @@ production source 수정 없이 기존 bootstrap/configure/make와 rpmbuild를 �
 `/opt/scribe-next-dev`에 있다. Python client, config, user/group 생성, service unit와
 service scriptlet은 포함하지 않는다. 기존 `scribe` Python client 설치를 덮어쓰지 않는다.
 
-Thrift 0.25.0 runtime, matching fb303 static code와 Boost 1.83 runtime을 private
+Thrift 0.25.0 runtime과 matching fb303 static code를 private
 `deps` prefix로 실제 빌드·링크한다. [fb303 safety patch](fb303-counter-safety.md)는 별도 source copy에만 적용한다. 기존 `/opt/tools` 라이브러리를 옮겨 성공을 만들지
-않는다. Boost filesystem의 atomic dependency도 포함한다. compiler/runtime 버전과
-source hash는 [Rocky 빌드 안내](rocky-build.md)를 따른다.
+않는다. scribed는 Boost 라이브러리를 링크하지 않으므로 RPM에 Boost runtime을 넣지 않는다.
+Thrift 0.25.0 빌드와 Thrift·fb303 header가 요구하는 Boost 1.83 header만 private prefix에 준비한다.
+compiler/runtime 버전과 source hash는 [Rocky 빌드 안내](rocky-build.md)를 따른다.
 
 libevent, glibc, libgcc와 libstdc++는 배포판 의존성이다. RPM 자동 Requires/Provides와
-`bundled(thrift/fb303/boost)`를 유지하며 `--nodeps`나 private dependency 예외로 검사를
+`bundled(thrift/fb303)`를 유지하며 `--nodeps`나 private dependency 예외로 검사를
 끄지 않는다. Rocky 8은 libevent soname 6, Rocky 9는 soname 7과 각 compiler ABI를 사용한다.
 두 RPM을 다른 major 버전용으로 주장하지 않는다. dependency package 준비는 정상 DNF
 GPG 검사를 유지한다. 이미지 digest 고정을 이미지 signature 검증으로 부르지 않는다.
 
-Scribe LICENSE, Thrift LICENSE/NOTICE, fb303 자체 LICENSE와 전체 Apache license/NOTICE,
-Boost LICENSE_1_0.txt의 7개 원문을 `%license`로 수록했다. 실제 설치 bytes의 SHA256을
+Scribe LICENSE, Thrift LICENSE/NOTICE, fb303 자체 LICENSE와 전체 Apache license/NOTICE의
+6개 원문을 `%license`로 수록한다. Boost 라이브러리를 동봉하지 않으므로 Boost LICENSE는 넣지 않는다. 실제 설치 bytes의 SHA256을
 [고정 기대값](../packaging/rocky/expected-licenses.json)과 비교했다. 이는 법적 보장이 아닌
 고정 원문의 수록 확인이다. Bison/Git은 build tool이며 RPM runtime에 동봉하지 않는다.
 
@@ -61,8 +62,7 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
   "scribe-next-rocky-rpm-builder:$MAJOR" rpmbuild -ba \
   --define '_topdir /rpmbuild' --define "source_revision $REVISION" \
   --define "development_release 0.1.g${REVISION:0:7}" --define "dist .el$MAJOR" \
-  --define 'thrift_source /sources/thrift-0.25.0' \
-  --define 'boost_source /sources/boost_1_83_0' /rpmbuild/SPECS/scribe-next-dev.spec
+  --define 'thrift_source /sources/thrift-0.25.0' /rpmbuild/SPECS/scribe-next-dev.spec
 ```
 
 Source archive hash와 full revision을 결과에 기록한다. SRPM도 생성하지만 matching 의존성
@@ -73,9 +73,9 @@ source/prefix는 위 recipe로 준비해야 한다. SRPM 단독으로 의존성�
 read-only, network none, cap-drop ALL, no-new-privileges를 유지한다. `/verify.py`에 script,
 `/expected-licenses.json`에 고정 기대값, `/packages`에 RPM 폴더를 read-only bind하고
 matching runtime image의 `/usr/libexec/platform-python -B /verify.py /packages/<rpm>`을 호출한다.
-script는 Requires/Provides, 빈 scriptlet, `rpm -V`, 7개 license hash, loader closure,
+script는 Requires/Provides, 빈 scriptlet, `rpm -V`, 6개 license hash, Boost가 없는 loader closure,
 설치된 help와 실제 daemon RPC·동일 RPM 재설치, 제거 후 package 디렉터리 및
-6개 build-id 링크 삭제를 확인한다. 기존 `test/loopback_rpc.py`도 `/loopback_rpc.py`에
+3개 build-id 링크 삭제를 확인한다. 기존 `test/loopback_rpc.py`도 `/loopback_rpc.py`에
 read-only bind한다. 설치된 Python Thrift client 대신 기존 독립 IDL wire helper를 사용한다.
 RPM의 표준 build-id metadata는 payload를 가리키는 symlink인지 검사한다.
 다른 패키지와 공유하는 시스템 디렉터리 전체를 지우도록 요구하지 않는다.
@@ -87,9 +87,13 @@ RPM의 표준 build-id metadata는 payload를 가리키는 symlink인지 검사�
 | 8.10 | `8b3945583e0e7b939263528f56b3a1d9d8a7469b72cf0f11308825aeac314f25` | build/install/verify/licenses/help/remove PASS |
 | 9.8 | `3a24b0bb1cf70a2e44ade80838c930f40f64dcdaa37f530b25f17b7ce2be0192` | build/install/verify/licenses/help/remove PASS |
 
-`LD_LIBRARY_PATH` 없이 private Thrift/Boost를 읽는 것을 확인했다. 첫 검증 script는 RPM이
+`LD_LIBRARY_PATH` 없이 private Thrift/Boost를 읽는 것을 확인했다(위 두 RPM은 Boost 제거 전 결과다). 첫 검증 script는 RPM이
 생성하는 build-id 경로를 예상하지 못해 실패했다. 기대 경로를 바로잡고 새 컨테이너에서
 payload 안으로 향하는 링크 및 제거 후 삭제까지 확인했다. 실패 기록을 성공으로 세지 않는다.
+
+2026-10-07 Boost 제거(현대화 2단계) 뒤 작업 tree로 Rocky 8.10/GCC 8.5 RPM을 다시 만들었다.
+configure가 `-lstdc++fs`를 붙였고, 격리 install/verify, 6개 license hash, 3개 build-id 링크,
+Boost가 없는 `ldd`, 설치된 daemon의 송수신·동일 RPM 재설치·제거가 통과했다. Rocky 9 RPM은 다시 만들지 않았다.
 
 각 major의 기본 userland 패키지 검증이며, 서로 다른 버전 간 upgrade, 비정상 중단,
 HDFS/shared RPC와 production kernel/service 배포는 미검증이다.

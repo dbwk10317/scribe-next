@@ -5,6 +5,7 @@
 // scribe-next modification: close the previous pooled destination and replace list servers on reopen.
 // scribe-next modification: C++17 cleanup; std::mutex status guard, typed config reads, -Wall tidy; same values.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: std::filesystem and a local splitAnyOf() replace Boost; same directories and tokens.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,10 +36,9 @@
 #include "common.h"
 #include "scribe_server.h"
 #include "network_dynamic_config.h"
-#include <boost/algorithm/string.hpp>
+#include <filesystem>
 
 using namespace std;
-using namespace boost::filesystem;
 using namespace apache::thrift;
 using namespace apache::thrift::protocol;
 using namespace apache::thrift::transport;
@@ -1235,7 +1235,7 @@ bool ThriftFileStore::openInternal(bool incrementFilename, struct tm* current_ti
 
 bool ThriftFileStore::createFileDirectory () {
   try {
-    boost::filesystem::create_directories(filePath);
+    std::filesystem::create_directories(filePath);
   } catch(const std::exception& e) {
     LOG_OPER("Exception < %s > in ThriftFileStore::createFileDirectory for path %s",
       e.what(),filePath.c_str());
@@ -1861,18 +1861,31 @@ void NetworkStore::periodicCheck() {
   }
 }
 
+// Same tokens as boost::split(tokens, input, boost::is_any_of(delimiters)): every delimiter
+// character ends a token, empty tokens are kept, and an empty input yields one empty token.
+static vector<string> splitAnyOf(const string& input, const char* delimiters) {
+  vector<string> tokens;
+  string::size_type start = 0, end;
+  while ((end = input.find_first_of(delimiters, start)) != string::npos) {
+    tokens.push_back(input.substr(start, end - start));
+    start = end + 1;
+  }
+  tokens.push_back(input.substr(start));
+  return tokens;
+}
+
 bool NetworkStore::loadFromList(const std::string &list, unsigned long defaultPort,
                                 server_vector_t& _return) {
   _return.clear();
   vector<string> strs;
-  boost::split(strs, list, boost::is_any_of("\t "));
+  strs = splitAnyOf(list, "\t ");
   vector<string> split;
   for (vector<string>::iterator iter = strs.begin();
        iter != strs.end();
        iter++) {
     if (iter->find(":") != string::npos) {
       // split the port
-      boost::split(split, (*iter), boost::is_any_of(":"));
+      split = splitAnyOf(*iter, ":");
       _return.push_back(pair<string, int>(split[0], atoi(split[1].c_str())));
     } else {
       _return.push_back(pair<string, int>((*iter), defaultPort));

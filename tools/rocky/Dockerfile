@@ -6,6 +6,8 @@ RUN dnf -y install gcc gcc-c++ make cmake autoconf automake libtool bison flex \
     perl-ExtUtils-MakeMaker python3.12 python3.12-setuptools python3.12-pip \
     tar bzip2 xz git binutils rpm-build && dnf clean all
 COPY thrift-0.25.0.tar.gz boost_1_83_0.tar.bz2 git-2.53.0.tar.xz /sources/
+# Boost (TOOLS_PREFIX=/opt/tools) is not linked into scribed. The Thrift 0.25.0 C++ build and the Thrift/fb303
+# headers need its headers, and the validator's pinned C++03 upstream reference links libboost_filesystem.
 COPY prepare_fb303.py /project/tools/prepare_fb303.py
 COPY fb303-0.25.0-counter-lock.patch /project/dependencies/fb303-0.25.0-counter-lock.patch
 RUN cd /sources && \

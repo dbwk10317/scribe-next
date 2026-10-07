@@ -155,14 +155,13 @@ def main():
     try:
         run("configure", ["sh", "./bootstrap.sh", "--prefix=/opt/scribe",
                           "--with-thriftpath=" + str(thrift), "--with-fb303path=" + str(fb303),
-                          "--with-boost=" + str(tools), "--with-boost-system=boost_system",
-                          "--with-boost-filesystem=boost_filesystem",
                           *(["--disable-static"] if args.shared_rpc else []),
                           *(["--enable-hdfs", "--with-hadooppath=" + str(hadoop)] if hadoop else [])])
         makefile = (build / "src/Makefile").read_text()
         configured = dict(line.split(" = ", 1) for line in makefile.splitlines() if " = " in line)
         result["configured"] = {n: configured[n] for n in ("CC", "CXX", "CFLAGS", "CXXFLAGS",
-                                                         "CPPFLAGS", "LDFLAGS", "PYTHON", "PY_PREFIX", "LTYPE")}
+                                                         "CPPFLAGS", "LDFLAGS", "PYTHON", "PY_PREFIX", "LTYPE",
+                                                         "STDCXXFS_LIB")}
         if configured["LTYPE"] != (".so" if args.shared_rpc else ".a"):
             raise RuntimeError("configured RPC mode differs from selected lane")
         if args.shared_rpc:
@@ -228,8 +227,7 @@ sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
                                (fb303, ("lib/libfb303*", "share/scribe-next/fb303-safety.json")),
                                (tools, tuple(directory + "/" + library
                                              for directory in ("lib/x86_64-linux-gnu", "lib64", "lib")
-                                             for library in ("libboost_system*", "libboost_filesystem*",
-                                                             "libboost_atomic*", "libevent*")))):
+                                             for library in ("libevent*",)))):
             for pattern in patterns:
                 for p in sorted(root.glob(pattern)):
                     if p.is_file():

@@ -31,6 +31,15 @@ def run(command, *, cwd, env=None, timeout=60, check=True):
     return result
 
 
+def filesystem_libs(compiler, directory):
+    """Same choice as configure: GCC 8 needs -lstdc++fs for std::filesystem, GCC 9 and later do not."""
+    source = Path(directory) / "filesystem-probe.cpp"
+    source.write_text('#include <filesystem>\nint main() { return std::filesystem::exists("/") ? 0 : 1; }\n')
+    linked = subprocess.run([str(compiler), "-std=c++17", str(source), "-o", str(source.with_suffix(""))],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+    return [] if linked.returncode == 0 else ["-lstdc++fs"]
+
+
 def require_git_safety_options():
     result = subprocess.run(
         ["git", "--no-replace-objects", "--no-lazy-fetch", "--version"],
@@ -83,6 +92,8 @@ class OrdinarySpoolTests(unittest.TestCase):
                     data = (ROOT / "src" / name).read_bytes()
                 (directory / name).write_bytes(data)
             shutil.copyfile(ROOT / "test/cpp/spool_component_common.h", directory / "common.h")
+            # Boost.Filesystem is linked only for the pinned C++03 upstream reference.
+            link = ["-lboost_filesystem"] if version == "legacy" else filesystem_libs(compiler, directory)
             for sanitizer in (False, True):
                 executable = directory / ("spool-sanitized" if sanitizer else "spool")
                 flags = ["-O1", "-g", "-fno-omit-frame-pointer"]
@@ -91,7 +102,7 @@ class OrdinarySpoolTests(unittest.TestCase):
                 run([compiler, "-std=" + standard, *flags,
                      "-I", directory, "-I", cls.tools / "include",
                      directory / "file.cpp", ROOT / "test/cpp/spool_component.cpp",
-                     *("-L" + str(path) for path in libdirs), "-lboost_filesystem",
+                     *("-L" + str(path) for path in libdirs), *link,
                      "-o", executable], cwd=directory, env=cls.env, timeout=90)
                 cls.executables[version, sanitizer] = executable
 

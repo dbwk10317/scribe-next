@@ -195,7 +195,7 @@ bytes가 같고 scribed DT_NEEDED 및 GNU loader trace로 실제 stage/opt/scrib
 두 .so를 읽는 것을 확인했다. staged help는 stage cwd와 stage+prepared dependency
 LD_LIBRARY_PATH만 사용해 build/src를 빌리지 않는다. 이 경로는 process-local이며
 ldconfig/시스템 설치·서비스·권한 변경은 하지 않는다. 일반 배포 때도 두 RPC .so와
-matching Thrift/Boost 등 loader closure를 함께 제공해야 하며 SDK 절대경로가
+matching Thrift 등 loader closure를 함께 제공해야 하며 SDK 절대경로가
 자동으로 어느 머신에서나 유효해지는 것은 아니다. 후속 서버는 기존 승인된
 Thrift/fb303/Boost/tool prefix로 새 --shared-rpc output의9단계·183개 시험
 (failure/error/skip0)·DESTDIR11개 파일·staged help0을 재현했다. 두 RPC .so의
@@ -288,15 +288,16 @@ CPPFLAGS="-I$TOOLS_PREFIX/include -I$TOOLS_PREFIX/include/x86_64-linux-gnu" \
 CXXFLAGS="-O2 -std=c++17 -D_GLIBCXX_USE_DEPRECATED=0" \
 LDFLAGS="-L$TOOLS_LIBDIR -L$THRIFT_PREFIX/lib -L$FB303_PREFIX/lib -Wl,-rpath,$TOOLS_LIBDIR -Wl,-rpath,$THRIFT_PREFIX/lib -Wl,-rpath,$FB303_PREFIX/lib" \
 sh ./bootstrap.sh --prefix=/opt/scribe \
-  --with-thriftpath="$THRIFT_PREFIX" --with-fb303path="$FB303_PREFIX" \
-  --with-boost="$TOOLS_PREFIX" --with-boost-system=boost_system \
-  --with-boost-filesystem=boost_filesystem
+  --with-thriftpath="$THRIFT_PREFIX" --with-fb303path="$FB303_PREFIX"
 make clean
 make -C src thriftstyle
 make -j2
 src/scribed --help
 ```
 
+`CPPFLAGS`의 `$TOOLS_PREFIX/include`는 Thrift·fb303 header가 include하는 Boost header 위치다.
+scribed는 Boost 라이브러리를 링크하지 않으며 configure에 `--with-boost` 옵션도 없다.
+GCC 8처럼 `std::filesystem`에 `-lstdc++fs`가 필요한 compiler는 configure가 확인해 붙인다.
 이 예제에서 flags는 호출자가 정하는 값이다. bootstrap은 이미 지정한
 `CFLAGS`/`CXXFLAGS`의 값과 빈 값을 덮어쓰지 않는다.
 shared RPC는 기존 `--disable-static` 선택을 사용하며 설치된 두 RPC `.so`와

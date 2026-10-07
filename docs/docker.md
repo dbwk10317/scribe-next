@@ -70,7 +70,7 @@ PY
 ## 이미지 구성
 
 - `/usr/local/bin/scribed`, `/usr/local/lib/libthrift.so.0.25.0`, `libthriftnb.so.0.25.0`. fb303와 Scribe RPC library는 static link다
-- 배포판 libevent, Boost filesystem/system
+- 배포판 libevent. Boost는 없다(build 단계의 `boost-devel`은 Thrift 빌드용 header이며 scribed는 Boost 라이브러리를 링크하지 않는다)
 - `/etc/scribe/scribe.conf`(examples/docker.conf), log volume `/var/log/scribed`, `EXPOSE 1463`
 - `/usr/share/licenses/scribe-next/`: Scribe LICENSE, Thrift LICENSE/NOTICE, fb303 LICENSE
 - compiler, source, Thrift compiler, Python client와 `scribe_cat`·`scribe_ctrl`은 넣지 않는다
@@ -93,5 +93,11 @@ PY
 - 실행 이미지 `ldd`는 libthrift/libthriftnb 0.25.0, 배포판 libevent 2.1과 Boost 1.75 filesystem/system을 찾는다
 - `Log(demo, "hello docker\n")` 응답 0(OK), `demo/demo-2026-10-07_00000` bytes `hello docker\n\n`, `getStatus` 2(ALIVE)
 - oneway `shutdown` 뒤 exit 0, `docker stop`은 10초 뒤 exit 137. 설정 mount로 port 1500 기동 확인
+
+2026-10-07 Boost 제거(현대화 2단계) 뒤 같은 host에서 작업 tree로 다시 빌드했다.
+
+- 실행 이미지 272MB(content 67.2MB). `rpm -qa`에 Boost 패키지가 없고 `ldd`는 libthrift/libthriftnb 0.25.0과 배포판 libevent 2.1만 찾는다
+- 기본 설정으로 `Log(demo, "hello docker\n")` 응답 0(OK), `demo_current` bytes `hello docker\n\n`, `getStatus` 2(ALIVE)
+- oneway `shutdown` 뒤 exit 0
 
 한 환경의 실제 컨테이너 결과이며 운영 준비나 다른 host 호환성으로 확대하지 않는다.

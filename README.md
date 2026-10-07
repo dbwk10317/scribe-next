@@ -100,18 +100,18 @@ scribe-next는 2007~2008년에 작성된 [공개 Facebook Scribe 원본](https:/
 | 운영체제 | Linux x86_64: Debian 13, Ubuntu 26.04.1, Rocky 8.10 / 9.8 |
 | C++ | C++17, GCC 8.5 / 11.5 / 13 / 14.2 / 15.2(13은 설치 확인만) |
 | 통신 라이브러리 | Thrift compiler와 C++ runtime 0.25.0, 이에 맞춰 준비한 fb303 |
-| 기타 빌드 도구 | Boost[^12] 1.83 / 1.75, libevent[^13], pthread, make, autotools[^14], Git |
+| 기타 빌드 도구 | Boost[^12] header 1.83 / 1.75(Thrift 빌드용), libevent[^13], pthread, make, autotools[^14], Git |
 | Python 설치 검사 | Python 3.12 / 3.14, setuptools와 해당 Thrift/fb303 Python runtime |
 | 선택 기능 | 공유 RPC[^15] 라이브러리, Hadoop 3.5/libhdfs와 JDK 17을 사용하는 HDFS[^16] |
 | 설치 순서 | 2026-10-07 `ubuntu:24.04`·`rockylinux:9` 컨테이너에서 `scribed --help`까지 |
 
 Rocky 8.10 / 9.8은 기본 빌드와 임시 설치를 확인했습니다.
-Boost는 1.36 이상의 system/filesystem 라이브러리가 필요합니다.
+scribed는 Boost 라이브러리를 쓰지 않습니다. Boost header는 Thrift 0.25.0을 빌드하고 그 header를 include할 때만 필요합니다.
 autotools는 autoconf, automake, libtool을 말합니다.
 
 [빠른 시작](#빠른-시작)의 설치 순서는 2026-10-07에 깨끗한 `ubuntu:24.04`와 `rockylinux:9` 컨테이너에서 실행했습니다.
-이때 Ubuntu는 GCC 13과 배포판 Boost 1.83, Rocky 9는 GCC 11.5와 배포판 Boost 1.75를 썼습니다.
-`sudo make install`, `scribed --help`, `ldd`까지 확인했으며 시험 묶음은 실행하지 않았습니다.
+이때 Ubuntu는 GCC 13과 배포판 Boost header 1.83(`libboost-dev`), Rocky 9는 GCC 11.5와 배포판 Boost 1.75(`boost-devel`)를 썼습니다.
+`sudo make install`, `scribed --help`, `ldd`에 Boost 라이브러리가 없음까지 확인했으며 시험 묶음은 실행하지 않았습니다.
 
 Rocky의 기본 비-HDFS/static 검증은 각 218개 시험과 임시 설치까지 확인했습니다.
 [Rocky 빌드 안내](docs/rocky-build.md)의 별도 준비 조건을 따르세요.
@@ -160,7 +160,7 @@ Docker 이미지로 실행하려면 [Docker로 실행](#docker로-실행)으로 
 
 ### 1. 배포판 패키지
 
-빌드 도구, libevent·Boost 라이브러리, 그리고 준비 스크립트와 Python client 설치에 쓰는 Python을 설치합니다.
+빌드 도구, libevent, Thrift 빌드에 필요한 Boost header, 그리고 준비 스크립트와 Python client 설치에 쓰는 Python을 설치합니다.
 사용하는 배포판의 블록 하나만 실행하세요.
 
 #### Ubuntu 24.04
@@ -168,7 +168,7 @@ Docker 이미지로 실행하려면 [Docker로 실행](#docker로-실행)으로 
 ```sh
 sudo apt-get update
 sudo apt-get install -y git build-essential autoconf automake libtool pkg-config cmake bison flex \
-  libevent-dev libboost-system-dev libboost-filesystem-dev python3 python3-setuptools
+  libevent-dev libboost-dev python3 python3-setuptools
 ```
 
 #### Rocky Linux 9
@@ -179,6 +179,7 @@ sudo dnf -y install git gcc gcc-c++ make cmake autoconf automake libtool bison f
 echo /usr/local/lib | sudo tee /etc/ld.so.conf.d/scribe-local.conf
 ```
 
+Rocky에는 Boost header만 담은 패키지가 없어 `boost-devel`을 설치합니다. 함께 설치되는 Boost 라이브러리는 scribed가 링크하지 않습니다.
 마지막 줄은 공유 라이브러리 검색 경로에 `/usr/local/lib`을 추가합니다.
 Ubuntu는 기본으로 `/usr/local/lib`을 찾지만 Rocky는 찾지 않기 때문입니다.
 Rocky 8은 더 새로운 bison이 필요하며, 준비 방법은 [Rocky 빌드 안내](docs/rocky-build.md)에 있습니다.
@@ -235,8 +236,7 @@ sudo cp scribe-next-fb303-safety.json /usr/local/share/scribe-next/fb303-safety.
 
 ```sh
 cd ~/scribe-build/scribe-next
-./bootstrap.sh --prefix=/usr/local --with-thriftpath=/usr/local --with-fb303path=/usr/local \
-  --with-boost=/usr --with-boost-system=boost_system --with-boost-filesystem=boost_filesystem
+./bootstrap.sh --prefix=/usr/local --with-thriftpath=/usr/local --with-fb303path=/usr/local
 make -j"$(nproc)"
 sudo make install
 ```
@@ -261,7 +261,7 @@ ldd "$(command -v scribed)"
 ```
 
 `scribed --help`는 사용법 줄 `Usage: scribed [-p port] [-c config_file]`을 출력해야 합니다.
-`ldd` 결과에는 `/usr/local/lib`의 `libthrift.so.0.25.0`, `libthriftnb.so.0.25.0`과 배포판의 libevent·Boost 라이브러리가 보여야 합니다.
+`ldd` 결과에는 `/usr/local/lib`의 `libthrift.so.0.25.0`, `libthriftnb.so.0.25.0`과 배포판의 libevent가 보여야 하며, Boost 라이브러리(`libboost_*`)는 보이지 않아야 합니다.
 기본 빌드는 모든 의존성을 실행 파일에 넣는 완전 정적 빌드가 아니므로, 실행할 때도 이 라이브러리들을 찾을 수 있어야 합니다.
 
 ### 6. 설정 파일 만들기
@@ -340,10 +340,11 @@ docker build -t scribe-next:local .
 - `bootstrap.sh` → `make` → `make install`
 
 빌드 단계는 CRLF 줄 끝을 변환하므로 Windows checkout도 빌드 재료로 쓸 수 있습니다.
-실행 단계에는 `scribed`, `libthrift.so.0.25.0`, `libthriftnb.so.0.25.0`, 배포판 libevent·Boost 패키지와 LICENSE/NOTICE 파일만 남깁니다.
+실행 단계에는 `scribed`, `libthrift.so.0.25.0`, `libthriftnb.so.0.25.0`, 배포판 libevent 패키지와 LICENSE/NOTICE 파일만 남깁니다.
+빌드 단계의 `boost-devel`은 Thrift 빌드용 header이며 실행 단계에는 Boost가 없습니다.
 
 Thrift archive를 받으므로 빌드할 때 네트워크가 필요합니다.
-확인한 환경(20 core)에서 빌드는 약 1.5분 걸렸고, 이미지 크기는 273 MB(기반 이미지 264 MB)였습니다.
+확인한 환경(20 core)에서 빌드는 약 1.5분 걸렸고, 이미지 크기는 272 MB(기반 이미지 264 MB)였습니다.
 
 #### 컨테이너 실행과 기본 설정
 
@@ -448,7 +449,7 @@ docker logs scribe
 
 | 구분 | 무엇이 바뀌었나 | 로그의 분배·내용·파일 형식 |
 | --- | --- | --- |
-| [빌드와 의존성](#빌드와-의존성) | C++17, Thrift 0.25, Boost 1.36 이상, 최신 GCC로 빌드 | 같음 |
+| [빌드와 의존성](#빌드와-의존성) | C++17, Thrift 0.25, 최신 GCC로 빌드, Boost 라이브러리 제거 | 같음 |
 | [새 설정 키](#새-설정-키) | `thrift_max_frame_size`, `thrift_max_message_size` 추가 | 같음(큰 요청 제외) |
 | [고친 문제](#고친-문제) | 비정상 종료·미정의 동작 6가지, 전송·연결 수정 3가지 | 정상 설정에서는 같음 |
 | [C++17 정리](#c17-정리-동작-불변) | 잠금·소유권·죽은 코드 정리 | 같음 |
@@ -469,15 +470,30 @@ docker logs scribe
 | 언어 표준 | C++17 | `src/Makefile.am`이 `-std=c++17 -Wall`을 직접 선언 |
 | Thrift | compiler와 C++ runtime 모두 0.25.0 | 두 버전이 다르면 생성 코드와 runtime이 맞지 않음 |
 | fb303 | Thrift 0.25.0 compiler로 생성·빌드한 것 | 상태 조회 API는 원본과 같음 |
-| Boost | 1.36 이상의 system/filesystem | 확인: 1.83(소스 빌드), 1.83(Ubuntu 24.04 배포판), 1.75(Rocky 9 배포판) |
+| Boost | scribed는 쓰지 않음. Thrift 0.25.0 빌드와 그 header에 Boost header(Thrift 요구 1.56 이상)만 필요 | 확인: 1.83(소스 빌드), 1.83(Ubuntu 24.04 `libboost-dev`), 1.75(Rocky 9 `boost-devel`) |
 | 기타 | libevent, pthread | 원본과 같음 |
-| 컴파일러 | GCC 8.5 / 11.5 / 13(Ubuntu 24.04) / 14.2 / 15.2에서 확인 | GCC 13은 `scribed --help`·`ldd`까지만, 다른 조합은 미확인 |
+| 컴파일러 | GCC 8.5 / 11.5 / 13(Ubuntu 24.04) / 14.2 / 15.2에서 확인 | GCC 8은 configure가 `-lstdc++fs`를 붙임. GCC 13은 `scribed --help`·`ldd`까지만, 다른 조합은 미확인 |
 | 빌드 방식 | autotools(`configure` + `make`) | CMake 등으로 바꾸지 않음 |
 
-Boost 최소 버전 1.36은 `configure.ac`의 `AX_BOOST_BASE([1.36])` 검사가 정합니다.
-표의 1.83과 1.75는 확인에 쓴 버전이며 요구 사항이 아닙니다.
+scribed 소스는 Boost를 쓰지 않으며 Boost 라이브러리를 링크하지 않습니다.
+다만 Thrift 0.25.0의 C++ 라이브러리는 빌드할 때 Boost header를 요구하고, 설치된 Thrift·fb303 header도 Boost header를 include합니다.
+그래서 빌드할 때는 Boost header가 필요하고, 실행할 때는 Boost가 필요하지 않습니다.
+Boost header가 기본 include 경로(`/usr/include` 등)에 없으면 `CPPFLAGS=-I<Boost 위치>/include`로 알려 줍니다.
+configure의 `--with-boost`, `--with-boost-system`, `--with-boost-filesystem` 옵션은 없어졌습니다.
+예전 명령줄에 남아 있으면 configure가 `unrecognized options` 경고만 출력하고 계속합니다.
+GCC 8은 `std::filesystem`을 별도 라이브러리 `libstdc++fs`에 두므로, configure가 작은 프로그램을 링크해 보고 필요할 때만 `-lstdc++fs`를 붙입니다(GCC 9 이상은 필요 없음).
+시험 묶음은 원본(C++03) 비교 기준을 빌드하려고 `TOOLS_PREFIX`의 Boost filesystem 라이브러리를 계속 사용합니다.
+표의 Boost 1.83과 1.75는 확인에 쓴 버전입니다.
 Ubuntu 24.04의 GCC 13·Boost 1.83과 Rocky 9의 Boost 1.75는 두 컨테이너에서 `scribed --help`와 `ldd`까지만 확인했습니다.
-전체 Boost 제거는 하지 않습니다.
+
+#### 왜 Boost를 제거했나
+
+scribed가 Boost에서 쓰던 기능은 공유 포인터(`shared_ptr`·`weak_ptr`), 파일 크기·목록·삭제·디렉터리 만들기 같은 파일 시스템 함수 몇 개, 서버 목록 문자열을 나누는 함수 하나뿐이었습니다.
+C++17 표준 라이브러리가 이것을 모두 제공합니다(`std::shared_ptr`, `std::filesystem`, 그리고 몇 줄짜리 분리 함수).
+그래서 scribed를 설치하거나 배포할 때 함께 설치·동봉해야 하는 Boost 라이브러리가 없어졌습니다.
+설정 키는 바뀌지 않았고 로그의 분배·내용·파일 형식과 카운터도 같습니다.
+서버 목록 분리 결과는 원본 빌드가 쓰던 Boost 1.58과 Boost 1.83의 `boost::split`과 비교해, 탭·공백·콜론·NUL을 포함한 7개 문자로 만든 길이 7 이하의 모든 문자열에서 같았습니다.
+파일 함수의 오류는 예전처럼 잡아서 같은 값을 돌려주며, 진단 로그에 찍히는 예외 문구만 표준 라이브러리의 표현으로 바뀝니다.
 
 예전에는 `-std=c++17`이 검증기(`tools/validate_linux.py`)나 RPM spec이 `CXXFLAGS`로 넣어 줄 때만 적용됐습니다.
 그래서 직접 `./configure && make`를 하면 컴파일러 기본 표준(예: GCC 8은 gnu++14)으로 빌드될 수 있었습니다.
@@ -849,6 +865,7 @@ secondary에 add_newlines=1일 때: 다시 쓴 frame에 LF가 하나 더 붙음
 | spool 읽기의 손실 계산 | 함수 안 `CALC_LOSS` 매크로 | 같은 계산을 하는 멤버 함수 | 읽는 바이트·반환값·손실 계산이 같음 |
 | store thread 생성 실패 | `pthread_create` 반환값을 보지 않아 실패하면 미정의 동작 | 실패를 store 생성 실패로 처리 | 원래 미정의 동작이던 경우만 정의된 오류가 됨 |
 | 진단 로그 두 줄 | stderr에 글자 그대로 `oss.str()`로 찍혔음 | 실제 내용을 찍거나 함께 삭제 | stderr 문구만 바뀌고 로그 데이터·파일·카운터와 무관 |
+| Boost 의존성(현대화 1·2단계) | `boost::shared_ptr`·`boost::filesystem`·`boost::split` | `std::shared_ptr`·`std::filesystem`·작은 분리 함수 | 같은 호출에 같은 결과. [왜 Boost를 제거했나](#왜-boost를-제거했나) 참고 |
 
 `Log()`의 예전 코드는 중간에 예외가 나면 잠금이 영원히 풀리지 않았습니다.
 그러면 이후 `reinitialize`·`shutdown`·새 category 생성이 멈출 수 있었습니다.
@@ -877,7 +894,6 @@ store thread 생성 실패는 설정 단계에서 `Bad config - can't create a s
 - [빈 메시지만 든 큐를 전달하지 않는 판단](#빈-메시지만-든-큐는-전달되지-않는다)
 - 재시도·bucket·서버 후보 순서에 쓰는 GNU `rand()` 순서
 - store queue의 thread·조건 변수(시간 기준과 깨우기 의미가 바뀔 수 있어 그대로 둠)
-- Boost 제거(별도 작업으로 보류). 내부 `boost::shared_ptr`·`boost::weak_ptr`는 현대화 1단계에서 `std::shared_ptr`·`std::weak_ptr`로 바꿨으며, 타입만 바꾼 것이라 동작은 같습니다
 
 ### 검증 도구
 
@@ -1652,7 +1668,7 @@ README에는 실행 이력을 모두 나열하지 않습니다.
 [^11]: symlink(심볼릭 링크): 다른 파일을 가리키는 바로가기 파일입니다.
   Scribe는 `<이름>_current`라는 symlink로 지금 쓰고 있는 파일을 가리킵니다.
 [^12]: Boost: C++에서 널리 쓰는 공개 라이브러리 모음입니다.
-  이 프로젝트는 그중 파일 경로 처리(filesystem)와 기반 기능(system)을 씁니다.
+  scribed는 Boost를 쓰지 않지만, Thrift 0.25.0이 빌드할 때와 그 header가 Boost header를 요구합니다.
 [^13]: libevent: 많은 네트워크 연결을 적은 thread로 처리하도록 도와주는 C 라이브러리입니다.
   Thrift의 비동기 서버가 사용합니다.
 [^14]: autotools: `configure` 스크립트와 `Makefile`을 만들어 주는 전통적인 빌드 도구 묶음(autoconf, automake, libtool)입니다.

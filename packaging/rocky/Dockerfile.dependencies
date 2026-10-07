@@ -2,13 +2,13 @@ ARG BASE=scribe-next-rocky-validation:8
 FROM ${BASE}
 COPY prepare_fb303.py /project/tools/prepare_fb303.py
 COPY fb303-0.25.0-counter-lock.patch /project/dependencies/fb303-0.25.0-counter-lock.patch
+# scribed links no Boost library. Only Boost headers are installed: the Thrift 0.25.0 C++ build
+# requires them and the installed Thrift/fb303 headers include them.
 RUN cd /sources && \
     echo '6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e  boost_1_83_0.tar.bz2' | sha256sum -c - && \
     echo '66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  thrift-0.25.0.tar.gz' | sha256sum -c - && \
-    cd boost_1_83_0 && ./b2 --build-dir=/sources/rpm-boost-build \
-    --prefix=/opt/scribe-next-dev/deps/tools --with-filesystem --with-system \
-    -j4 variant=release link=shared threading=multi cxxflags=-std=c++17 \
-    linkflags=-Wl,-rpath,/opt/scribe-next-dev/deps/tools/lib install
+    mkdir -p /opt/scribe-next-dev/deps/tools/include && \
+    cp -a boost_1_83_0/boost /opt/scribe-next-dev/deps/tools/include/
 RUN cmake -S /sources/thrift-0.25.0 -B /sources/rpm-thrift-build \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/scribe-next-dev/deps/thrift \
     -DCMAKE_INSTALL_RPATH=/opt/scribe-next-dev/deps/thrift/lib \
@@ -29,5 +29,5 @@ RUN python3.12 -B /project/tools/prepare_fb303.py \
     cp scribe-next-fb303-safety.json /opt/scribe-next-dev/deps/fb303/share/scribe-next/fb303-safety.json
 ENV THRIFT_PREFIX=/opt/scribe-next-dev/deps/thrift FB303_PREFIX=/opt/scribe-next-dev/deps/fb303 \
     TOOLS_PREFIX=/opt/scribe-next-dev/deps/tools \
-    LD_LIBRARY_PATH=/opt/scribe-next-dev/deps/thrift/lib:/opt/scribe-next-dev/deps/tools/lib:/opt/scribe-next-dev/deps/fb303/lib \
-    LDFLAGS="-L/opt/scribe-next-dev/deps/tools/lib -L/opt/scribe-next-dev/deps/thrift/lib -L/opt/scribe-next-dev/deps/fb303/lib -Wl,-rpath,/opt/scribe-next-dev/deps/tools/lib -Wl,-rpath,/opt/scribe-next-dev/deps/thrift/lib"
+    LD_LIBRARY_PATH=/opt/scribe-next-dev/deps/thrift/lib:/opt/scribe-next-dev/deps/fb303/lib \
+    LDFLAGS="-L/opt/scribe-next-dev/deps/thrift/lib -L/opt/scribe-next-dev/deps/fb303/lib -Wl,-rpath,/opt/scribe-next-dev/deps/thrift/lib"
