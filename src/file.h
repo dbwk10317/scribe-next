@@ -1,4 +1,5 @@
 // scribe-next modification: C++17 cleanup; override, deleted copies, loss helper, no behaviour change.
+// scribe-next modification: owned read buffer via nothrow new; same nomem/loss accounting.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +25,7 @@
 #define SCRIBE_FILE_H
 
 #include "common.h"
+#include <memory>
 
 class FileInterface {
  public:
@@ -82,7 +84,7 @@ class StdFile : public FileInterface {
   bool open(std::ios_base::openmode mode);
   long calcLoss();
 
-  char* inputBuffer;
+  std::unique_ptr<char[]> inputBuffer;
   unsigned bufferSize;
   std::fstream file;
 
