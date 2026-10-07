@@ -1,8 +1,7 @@
-// scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: truncate spool replacement without app so partial replay keeps its remainder.
 // scribe-next modification: C++17 cleanup; CALC_LOSS macro is now calcLoss(), same arithmetic.
 // scribe-next modification: owned read buffer via nothrow new; same nomem/loss accounting.
-// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers (Thrift's are already std); no behaviour change.
 // scribe-next modification: std::filesystem replaces Boost.Filesystem with the same calls, results and error handling.
 //  Copyright (c) 2007-2008 Facebook
 //

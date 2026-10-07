@@ -493,6 +493,8 @@ PY
 
 `scribed`는 큐에 남은 로그를 한 번 더 처리하고 store를 닫은 뒤 `scribe server exiting`을 남기고 끝납니다.
 종료 코드는 0입니다.
+다만 직전에 실패해 재시도를 기다리던 묶음(`must_succeed=yes`의 requeue)이 있으면 그 묶음만 처리하고, 그 사이 큐에 들어온 로그는 처리하지 않은 채 store를 닫습니다.
+이때 `lost` 카운터는 늘지 않으며, 원본과 같은 동작입니다.
 
 SIGTERM(예: `kill`)이나 Ctrl+C에는 따로 처리하는 코드가 없어, 프로세스가 그 자리에서 끝납니다.
 이때 메모리 큐에 있던 로그는 잃을 수 있습니다.
@@ -641,7 +643,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 ### 고친 원래 버그
 
-원본의 버그 가운데 로그의 분배·파일 형식·전달 결과를 바꾸지 않고 고칠 수 있는 것만 고쳤습니다.
+원본의 버그 가운데 로그의 분배·파일 형식을 바꾸지 않고 고칠 수 있는 것만 고쳤습니다.
 앞의 여덟 가지는 프로그램이 비정상 종료하거나 미정의 동작(UB[^ub])을 하던 경우입니다.
 이런 경우에는 지켜야 할 "원본과 같은 결과"가 없으므로 안전한 동작으로 바꿨고, 정상 설정의 결과는 바뀌지 않습니다.
 뒤의 세 가지는 논리 오류입니다.
@@ -1060,9 +1062,16 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   - **설정 트리의 약한 참조.**
     부모와 자식 설정이 서로를 붙잡고 있어 `reinitialize`마다 이전 설정이 메모리에 남았습니다.
     이제 자식은 부모를 붙잡지 않고 가리키기만 하며(weak reference), 설정 상속 결과는 같습니다.
+  - **store 큐의 잠금.**
+    큐에 메시지나 명령을 넣는 동안 잡는 잠금도 범위를 벗어나면 자동으로 풀립니다.
+    예전에는 넣는 중 메모리 부족 예외가 나면 큐 잠금이 남아 그 category의 로그 받기와 store thread가 멈출 수 있었습니다.
+    잠그는 순서와 범위는 같습니다.
+  - **복사본의 소유권.**
+    multi·category store의 복사본은 하위 store를 복사하기 전에 스마트 포인터가 소유합니다.
+    하위 store 복사 중 예외가 나도 부모와 먼저 복사한 하위 store가 새지 않습니다.
   - **표준 잠금.**
-    store 상태, 연결 pool 목록, HDFS의 잠금을 C++ 표준 잠금(`std::mutex`)으로 바꿨습니다.
-    잠그는 지점과 범위는 같습니다.
+    store 상태와 연결 pool 목록의 잠금을 C++ 표준 잠금(`std::mutex`)으로 바꿨습니다.
+    잠그는 지점과 범위는 같습니다. 쓰이지 않던 HDFS 잠금 선언은 삭제했습니다.
   - **컴파일러 검사 강화.**
     함수를 잘못 덮어쓰거나 복사하면 빌드할 때 오류가 나게 했습니다(`override`, `= delete`).
     만들어지는 실행 파일의 동작은 같습니다.
@@ -1173,7 +1182,9 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
   `game_pvp`라면 평균 메시지가 약 15 bytes(= category 길이 + 7)보다 짧을 때, 가득 찬 128 MiB spool 하나가 256 MiB를 넘습니다.
   이런 category는 secondary `max_size`를 더 작게 잡으세요(예: `max_size=67108864`).
-  `max_size`는 쓰고 난 뒤에 검사하므로, 파일이 `max_size`를 조금(대략 `max_write_size`, 기본 1,000,000 bytes 이내) 넘을 수 있습니다.
+  `max_size`는 쓰고 난 뒤에 검사하므로 파일이 `max_size`를 넘을 수 있습니다.
+  넘는 양은 보통 `max_write_size`(기본 1,000,000 bytes) 안팎이지만 상한은 아닙니다.
+  메시지 하나를 통째로 쓰기 버퍼에 더한 뒤 검사하므로, 큰 메시지 하나가 있으면 그 길이만큼 더 넘습니다.
 
   secondary에 `max_size`를 쓰지 않으면 file store 기본값 1,000,000,000 bytes가 적용됩니다.
   그러면 장애가 길어질 때 256 MiB를 넘는 spool이 생길 수 있습니다.
@@ -1254,6 +1265,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 | [추가 bucket 검사](#추가-bucket-검사는-이름-대신-문자열-중간을-본다) | `num_buckets`, `bucket0`…`bucketN` |
 | [ThriftFile 복사본의 형식](#thriftfile-복사본은-use_simple_file을-무시한다) | `use_simple_file` |
 | [Network 복사본의 목록·동적 조회](#network-복사본은-service_list와-동적-조회-설정을-물려받지-않는다) | `service_list` 등 6개 |
+| [Buffer 복사본의 재전송 중 직접 전송](#buffer-복사본은-flush_streaming과-buffer_bypass_max_ratio를-물려받지-않는다) | `flush_streaming`, `buffer_bypass_max_ratio` |
 | [빈 연결 key 공유](#service_list와-use_conn_pool은-빈-연결-key-하나를-같이-쓴다) | `service_list`, `use_conn_pool` |
 | [빈 메시지만 든 큐](#빈-메시지만-든-큐는-전달되지-않는다) | `add_newlines`(영향) |
 | [OK의 뜻](#ok는-메모리-큐에-받았다는-뜻이다) | 없음 |
@@ -1488,6 +1500,30 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   `game_event:retries` 카운터가 늘고, fb303 상태는 `WARNING`, 상세 설명은 `Failed to connect`입니다.
   `ignore_network_error`가 적용되는 경우에도 실제 연결 실패가 성공으로 바뀌지는 않습니다.
 
+### Buffer 복사본은 flush_streaming과 buffer_bypass_max_ratio를 물려받지 않는다
+
+- **어떤 동작인가.**
+  buffer store 복사본은 재시도 간격·`replay_buffer`·adaptive backoff 설정은 복사하지만, `flush_streaming`과 `buffer_bypass_max_ratio`는 복사하지 않습니다.
+  복사본은 `flush_streaming=no`와 기본 비율로 동작합니다.
+  즉 spool을 재전송하는 동안 새로 들어온 로그는 primary로 바로 가지 않고 spool에 먼저 쓰인 뒤 순서대로 재전송됩니다.
+
+- **왜 남겼나.**
+  보완하면 재전송 중 로그가 primary에 도착하는 순서와 spool 파일의 내용이 달라집니다.
+  원본 소스도 같은 구조였습니다.
+
+- **무엇을 기대하면 되나.**
+  `default`·category 모델에 `flush_streaming=yes`를 써도 복사본에는 적용되지 않습니다.
+  꼭 필요하면 그 category를 직접 설정하세요.
+
+- **구·신 차이.** 없습니다.
+
+- **관련 설정 키.**
+  모델 store의 `flush_streaming`, `buffer_bypass_max_ratio`.
+
+- **예시.**
+  `category=default`, `type=buffer`, `flush_streaming=yes`인 모델에서 `game_event` 복사본이 spool을 재전송하는 동안 새 `game_event` 로그가 들어오면, 그 로그는 primary로 바로 가지 않고 spool 뒤에 붙어 다음 재전송 때 갑니다.
+  같은 설정을 `category=game_event`로 직접 쓰면 primary로 바로 갑니다.
+
 ### service_list와 use_conn_pool은 빈 연결 key 하나를 같이 쓴다
 
 - **어떤 동작인가.**
@@ -1598,16 +1634,20 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 - **어떤 동작인가.**
   원본은 `--config`와 `--port`를 **값을 받지 않는 옵션**으로 선언했습니다.
   `--config=/etc/scribed/scribed.conf`처럼 쓰면 값을 받지 않는 옵션이라며 사용법만 출력하고 종료(코드 0)합니다.
-  `--config /etc/scribed/scribed.conf`처럼 쓰면 값이 옵션에 전달되지 않아 정상 동작을 기대할 수 없습니다.
+  `--config /etc/scribed/scribed.conf`처럼 쓰면 값이 옵션에 전달되지 않습니다.
+  원본은 이때 없는 값을 읽어 결과가 정해지지 않았고(UB[^ub], 보통 비정상 종료), 신버전은 사용법을 출력하고 종료(코드 0)합니다.
 
 - **왜 남겼나.**
-  명령행 해석 결과도 바깥에서 보이는 동작이므로 원본대로 둡니다.
+  명령행 해석 결과도 바깥에서 보이는 동작이므로 긴 옵션이 값을 받지 않는 선언은 원본대로 둡니다.
+  없는 값을 읽는 부분은 정해진 결과가 없는 미정의 동작이라 보존 대상이 아니며, 같은 사용법 출력으로 끝나게 했습니다.
 
 - **무엇을 기대하면 되나.**
   항상 짧은 옵션 `-c`, `-p`를 쓰세요.
   옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
 
-- **구·신 차이.** 없습니다.
+- **구·신 차이.**
+  `--config=값` 형태는 구·신 모두 사용법 출력 뒤 종료(코드 0)입니다.
+  `--config 값` 형태는 구버전이 미정의 동작, 신버전은 사용법 출력 뒤 종료(코드 0)입니다.
 
 - **관련 설정 키.**
   명령행 `--config`, `--port`.
@@ -1739,6 +1779,8 @@ secondary에 `add_newlines`가 없을 때 빈 메시지는 길이 0인 frame(`00
   - 준비되지 않은 store가 있어도 listener가 열리고 `OK`를 돌려줄 수 있습니다.
 - 정의하지 않은 category의 로그는 버려지고 `received bad` 카운터가 늘어납니다.
   - category가 빈 로그는 `received blank category`로 셉니다.
+- `TRY_LATER`[^trylater]는 보통 요청 전체를 받지 않았다는 뜻이지만, 종료 중 처음 보는 category를 만드는 경우에는 앞 메시지 일부가 이미 큐에 들어간 뒤 돌아올 수 있습니다.
+  - 클라이언트가 다시 보내면 그 일부는 중복될 수 있습니다. 원본과 같은 동작입니다.
 - `_current`는 일반 파일 저장에서는 symlink지만, HDFS에서는 경로를 담은 일반 파일입니다.
 - HDFS 저장을 일반 spool 파일의 재전송 지원으로 해석하지 마세요.
   - 원본 HDFS의 파일 읽기와 닫힌 파일 잘라내기에는 제한이 남아 있습니다.
@@ -1948,7 +1990,8 @@ Docker 실행 이미지에는 Scribe LICENSE와 함께 Thrift의 LICENSE/NOTICE,
   256 MiB는 268,435,456 bytes입니다.
 [^lf]: LF(Line Feed): 줄바꿈 문자 `\n`이며, byte 값은 `0x0a`입니다.
 [^trylater]: TRY_LATER: `Log` 요청의 결과 값 중 하나로, "지금은 받을 수 없으니 나중에 다시 보내라"는 뜻입니다.
-  이 요청의 메시지는 하나도 받지 않았으므로 클라이언트가 다시 보내야 합니다.
+  클라이언트가 요청을 다시 보내야 합니다.
+  보통은 요청의 메시지를 하나도 받지 않은 상태지만, 서버가 종료되는 중에 처음 보는 category를 만들다 돌려준 `TRY_LATER`는 앞 메시지 일부를 이미 큐에 넣은 뒤일 수 있어 재전송하면 그만큼 중복될 수 있습니다(원본과 같음).
 [^cpp17]: C++17: 2017년에 정해진 C++ 언어 표준입니다.
   컴파일러에 이 판을 지정하면, 그 판의 문법과 표준 라이브러리로 빌드합니다.
 [^smartptr]: 스마트 포인터: 메모리를 다 쓰면 자동으로 돌려주는 C++ 도구입니다.

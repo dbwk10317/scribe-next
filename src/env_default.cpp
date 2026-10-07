@@ -176,7 +176,7 @@ std::shared_ptr<TNonblockingServer> scribe::createServer(
 
 void scribe::startServer() {
   createServer()->serve();
-  // this function never returns
+  // returns once stopServer() (the shutdown RPC) stops the Thrift server
 }
 
 

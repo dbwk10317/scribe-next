@@ -19,8 +19,8 @@
 최신 방침은 구·신 송수신 양방향 혼용과 기존 로그 소비 client의 계약을 우선한다.
 로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회를 바꾸는 semantic 수정은 원본의 정의된 동작으로 되돌렸다.
 그 버그는 문서에 남기며 새 수정 옵션을 추가하지 않는다. UB/crash 방지는 유지하되 미정의 결과 자체를 재현하지 않는다.
-예외로 분배·파일 형식·전달 결과를 바꾸지 않는다고 확인한 세 가지(동적 목적지의 pooled close 순서,
-service_list 재연결 후보 누적, StdFile partial replay 보존)는 [정책](docs/compatibility-policy.md#원본-오류-세-가지)대로 고친 상태를 유지한다.
+예외로 승인한 세 가지(동적 목적지의 pooled close 순서, service_list 재연결 후보 누적, StdFile partial replay 보존)는
+분배·파일 형식은 같지만 일시 실패·메모리·손실 집계가 원본과 달라지며, [정책](docs/compatibility-policy.md#원본-오류-세-가지)에 적힌 영향대로 고친 상태를 유지한다.
 
 - 두 IDL의 method, field ID, enum, requiredness, namespace, 예외와 fb303 API를 유지한다
 - framed binary 및 server·relay·mapping의 명시적 strictRead=false/strictWrite=false를 유지한다
@@ -49,13 +49,8 @@ service_list 재연결 후보 누적, StdFile partial replay 보존)는 [정책]
 새 framework·registry·transport·thread 설계, 미리 만드는 기능과 의존성을 추가하지 않는다.
 빌드 복구와 외부 동작 변경을 한 변경에 섞지 않는다.
 
-2026-10-07 사용자 승인으로 아래 세 단계의 현대화를 이 순서대로, 각각 별도 PR로 진행한다.
-
-1. 내부 `boost::shared_ptr`/`boost::weak_ptr`를 `std::shared_ptr`/`std::weak_ptr`로 일괄 치환한다
-2. Boost 의존성을 제거한다(`boost::filesystem`은 `std::filesystem`, `boost::split`은 같은 결과를 내는 자체 분리 함수)
-3. store·queue·connection pool·config가 전역 `g_Handler`/`g_connPool`에 의존하지 않도록 context를 주입한다
-
-각 단계는 외부 계약, lock 순서·범위, 시간 기준, `rand()` 사용, 파일·wire bytes, 카운터를 바꾸지 않는다.
+2026-10-07 사용자 승인으로 진행한 현대화 세 단계(std 스마트 포인터, Boost 제거, context 주입)는 완료됐다([설계](docs/design.md#현대화-경계)).
+이후 변경도 같은 기준을 지킨다: 외부 계약, lock 순서·범위, 시간 기준, `rand()` 사용, 파일·wire bytes, 카운터를 바꾸지 않는다.
 완료 조건은 `tools/validate_linux.py` 전체 시험 통과와 `tools/old-lane` 구·신 비교 17개 case 통과다.
 StoreQueue의 thread·조건 변수를 `std::thread`로 바꾸는 단계는 여전히 보류다.
 

@@ -35,8 +35,6 @@ class HdfsFile : public FileInterface {
   bool createSymlink(std::string oldpath, std::string newpath) override;
 
  private:
-  char* inputBuffer_;
-  unsigned bufferSize_;
   hdfsFS fileSys;
   hdfsFile hfile;
   hdfsFS connectToPath(const char* uri);
@@ -45,14 +43,6 @@ class HdfsFile : public FileInterface {
   HdfsFile() = delete;
   HdfsFile(HdfsFile& rhs) = delete;
   HdfsFile& operator=(HdfsFile& rhs) = delete;
-};
-
-/**
- * A static lock
- */
-class HdfsLock {
-  public:
-    static std::mutex lock;
 };
 
 #else

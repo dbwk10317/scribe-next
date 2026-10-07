@@ -130,7 +130,7 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 - 실행 closure는 `/old-lane/bin/scribed`와 `/old-lane/lib`의 라이브러리 7개다. ldd·`--help`·SHA256·패키지 버전은 `/old-lane/manifest.txt`에 남긴다
 - `Dockerfile.runtime`은 root `Dockerfile`로 만든 `scribe-next-modern:rocky9`에 `/old-lane`을 더한다. 구버전은 Rocky 9의 glibc·libstdc++ 위에서 돈다
 - `run_differential.sh`는 기본 17개 case를 case마다 새 컨테이너(`--network none`, `--user 65534:65534`, `--cap-drop ALL`, no-new-privileges, 2 CPU, 2 GiB, 512 PIDs)에서 돌린다
-- case별 `exit=0`이 통과다. performance는 case 이름을 붙여 따로 돌린다
+- case별 `exit=0`이 통과다. 스크립트는 모든 case를 돌린 뒤 하나라도 실패하면 종료 코드 1을 돌려준다. performance는 case 이름을 붙여 따로 돌린다
 
 ## 비교가 증명하지 않는 것
 

@@ -13,6 +13,7 @@ cat > "$OUT/targets.json" <<'EOF'
   "modern": {"command": ["/usr/local/bin/scribed"], "environment": {}}
 }
 EOF
+failed=0
 for case in "$@"; do
   rc=0
   docker run --rm --network none --user 65534:65534 --cap-drop ALL --security-opt no-new-privileges \
@@ -20,5 +21,8 @@ for case in "$@"; do
     -v "$CHECKOUT:/validation-input:ro" -v "$OUT:/out" "$IMAGE" \
     python3 /validation-input/tools/daemon_differential.py --run-isolated-daemons \
     --targets /out/targets.json --output "/out/$case" --case "$case" > "$OUT/$case.log" 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || failed=1
   echo "$case exit=$rc" | tee -a "$OUT/summary.txt"
 done
+# every case still runs; exit non-zero if any failed so callers need not parse summary.txt
+exit "$failed"

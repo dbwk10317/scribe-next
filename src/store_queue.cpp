@@ -1,6 +1,6 @@
-// scribe-next modification: qualify existing Boost ownership beside modern Thrift std::shared_ptr.
 // scribe-next modification: C++17 cleanup; typed config read, report a failed store thread start.
-// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
+// scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers (Thrift's are already std); no behaviour change.
+// scribe-next modification: queue mutexes are released by scope guards so a push exception cannot leave them held; same lock order and scope.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
 //
@@ -95,18 +95,30 @@ StoreQueue::~StoreQueue() {
   }
 }
 
+// Unlocks when the guard leaves scope. Queue pushes can throw std::bad_alloc;
+// the original unlock after them was skipped and the mutex stayed held.
+struct MutexUnlock {
+  void operator()(pthread_mutex_t* mutex) const { pthread_mutex_unlock(mutex); }
+};
+typedef std::unique_ptr<pthread_mutex_t, MutexUnlock> MutexGuard;
+static MutexGuard lockGuard(pthread_mutex_t& mutex) {
+  pthread_mutex_lock(&mutex);
+  return MutexGuard(&mutex);
+}
+
 void StoreQueue::addMessage(std::shared_ptr<LogEntry> entry) {
   if (isModel) {
     LOG_OPER("ERROR: called addMessage on model store");
   } else {
     bool waitForWork = false;
 
-    pthread_mutex_lock(&msgMutex);
-    msgQueue->push_back(entry);
-    msgQueueSize.fetch_add(entry->message.size(), std::memory_order_relaxed);
+    {
+      MutexGuard message_guard = lockGuard(msgMutex);
+      msgQueue->push_back(entry);
+      msgQueueSize.fetch_add(entry->message.size(), std::memory_order_relaxed);
 
-    waitForWork = (msgQueueSize.load(std::memory_order_relaxed) >= targetWriteSize.load(std::memory_order_relaxed)) ? true : false;
-    pthread_mutex_unlock(&msgMutex);
+      waitForWork = (msgQueueSize.load(std::memory_order_relaxed) >= targetWriteSize.load(std::memory_order_relaxed)) ? true : false;
+    }
 
     // Wake up store thread if we have enough messages
     if (waitForWork == true) {
@@ -126,10 +138,11 @@ void StoreQueue::configureAndOpen(pStoreConf configuration) {
   if (isModel) {
     configureInline(configuration);
   } else {
-    pthread_mutex_lock(&cmdMutex);
-    StoreCommand cmd(CMD_CONFIGURE, configuration);
-    cmdQueue.push(cmd);
-    pthread_mutex_unlock(&cmdMutex);
+    {
+      MutexGuard command_guard = lockGuard(cmdMutex);
+      StoreCommand cmd(CMD_CONFIGURE, configuration);
+      cmdQueue.push(cmd);
+    }
 
     // signal that there is work to do if not already signaled
     pthread_mutex_lock(&hasWorkMutex);
@@ -145,11 +158,12 @@ void StoreQueue::stop() {
   if (isModel) {
     LOG_OPER("ERROR: called stop() on model store");
   } else if(!stopping) {
-    pthread_mutex_lock(&cmdMutex);
-    StoreCommand cmd(CMD_STOP);
-    cmdQueue.push(cmd);
-    stopping = true;
-    pthread_mutex_unlock(&cmdMutex);
+    {
+      MutexGuard command_guard = lockGuard(cmdMutex);
+      StoreCommand cmd(CMD_STOP);
+      cmdQueue.push(cmd);
+      stopping = true;
+    }
 
     // signal that there is work to do if not already signaled
     pthread_mutex_lock(&hasWorkMutex);
@@ -167,10 +181,11 @@ void StoreQueue::open() {
   if (isModel) {
     LOG_OPER("ERROR: called open() on model store");
   } else {
-    pthread_mutex_lock(&cmdMutex);
-    StoreCommand cmd(CMD_OPEN);
-    cmdQueue.push(cmd);
-    pthread_mutex_unlock(&cmdMutex);
+    {
+      MutexGuard command_guard = lockGuard(cmdMutex);
+      StoreCommand cmd(CMD_OPEN);
+      cmdQueue.push(cmd);
+    }
 
     // signal that there is work to do if not already signaled
     pthread_mutex_lock(&hasWorkMutex);
@@ -196,9 +211,7 @@ std::string StoreQueue::getStatus() {
     return store->getStatus();
   }
   // Worker configuration already holds cmdMutex; inspect only a complete publication.
-  pthread_mutex_lock(&cmdMutex);
-  std::unique_ptr<pthread_mutex_t, decltype(&pthread_mutex_unlock)>
-      command_guard(&cmdMutex, &pthread_mutex_unlock);
+  MutexGuard command_guard = lockGuard(cmdMutex);
   return store->getStatus();
 }
 
