@@ -52,12 +52,16 @@ UB·crash 방지와 빌드 이식은 유지한다. 원본 UB에는 보존할 정
 
 이는 source 계약에서 한 추론이며 혼합 batch fault 시험을 실행한 것은 아니다.
 
-## 다시 고친 동작 (2026-10-07)
+## 고친 동작
 
-PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지 않는다고 리뷰로 확인한 세 가지만 다시 적용했다.
-위 표의 나머지 동작은 원본 그대로다.
+정상 설정의 분배·파일 형식·전달 결과는 바꾸지 않는다.
 
-### 동적 목적지의 pooled close 순서
+### 원본 오류 세 가지
+
+PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지 않는다고 리뷰로 확인한 세 가지다.
+[남긴 원본 버그](#남긴-원본-버그) 표의 나머지 동작은 원본 그대로다.
+
+#### 동적 목적지의 pooled close 순서
 
 - `periodicCheck`가 새 endpoint를 대입하기 전에 close해 이전 key를 해제한다
 - 원본은 `use_conn_pool=yes`에서 새 key를 해제했다. 이전 연결은 refcount가 남아 계속 열려 있었다
@@ -65,7 +69,7 @@ PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지
 - 이제 이전 연결만 닫히고 그 일시 실패가 없다. routing·파일 내용·전달은 같다
 - unpooled 경로는 원래 맞아 차이가 없다
 
-### service_list 재연결 후보
+#### service_list 재연결 후보
 
 - `loadFromList`가 parse 전에 server 목록을 비운다
 - 원본은 재연결마다 전체 목록을 덧붙였다. uptime에 따라 메모리가 늘었다
@@ -73,7 +77,7 @@ PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지
 - 모든 entry가 같이 중복되므로 server 선택 확률은 1/N으로 같다
 - service 기반 경로는 자체 cache로 갱신하며 바뀌지 않았다
 
-### StdFile partial replay
+#### StdFile partial replay
 
 - `openTruncate`가 `out|trunc`로 연다. 원본 `out|app|trunc`는 열리지 않는다
 - 원본은 file primary가 replay batch 일부만 받으면 `replaceOldest`가 항상 실패해 나머지를 lost로 세고 spool 파일을 지웠다
@@ -86,9 +90,9 @@ PR #25가 되돌린 수정 중 분배·파일 형식·전달 결과를 바꾸지
 - 직접 호출한 `openTruncate`는 없는 파일도 만든다. FileStore는 `findOldestFile`로 먼저 확인한다
 - 원자적 교체, crash·쓰기 실패 보존, exactly-once, durable ACK를 새로 약속하지 않는다
 
-## 유지하는 안전·이식 수정
+### 안전·이식 수정
 
-정상 설정의 결과는 바꾸지 않는다.
+비정상 종료, 미정의 동작, 빌드 이식 문제다.
 
 | 수정 | 내용 |
 | --- | --- |

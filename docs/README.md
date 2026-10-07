@@ -6,7 +6,7 @@
 | 분류 | 문서 | 내용 |
 | --- | --- | --- |
 | 설계·정책 | [design.md](design.md) | 목표, 보존 구조, 호환 계약, 의존성, 현대화 단계 |
-| 설계·정책 | [compatibility-policy.md](compatibility-policy.md) | 남긴 원본 버그, 다시 고친 동작, 안전 수정, 통신 크기 한도 |
+| 설계·정책 | [compatibility-policy.md](compatibility-policy.md) | 남긴 원본 버그, 고친 동작, 통신 크기 한도 |
 | 빌드·설치·배포 | [build.md](build.md) | 의존성, 직접 빌드, 검증기 준비, fb303 patch, Rocky, RPM, Python client |
 | 빌드·설치·배포 | [docker.md](docker.md) | Docker 이미지 빌드·실행·정지 |
 | 빌드·설치·배포 | [hdfs.md](hdfs.md) | 선택 HDFS 빌드와 확인 범위 |
