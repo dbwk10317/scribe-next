@@ -1,6 +1,5 @@
-// scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: C++17 cleanup; weak parent walk, unused code removed, same lookups.
-// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: the type::key fallback reads the root StoreConf that scribeHandler::initialize sets via setRoot() instead of the g_Handler global; same lookups.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");

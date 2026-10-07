@@ -1,6 +1,6 @@
 // scribe-next modification: C++17 cleanup; weak parent link breaks the conf ownership cycle.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
-// scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: setRoot() stores the root StoreConf that scribeHandler::initialize sets for the type::key fallback, replacing the g_Handler global.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");

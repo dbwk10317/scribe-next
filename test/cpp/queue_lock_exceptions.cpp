@@ -1,4 +1,4 @@
-// Allocation failure inside the actual addMessage; the message mutex must not stay held.
+// Allocation failures inside the actual message and command pushes; their mutexes must not stay held.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #include "common.h"
 #include <mutex>
@@ -11,6 +11,8 @@
 #undef private
 // The worker is parked inside its configure call (holding cmdMutex, never msgMutex) while this
 // thread probes msgMutex, so a trylock failure can only mean this thread still holds it.
+// The cmdMutex probe runs after stop() joined the worker for the same reason: the running worker
+// relocks cmdMutex on every loop.
 static std::mutex state;
 static std::condition_variable changed;
 static bool configuring=false,release_configure=false;
@@ -35,6 +37,13 @@ int main(){
  if(!held){queue.addMessage(entry);accepted=queue.getSize()==7;} // worker still parked, so nothing drains the queue
  {std::lock_guard<std::mutex> lock(state);release_configure=true;changed.notify_all();}
  queue.stop();
- std::cout<<"threw="<<threw<<" held="<<held<<" accepted="<<accepted<<std::endl;
- return threw&&!held&&accepted?0:1;
+ // The command deque allocates only when a push needs a new block, so re-arm until one does
+ // (at most one block of commands).
+ bool cmd_threw=false;
+ for(int i=0;i<64&&!cmd_threw;++i){fail_next=true;try{queue.open();}catch(const std::bad_alloc&){cmd_threw=true;}}
+ fail_next=false;
+ const bool cmd_held=pthread_mutex_trylock(&queue.cmdMutex)!=0;
+ pthread_mutex_unlock(&queue.cmdMutex); // owned by this thread either way, as above
+ std::cout<<"threw="<<threw<<" held="<<held<<" accepted="<<accepted<<" cmd_threw="<<cmd_threw<<" cmd_held="<<cmd_held<<std::endl;
+ return threw&&!held&&accepted&&cmd_threw&&!cmd_held?0:1;
 }

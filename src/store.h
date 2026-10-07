@@ -370,8 +370,9 @@ class BufferStore : public Store {
 
 /*
  * This store sends messages to another scribe server.
- * This class is really just an adapter to the connection
- * pool of its server context.
+ * With use_conn_pool=yes it is just an adapter to the connection
+ * pool of its server context; otherwise (the default) it owns an
+ * unpooled connection.
  */
 class NetworkStore : public Store {
 

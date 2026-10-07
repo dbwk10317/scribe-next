@@ -22,7 +22,8 @@ class ConnPoolConcurrencyTests(unittest.TestCase):
         env["LD_LIBRARY_PATH"] = os.pathsep.join(map(str, libs))
         with tempfile.TemporaryDirectory(prefix="scribe-pool-concurrency-") as directory:
             work = Path(directory)
-            # The exact production pool methods are exercised; only connection I/O is stubbed.
+            # The exact production pool methods are exercised; every scribeConn method
+            # (constructors, refcounts, lock/unlock and I/O) is a fixture stub.
             source = (ROOT / "src/conn_pool.cpp").read_text()
             boundary = "scribeConn::scribeConn("
             self.assertIn(boundary, source)
@@ -40,7 +41,7 @@ class ConnPoolConcurrencyTests(unittest.TestCase):
                     run = subprocess.run([work / "probe", mode], env=env, capture_output=True,
                                          text=True, timeout=10)
                     self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-                    self.assertIn("refcount/key_preserved=1" if mode=="concurrent" else
+                    self.assertIn("checks_passed=1" if mode=="concurrent" else
                                   "PASS exception", run.stdout)
 
 if __name__ == "__main__":

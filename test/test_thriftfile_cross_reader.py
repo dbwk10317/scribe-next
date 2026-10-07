@@ -1,4 +1,4 @@
-"""Current runtime check for the same bounded reader prepared for old/new server evidence."""
+"""Current-runtime check of the bounded TFileTransport reader in test/cpp/thriftfile_cross_reader.cpp."""
 import os
 from pathlib import Path
 import shutil

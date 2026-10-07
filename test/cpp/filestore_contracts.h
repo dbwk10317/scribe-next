@@ -49,7 +49,8 @@ struct FileStoreFixture {
     now.tm_year = 126;
     now.tm_mon = 9;
     now.tm_mday = 4;
-    // All fixtures use rotate_period=never (buffers enforce this too), so no
+    // No fixture rotates: configs use rotate_period=never, and buffer-file stores
+    // (test_framed=1) force never even when a config asks for hourly. So no
     // production clock/scheduler modification or sleep is needed.
   }
   ~FileStoreFixture() { store->close(); }
@@ -182,7 +183,6 @@ class ReplayBuffer : public BufferStore {
     secondaryStore = secondary;
     // Begin at an explicit already-connected replay boundary, without a socket,
     // timer wait, or claim to cover connection/retry scheduling.
-    retryIntervalRange = 1;
     changeState(SENDING_BUFFER);
     require(secondaryStore->isOpen(), "replay state must have an open secondary");
   }

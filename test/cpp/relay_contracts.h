@@ -46,7 +46,7 @@ static void runRelayDriver(const std::string& filename) {
   pStoreConf configuration(new StoreConf);
   configuration->parseConfig(filename);
   requireRelayDestination(configuration);
-  // This handler is only a real counter owner; initialize/worker/server are not
+  // The handler serves only as that context; initialize/worker/server are not
   // called here. Worker integration is separately exercised over loopback RPC.
   NetworkStore first(*fixture.handler, nullptr, "first", true),
       second(*fixture.handler, nullptr, "second", true);

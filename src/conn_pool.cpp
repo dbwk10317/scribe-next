@@ -1,7 +1,8 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
-// scribe-next modification: C++17 cleanup; std::mutex pool guards keep lock points, dead null checks removed.
+// scribe-next modification: C++17 cleanup; std::mutex pool guards, dead null checks removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: connection locks are scope-guarded and send pins its connection; openCommon takes the existing connection's lock while holding the map lock (new lock point, same order map -> connection).
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -144,9 +145,10 @@ void ConnPool::closeCommon(const string &key) {
   if (iter != connMap.end()) {
     (*iter).second->releaseRef();
     if ((*iter).second->getRef() <= 0) {
-      (*iter).second->lock();
-      (*iter).second->close();
-      (*iter).second->unlock();
+      {
+        ConnectionGuard connection_guard(*(*iter).second);
+        (*iter).second->close();
+      }
       connMap.erase(iter);
     }
   } else {
@@ -282,8 +284,8 @@ int
 scribeConn::send(std::shared_ptr<logentry_vector_t> messages) {
   // Non-strict binary Log payload: 21-byte envelope, then 15 bytes plus the
   // category/message bytes per entry. The outer four-byte frame is excluded.
-  // TFramedTransport::flush itself only limits writes to 2GB. Reject locally
-  // without splitting or discarding a retained batch that exceeds our policy.
+  // Enforce our wire policy locally before writing; a retained batch that
+  // exceeds it is rejected, not split or discarded.
   const uint64_t limit = (std::min)(context.getThriftMaxFrameSize(),
                                    context.getThriftMaxMessageSize());
   uint64_t wire_size = 21;

@@ -1,6 +1,6 @@
-// Test-only bounded cross-version reader; compile against the selected Thrift runtime.
+// Test-only bounded TFileTransport reader; compile against the selected Thrift runtime.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
-#include <stdint.h> // Global fixed-width types required by the Thrift 0.9 headers.
+#include <stdint.h> // Global fixed-width types, before the Thrift header.
 #include <thrift/transport/TFileTransport.h>
 #include <cstdlib>
 #include <fstream>

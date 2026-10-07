@@ -1,7 +1,6 @@
 """Bounded downstream-off disk spool/full replay case for daemon_differential."""
-from __future__ import print_function
 from contextlib import contextmanager
-import binascii, hashlib, os, signal, struct, subprocess, time, traceback
+import binascii, hashlib, os, struct, subprocess, time, traceback
 
 ENTRIES=[(b'fixture',b'A\x00B\n\xff'),(b'fixture',b'tail')]
 SPOOL=b''.join(struct.pack('<I',len(value))+value for category,value in ENTRIES)
@@ -115,12 +114,11 @@ def run_lane(c,lane,downstream_lane=None):
             if c.call(conn,b'getCounters',8,b'\0',directory,records)!=upstream_counters(3,3):raise ValueError('streaming counters differ')
             if c.call(dc,b'getCounters',4,b'\0',dd,dr)!={'fixture:received good':3,'scribe_overall:received good':3}:raise ValueError('downstream counters differ')
             shutdown(c,upstream,9);shutdown(c,downstream,5)
-        result['downstream']=down
     files,links=c.output_snapshot(spool_path);result['final_spool']={'files':files,'symlinks':links}
     files,links=c.output_snapshot(down_path);result['final_downstream']={'files':files,'symlinks':links}
     if result['final_spool']!={'files':[],'symlinks':[]} or result['final_downstream']!=outputs(c,PAYLOAD+b'Z'):
         c.save_json(result_path,result);raise ValueError('shutdown changed spool/replay outputs')
-    result['upstream']=up;result['status']='passed'
+    result['status']='passed'
     c.save_json(result_path,result)
     return result
 

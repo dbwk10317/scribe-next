@@ -5,9 +5,8 @@ tools/daemon_spool.conf.template), 수신측 = scribed writing ordinary file sto
 (tools/daemon_differential.conf.template), 소비 클라이언트 = this harness reading the
 receiver directory read-only (consumer_view). Sender listens on --port, receiver on
 --port+1. Every expectation below is derived from src/store.cpp, src/store_queue.cpp,
-src/conn_pool.cpp and src/scribe_server.cpp (same behaviour in the original fcd294f).
+src/conn_pool.cpp, src/scribe_server.cpp and src/file.cpp (same behaviour in the original fcd294f).
 """
-from __future__ import print_function
 import binascii, hashlib, os, signal, struct, time
 
 FIX, OTHER = b'fixture', b'other'

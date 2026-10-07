@@ -70,7 +70,8 @@ class OrdinarySpoolTests(unittest.TestCase):
         if os.environ.get("LD_LIBRARY_PATH"):
             cls.env["LD_LIBRARY_PATH"] += os.pathsep + os.environ["LD_LIBRARY_PATH"]
         # Do not inherit options that could hide the allocation mismatch.
-        # LeakSanitizer cannot run under this cloud executor's ptrace boundary.
+        # LSan needs ptrace, which some sandboxes deny, so leak checking is off here
+        # (test_hdfs_compat.py runs LSan on the HdfsFile lifetime component).
         # This suite covers ASan allocation/bounds plus UBSan, not leak checking.
         cls.env["ASAN_OPTIONS"] = "halt_on_error=1:alloc_dealloc_mismatch=1:detect_leaks=0"
         cls.env["UBSAN_OPTIONS"] = "halt_on_error=1:print_stacktrace=1"

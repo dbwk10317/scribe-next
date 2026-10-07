@@ -4,6 +4,13 @@
 Uses an already configured SCRIBE_BUILD and installed setuptools. No downloads,
 system installation, daemon, or old/company runtime equivalence are implied.
 THRIFT_PYTHON_SOURCE points to the matching Thrift 0.25.0 lib/py/src tree.
+
+It modifies the SCRIBE_BUILD tree: it plants a newer stale
+lib/py/build/lib/scribe/ttypes.py and deletes src/gen-py/scribe/scribe.py and
+__init__.py, then runs make all/install/install-exec-hook in lib/py, which
+regenerate src/gen-py/scribe, rebuild lib/py/build and write
+lib/py/installed_files.txt, then make uninstall, which consumes that record.
+Only the install/uninstall targets go to a temporary DESTDIR.
 """
 
 import json
@@ -108,10 +115,12 @@ print(json.dumps({'install_lib': c.install_lib}))
         self.assertEqual(len(metadata), 1)
         self.assertIn("Name: scribe\n", metadata[0].read_text())
         self.assertIn("Version: 2.0\n", metadata[0].read_text())
-        # Both layouts must validate only against the interpreter's expected scheme.
+        # Both layouts must validate only against the build PYTHON's own scheme:
+        # the pythonX.Y directory its setuptools chose for the real install above.
+        scheme = self.package.parent.resolve().relative_to(self.stage.resolve()).parent
         for layout in ("site-packages", "dist-packages"):
             stage = self.temporary / ("scheme-" + layout)
-            library = stage / "usr/local/lib/python3.14" / layout
+            library = stage / scheme / layout
             package = library / "scribe"
             with self.assertRaises(AssertionError):
                 installed_package(stage, library)
@@ -161,6 +170,16 @@ print(json.dumps({'install_lib': c.install_lib}))
             self.assertEqual((package / name).read_bytes(),
                              (self.build / "src/gen-py/scribe" / name).read_bytes())
         self.assertNotIn(b"stale legacy build cache", (package / "ttypes.py").read_bytes())
+        # The uninstall hook must remove exactly the recorded files and the directories they
+        # emptied, under the same DESTDIR, and consume installed_files.txt.
+        record = self.build / "lib/py/installed_files.txt"
+        self.assertTrue(record.is_file())
+        self.run_command(["make", "-C", self.build / "lib/py", "uninstall",
+                          "DESTDIR=" + str(stage)])
+        self.assertFalse(record.exists())
+        self.assertFalse(package.exists())
+        self.assertEqual(list(stage.rglob("*.py")), [])
+        self.assertEqual(list(stage.rglob("*.egg-info")), [])
 
     def test_installed_client_import_and_binary_wire(self):
         source = os.environ.get("THRIFT_PYTHON_SOURCE")

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ThriftGenerationTests(unittest.TestCase):
-    def test_library_sources_match_actual_generator_output(self):
+    def test_library_source_lists_match_generated_file_names(self):
         thrift_prefix = os.environ.get("THRIFT_PREFIX")
         fb303_prefix = os.environ.get("FB303_PREFIX")
         if not thrift_prefix or not fb303_prefix:

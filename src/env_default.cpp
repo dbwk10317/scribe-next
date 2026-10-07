@@ -1,5 +1,5 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
-// scribe-next modification: funnel the shutdown RPC thread and main into one exit; no behaviour change.
+// scribe-next modification: funnel the shutdown RPC thread and main into one exit; crash fix for concurrent static destruction.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 //  Copyright (c) 2007-2008 Facebook
@@ -176,7 +176,7 @@ std::shared_ptr<TNonblockingServer> scribe::createServer(
 
 void scribe::startServer() {
   createServer()->serve();
-  // returns once stopServer() (the shutdown RPC) stops the Thrift server
+  // returns once scribeHandler::shutdown() stops the Thrift server; stopServer() then exits the process
 }
 
 
@@ -186,7 +186,7 @@ void scribe::startServer() {
 void scribe::stopServer() {
   // The shutdown RPC runs exit(0) on a Thrift worker thread while main() returns
   // from serve() and exits too; two exits ran the static destructors at once and
-  // could crash (seen on the restarted receiver). One exit, the other caller waits.
+  // could crash. One exit, the other caller waits.
   static std::once_flag once;
   std::call_once(once, [] { exit(0); });
 }

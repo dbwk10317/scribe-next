@@ -1,9 +1,10 @@
-# scribe-next: systemd unit for scribed (Ubuntu 24.04, Rocky Linux 9).
+# scribe-next: systemd unit for scribed (Ubuntu 24.04, Rocky Linux 9; tested on Rocky 9 with a stand-in listener only).
 # User:    sudo useradd --system --no-create-home --shell /usr/sbin/nologin scribe
 # Install: sudo install -D -m 644 examples/scribed.service /etc/systemd/system/scribed.service
 # Config:  /etc/scribe/scribe.conf (examples/docker.conf is a working default).
-# Files:   /var/log/scribed (file stores) and /var/lib/scribed (buffer spool) are created for the
-#          scribe user. Writing anywhere else needs a drop-in with ReadWritePaths=.
+# Files:   /var/log/scribed (file stores) and /var/lib/scribed (for buffer store spools if you configure
+#          one; the default config has none) are created for the scribe user. Writing anywhere else
+#          needs a drop-in with ReadWritePaths=.
 [Unit]
 Description=Scribe log aggregation server (scribe-next)
 After=network.target
@@ -15,11 +16,16 @@ Group=scribe
 LogsDirectory=scribed
 StateDirectory=scribed
 ExecStart=/usr/local/bin/scribed -c /etc/scribe/scribe.conf
-# scribed has no SIGTERM handler, so ask fb303 for a clean shutdown first (what examples/scribe_ctrl stop
-# does). The port comes from the config file because its port= overrides -p. "-" ignores a failed send
-# (daemon already gone); systemd then falls back to SIGTERM after TimeoutStopSec.
-ExecStop=-/usr/bin/python3 -c "import socket;port=int([l.split('=',1)[1] for l in open('/etc/scribe/scribe.conf') if l.split('=',1)[0].strip()=='port'][0]);socket.create_connection(('127.0.0.1',port)).sendall(bytes([0,0,0,18,0,0,0,8])+b'shutdown'+bytes([4,0,0,0,1,0]))"
-# scribed exits 0 even when it fails to start (original behaviour), so a bad config is not retried;
+# scribed has no SIGTERM handler, so ExecStop asks for a clean shutdown with the fb303 oneway
+# shutdown frame (the one examples/scribe_ctrl, a Python 2 script, sends). The port is the last port=
+# in the config file after # comments are cut, as scribed reads it; it overrides -p. systemd sends
+# SIGTERM as soon as ExecStop returns, so the command then waits until $MAINPID has exited (it
+# checks /proc every 0.2 s). TimeoutStopSec (default 90 s) bounds that wait; when it expires systemd
+# sends SIGTERM, and SIGKILL after another TimeoutStopSec.
+# "-" ignores a failed command (no port= in the config, daemon already gone).
+ExecStop=-/usr/bin/python3 -c "import os,socket,time;pid=str(int(os.environ['MAINPID']));port=int([v[1] for v in (l.split('#')[0].split('=',1) for l in open('/etc/scribe/scribe.conf')) if len(v)==2 and v[0].strip()=='port'][-1]);socket.create_connection(('127.0.0.1',port)).sendall(bytes([0,0,0,18,0,0,0,8])+b'shutdown'+bytes([4,0,0,0,1,0]));any(time.sleep(0.2) for _ in iter(lambda:os.path.exists('/proc/'+pid),False))"
+# A bad store configuration keeps scribed running with status WARNING. Only listener failures (port in
+# use, invalid wire limits) make it exit, with code 0 (original behaviour), so they are not retried;
 # check journalctl -u scribed.
 Restart=on-failure
 RestartSec=5

@@ -1,6 +1,8 @@
 // scribe-next modification: C++17 cleanup; explicit single-argument constructor.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: msgQueueSize/targetWriteSize are atomic so the unlocked size and threshold snapshots are not data races.
+// scribe-next modification: an atomic `configured` flag, published by the worker, lets getStatus skip a store that is not configured yet without a lock.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -109,6 +111,7 @@ class StoreQueue {
   pthread_cond_t hasWorkCond; // cond variable to wait on for hasWork
 
   bool stopping;
+  std::atomic<bool> configured; // set by the worker after CMD_CONFIGURE/CMD_OPEN; getStatus reads the store only then
   bool isModel;
   bool multiCategory; // Whether multiple categories are handled
 

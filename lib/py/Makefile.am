@@ -19,10 +19,12 @@ install-exec-hook:
 # scribe-next modification: uninstall removes exactly the files the install hook recorded,
 # then the package directories they emptied; nothing is looked up through the current Python.
 # setup.py strips --root from the recorded paths (leaving them relative for the default "/"),
-# so they are resolved under $(DESTDIR) again here.
+# so they are resolved under "$(DESTDIR)/" again here (an explicitly empty DESTDIR means "/").
+# One path per line; recorded directories that were never created (e.g. __pycache__ when no
+# bytecode was written) are skipped.
 uninstall-hook:
-	test ! -f installed_files.txt || sed 's|^/*||' installed_files.txt | (cd $(DESTDIR) && xargs -r rm -f)
-	test ! -f installed_files.txt || sed 's|^/*||; s|/[^/]*$$||' installed_files.txt | sort -ur | (cd $(DESTDIR) && xargs -r rmdir --ignore-fail-on-non-empty)
+	test ! -f installed_files.txt || sed 's|^/*||' installed_files.txt | (cd "$(DESTDIR)/" && xargs -r -d '\n' rm -f)
+	test ! -f installed_files.txt || sed 's|^/*||; s|/[^/]*$$||' installed_files.txt | sort -ur | (cd "$(DESTDIR)/" && while IFS= read -r d; do test ! -d "$$d" || printf '%s\n' "$$d"; done | xargs -r -d '\n' rmdir --ignore-fail-on-non-empty)
 	rm -f installed_files.txt
 
 

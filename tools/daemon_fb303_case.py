@@ -1,5 +1,4 @@
 """Bounded fb303 option/counter and unknown-method case; no production changes."""
-from __future__ import print_function
 import binascii,os,struct
 MISSING=b'compat_missing'
 KEY=b'compat_key\0\xff'

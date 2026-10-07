@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Opt-in first-batch actual-daemon comparison; stdlib, Python2/3.
+"""Opt-in actual-daemon old/new comparison (17 cases plus performance); stdlib, Python2/3.
 
 Requires an already isolated lo-only environment and uid65534. This tool never
 sets up Docker, namespaces, privileges, dependencies or deployment.
@@ -412,7 +412,7 @@ def compare_lanes(old,new,case='file'):
             if case=='rotation' and seq==11: fields=log_fields([(b'fixture',b'Z')])
             oneway=record['method'] in ('shutdown','reinitialize')
             if record.get('oneway') != oneway or record['request_hex'] != hexbytes(framed(name,seq,fields,oneway)):
-                raise ValueError('unexpected first-batch request')
+                raise ValueError('unexpected recorded request')
             if not oneway:
                 wire=binascii.unhexlify(record['reply_hex'])
                 if len(wire)<4 or struct.unpack('>I',wire[:4])[0] != len(wire)-4 or not 0<len(wire)-4<=MAX_REPLY:
@@ -420,12 +420,12 @@ def compare_lanes(old,new,case='file'):
                 if parse_reply(wire[4:],name,seq) != record['value']:
                     raise ValueError('recorded reply/value mismatch')
             elif 'reply_hex' in record:
-                raise ValueError('oneway shutdown must not record a response')
+                raise ValueError('oneway shutdown/reinitialize must not record a response')
         expected_files,expected_links=expected_outputs(case)
         if lane['files'] != expected_files:
-            raise ValueError('unexpected first-batch output file')
+            raise ValueError('unexpected output file')
         if lane['symlinks'] != expected_links:
-            raise ValueError('unexpected first-batch symlink')
+            raise ValueError('unexpected output symlink')
     if case=='file-stores':
         for lane in (old,new):
             if lane['records'][2]['value']!=2 or any(lane['records'][i]['value']!=0 for i in (5,6)):
