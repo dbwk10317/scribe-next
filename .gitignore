@@ -8,7 +8,6 @@ depcomp
 install-sh
 missing
 mkinstalldirs
-*.o
 
 # scribe-next additions: retain local build, data and credential exclusions.
 # Preserve the upstream source makefile even with core.ignorecase=true.
@@ -58,3 +57,4 @@ compile_commands.json
 *.swo
 *~
 /lib/py/installed_files.txt
+/lib/py/scribe.egg-info/

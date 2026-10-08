@@ -2,7 +2,8 @@
 # (GCC 5.4, Boost 1.58, libevent 2.0, OpenSSL 1.0.2). Output: /old-lane/{bin,lib,manifest.txt}.
 # Context: this file, scribe-autotools.patch and scribe-fcd294f.tar from
 #   git archive --prefix=scribe-fcd294f/ fcd294faffd1e88af1643a3a8c2359c41713f7c2 -o scribe-fcd294f.tar
-FROM ubuntu:16.04
+# ubuntu:16.04 manifest-list digest, looked up with docker buildx imagetools inspect on 2026-10-08.
+FROM ubuntu:16.04@sha256:1f1a2d56de1d604801a9671f301190704c25d604a416f59e03c04f5c6ffee0d6
 
 # Default sources: on 2026-10-07 xenial was still on archive/security.ubuntu.com
 # (old-releases.ubuntu.com/ubuntu/dists/xenial returned 404).

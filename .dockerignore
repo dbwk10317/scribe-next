@@ -1,6 +1,8 @@
 # build에 필요한 것만 context에 넣는다(src, if, lib/py, aclocal, tools, dependencies, autotools 입력, examples).
 .git
 .gitignore
+.gitattributes
+.github
 .editorconfig
 docs
 test
@@ -29,6 +31,7 @@ libtool
 stamp-h*
 src/scribed
 lib/py/build
+lib/py/scribe.egg-info
 build
 build-*
 out

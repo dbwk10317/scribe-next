@@ -43,7 +43,7 @@ def owned_daemon(c,lane,role,config,port,readiness_timeout=10,target_lane=None):
         try:
             result['started_at']=time.time()
             with open(os.devnull,'rb') as stdin:
-                process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,preexec_fn=os.setsid)
+                process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,start_new_session=True)
             result['pid']=process.pid
             conn=c.connect_owned(process,port,readiness_timeout)
             result['owned_connection_inode']=c.connection_owner(process.pid,conn)

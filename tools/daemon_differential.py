@@ -319,7 +319,7 @@ def run_lane(lane,restart_stage=None):
         try:
             port_free()
             with open(os.devnull,'rb') as stdin:
-                process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,preexec_fn=os.setsid)
+                process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,start_new_session=True)
             result['pid']=process.pid
             conn=connect_owned(process,PORT)
             result['owned_connection_inode']=connection_owner(process.pid,conn)

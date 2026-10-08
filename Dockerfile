@@ -5,14 +5,15 @@
 # ---- 빌드 단계: Thrift 0.25.0, matching fb303, scribed ----
 # boost-devel은 Thrift 0.25.0 C++ 라이브러리 빌드와 Thrift·fb303 header가 요구하는 Boost header용이다.
 # scribed는 Boost 라이브러리를 링크하지 않으므로 실행 단계에는 Boost가 없다.
-FROM rockylinux:9 AS build
+# base는 docs/build.md#rocky-linux-8과-9의 Rocky 9 RESF 이미지 digest로 고정한다(두 단계 모두).
+FROM rockylinux/rockylinux@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f AS build
 RUN dnf -y install git gcc gcc-c++ make cmake autoconf automake libtool bison flex libevent-devel boost-devel python3 python3-setuptools && \
     echo /usr/local/lib > /etc/ld.so.conf.d/scribe-local.conf
 WORKDIR /build
 
 # Thrift compiler/runtime 0.25.0: 공식 archive SHA256을 검사한 뒤 shared로 빌드한다.
 # source를 COPY하기 전에 두어 source만 바뀌면 이 layer를 재사용한다.
-RUN curl -LO https://archive.apache.org/dist/thrift/0.25.0/thrift-0.25.0.tar.gz && \
+RUN curl -fLO --proto '=https' https://archive.apache.org/dist/thrift/0.25.0/thrift-0.25.0.tar.gz && \
     echo '66da4707214c54c94bac082103dc67adaf9e08925662700f269170a7b534b214  thrift-0.25.0.tar.gz' | sha256sum -c - && \
     tar xzf thrift-0.25.0.tar.gz && \
     cmake -S thrift-0.25.0 -B thrift-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_LIBDIR=lib \
@@ -21,8 +22,6 @@ RUN curl -LO https://archive.apache.org/dist/thrift/0.25.0/thrift-0.25.0.tar.gz 
     cmake --build thrift-build --parallel "$(nproc)" && cmake --install thrift-build && ldconfig
 
 COPY . /build/scribe-next
-# Windows checkout(core.autocrlf)의 CRLF는 autotools·shell·git apply·설정 parser를 깨뜨리므로 LF로 맞춘다.
-RUN find scribe-next \( -name '*.sh' -o -name '*.ac' -o -name '*.am' -o -name '*.m4' -o -name '*.mk' -o -name '*.py' -o -name '*.patch' -o -name '*.thrift' -o -name '*.conf' \) -exec sed -i 's/\r$//' {} +
 
 # fb303: 고정 0.25.0 source 사본에 counter-lock patch를 적용해 빌드한다.
 RUN python3 scribe-next/tools/prepare_fb303.py --source thrift-0.25.0/contrib/fb303 --output fb303-build && \
@@ -43,7 +42,7 @@ RUN mkdir -p licenses/thrift licenses/fb303 && \
     cp thrift-0.25.0/contrib/fb303/LICENSE licenses/fb303/ && chmod 0644 licenses/LICENSE licenses/*/*
 
 # ---- 실행 단계: scribed와 Thrift runtime만 둔다 ----
-FROM rockylinux:9
+FROM rockylinux/rockylinux@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
 RUN dnf -y install libevent && dnf clean all
 
 COPY --from=build /usr/local/bin/scribed /usr/local/bin/scribed
@@ -54,7 +53,7 @@ RUN echo /usr/local/lib > /etc/ld.so.conf.d/scribe-local.conf && ldconfig
 # 비root 실행 사용자와 설정·로그 경로. 로그 경로 소유권은 VOLUME 선언 전에 정한다.
 RUN useradd --system --no-create-home --shell /sbin/nologin scribe && \
     mkdir -p /etc/scribe /var/log/scribed && chown scribe:scribe /var/log/scribed
-# CRLF를 정리한 build 단계 사본을 복사한다(Windows context의 0777 mode도 정리).
+# Windows context의 0777 mode는 0644로 정리한다.
 COPY --from=build --chmod=0644 /build/scribe-next/examples/docker.conf /etc/scribe/scribe.conf
 
 USER scribe
