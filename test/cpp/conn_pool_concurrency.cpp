@@ -34,6 +34,22 @@ class TestPool:public ConnPool{public:using ConnPool::ConnPool;void seed(std::sh
 int main(int argc,char** argv){
  TestPool pool(context);std::shared_ptr<scribeConn> old(new scribeConn(context,"fixture",1,1));pool.seed(old);
  std::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
+ if(argc==2 && std::string(argv[1])=="liveness") {
+  // A send whose peer never replies holds fixture:1's connection lock and a reopen of that key
+  // waits for it. Neither may hold the pool map lock meanwhile: opening another key must not
+  // wait for the send (bounded here at 1 s; the send stub is released afterwards either way).
+  std::thread sender([&]{pool.send("fixture",1,messages);});
+  {std::unique_lock<std::mutex> g(state);if(!changed.wait_for(g,std::chrono::seconds(3),[]{return sending;}))std::abort();}
+  std::thread reopener([&]{opener=true;pool.open("fixture",1,1);});
+  {std::unique_lock<std::mutex> g(state);if(!changed.wait_for(g,std::chrono::seconds(3),[]{return reopen_event;}))std::abort();}
+  bool other_done=false,fast=false;
+  std::thread other([&]{const bool ok=pool.open("other",2,1);std::lock_guard<std::mutex> g(state);other_done=ok;changed.notify_all();});
+  {std::unique_lock<std::mutex> g(state);fast=changed.wait_for(g,std::chrono::seconds(1),[&]{return other_done;});release_send=true;changed.notify_all();}
+  sender.join();reopener.join();other.join();
+  pool.close("other",2);pool.close("fixture",1);pool.close("fixture",1);
+  const bool bad=!fast||!other_done||!pool.empty()||wrong_unlock||lock_error||wrong_context;
+  std::cout<<"other_open_fast="<<fast<<" checks_passed="<<!bad<<std::endl;return bad?1:0;
+ }
  if(argc==2 && std::string(argv[1])=="exception") {
   throw_send=true;try {pool.send("fixture",1,messages);return 2;}catch(const std::runtime_error&){}
   // Had the throwing send left the connection locked, this open's relock records lock_error.

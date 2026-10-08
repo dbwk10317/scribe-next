@@ -181,6 +181,41 @@ class StoreReviewContracts:
                 self.assertEqual((directory / "data/b002/copied/copied_00000").read_bytes(), b"")
                 self.assertEqual((directory / "data/b001/copied/copied_00000").read_bytes(), b"")
 
+    def test_review_store_key_range_rounding_is_clamped_to_last_bucket(self):
+        config = ("num_buckets=1\nbucket_type=key_range\nbucket_range=9007199254740993\n"
+                  "delimiter=124\nbucket_subdir=b\n"
+                  "<bucket>\ntype=file\nfile_path=@DIRECTORY@/data\nbase_filename=model\n"
+                  "rotate_period=never\nadd_newlines=0\ncreate_symlink=no\nmax_size=0\n</bucket>\n")
+        directory = self.run_fixture("review-store-bucket-range", config)
+        self.assertEqual((directory / "data/b001/model_00000").read_bytes(),
+                         b"9007199254740992|edge0|low")
+        self.assertEqual((directory / "data/b000/model_00000").read_bytes(), b"")
+
+    def test_review_store_copied_queue_rebinds_buffer_tree_to_itself(self):
+        # The copied BufferStore's spool (copyCommon: <file_path>/<category>/<category>_NNNNN).
+        directory = self.run_fixture(
+            "review-store-queue-rebind",
+            "port=1463\nmax_queue_size=4\n<store>\ncategory=accepted\ntype=null\n</store>\n",
+            {"spool/copied/copied_00000": self.file_frame(b"replay")})
+        self.assertEqual(list((directory / "spool/copied").iterdir()), [])
+        self.assertFalse((directory / "spool/model").exists())
+
+    def test_review_dynamic_category_rejects_parent_directory_components(self):
+        config = ("port=1463\n<store>\ncategory=default\ntype=file\nfile_path=@DIRECTORY@/data\n"
+                  "base_filename=model\nrotate_period=never\ncreate_symlink=no\nadd_newlines=0\n"
+                  "target_write_size=1\nmax_write_interval=1\n</store>\n")
+        directory = self.run_fixture("review-category-path", config)
+        # Nothing outside data/. "a/b" is accepted (received good) as upstream: its copy opens
+        # data/a/b/ but its file data/a/b/a/b_00000 has no data/a/b/a/ parent, so nothing is written.
+        self.assertEqual(sorted(p.name for p in directory.iterdir()), ["data", "scribe.conf"])
+        self.assertEqual(sorted(str(p.relative_to(directory / "data")) for p in (directory / "data").rglob("*")),
+                         ["..x", "..x/..x_00000", "a", "a/b"])
+        self.assertEqual((directory / "data/..x/..x_00000").read_bytes(), b"dots")
+
+    def test_review_dynamic_category_queue_failure_counts_bad_and_still_acks(self):
+        self.run_fixture("review-category-queue-failure",
+                         "port=1463\n<store>\ncategory=default\ntype=null\n</store>\n")
+
     def test_review_store_distinct_service_lists_share_legacy_empty_pool_key(self):
         for kind in ("list", "default-list"):
             with self.subTest(kind=kind), self.store_review_peer(kind) as peer:

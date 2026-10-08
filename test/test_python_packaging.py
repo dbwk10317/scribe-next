@@ -5,11 +5,11 @@ Uses an already configured SCRIBE_BUILD and installed setuptools. No downloads,
 system installation, daemon, or old/company runtime equivalence are implied.
 THRIFT_PYTHON_SOURCE points to the matching Thrift 0.25.0 lib/py/src tree.
 
-It modifies the SCRIBE_BUILD tree: it plants a newer stale
-lib/py/build/lib/scribe/ttypes.py and deletes src/gen-py/scribe/scribe.py and
-__init__.py, then runs make all/install/install-exec-hook in lib/py, which
-regenerate src/gen-py/scribe, rebuild lib/py/build and write
-lib/py/installed_files.txt, then make uninstall, which consumes that record.
+SCRIBE_BUILD itself is left untouched (the validator installs and records it after
+the tests): a temporary copy of it gets a newer stale lib/py/build/lib/scribe/ttypes.py
+and loses src/gen-py/scribe/scribe.py and __init__.py, then make all/install/
+install-exec-hook in its lib/py regenerate src/gen-py/scribe, rebuild lib/py/build and
+write lib/py/installed_files.txt, then make uninstall consumes that record.
 Only the install/uninstall targets go to a temporary DESTDIR.
 """
 
@@ -42,6 +42,13 @@ def installed_package(stage, install_lib):
     return expected
 
 
+def tree_state(build):
+    """Names, bytes and mtimes of the build parts the packaging targets write."""
+    return sorted((str(p.relative_to(build)), p.is_dir() or p.read_bytes(), p.lstat().st_mtime_ns)
+                  for root in (build / "lib/py", build / "src/gen-py") if root.exists()
+                  for p in [root, *root.rglob("*")])
+
+
 class PythonPackagingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -62,6 +69,11 @@ class PythonPackagingTests(unittest.TestCase):
         cls.addClassCleanup(temporary.cleanup)
         cls.temporary = Path(temporary.name)
         cls.stage = cls.temporary / "stage"
+        # Work on a copy (relative Makefile paths, mtimes kept so nothing reconfigures).
+        cls.original = cls.build
+        cls.original_state = tree_state(cls.original)
+        cls.build = cls.temporary / "build"
+        shutil.copytree(cls.original, cls.build, symlinks=True)
         # A newer cache from the legacy package must never win over current IDL output.
         cache = cls.build / "lib/py/build/lib/scribe/ttypes.py"
         cache.parent.mkdir(parents=True, exist_ok=True)
@@ -180,6 +192,11 @@ print(json.dumps({'install_lib': c.install_lib}))
         self.assertFalse(package.exists())
         self.assertEqual(list(stage.rglob("*.py")), [])
         self.assertEqual(list(stage.rglob("*.egg-info")), [])
+
+    def test_scribe_build_tree_is_not_modified(self):
+        # Sorted after the test_install*/test_installed* methods (unittest's name order), so
+        # this sees SCRIBE_BUILD after every packaging target has run on the copy.
+        self.assertEqual(tree_state(self.original), self.original_state)
 
     def test_installed_client_import_and_binary_wire(self):
         source = os.environ.get("THRIFT_PYTHON_SOURCE")
