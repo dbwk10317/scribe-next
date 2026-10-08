@@ -7,6 +7,7 @@
 // scribe-next modification: std::filesystem and a local splitAnyOf() replace Boost; same directories and tokens.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 // scribe-next modification: Multi/Category copy() own the new store before copying children, so a child exception cannot leak it.
+// scribe-next modification: count a discarded corrupt spool tail on partial replay, clamp key_range buckets, rebind copied StoreQueue pointers.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -177,6 +178,10 @@ bool Store::empty(struct tm* now) {
 
 const std::string& Store::getType() {
   return storeType;
+}
+
+void Store::setStoreQueue(StoreQueue* queue) {
+  storeQueue = queue;
 }
 
 FileStoreBase::FileStoreBase(ScribeContext& context, StoreQueue* storeq,
@@ -948,6 +953,12 @@ bool FileStore::replaceOldest(std::shared_ptr<logentry_vector_t> messages,
   // overwrite the old contents of the file
   bool success;
   if (infile->openTruncate()) {
+    // The truncate discarded any corrupt tail readOldest found; count it as
+    // deleteOldest would, or the next readOldest overwrites lostBytes_.
+    if (lostBytes_) {
+      context.incCounter(categoryHandled, "bytes lost", lostBytes_);
+      lostBytes_ = 0;
+    }
     success = writeMessages(messages, infile);
 
   } else {
@@ -1458,6 +1469,16 @@ std::shared_ptr<Store> BufferStore::copy(const std::string &category) {
   store->primaryStore = primaryStore->copy(category);
   store->secondaryStore = secondaryStore->copy(category);
   return copied;
+}
+
+void BufferStore::setStoreQueue(StoreQueue* queue) {
+  Store::setStoreQueue(queue);
+  if (primaryStore) {
+    primaryStore->setStoreQueue(queue);
+  }
+  if (secondaryStore) {
+    secondaryStore->setStoreQueue(queue);
+  }
 }
 
 bool BufferStore::handleMessages(std::shared_ptr<logentry_vector_t> messages) {
@@ -2447,6 +2468,15 @@ std::shared_ptr<Store> BucketStore::copy(const std::string &category) {
   return copied;
 }
 
+void BucketStore::setStoreQueue(StoreQueue* queue) {
+  Store::setStoreQueue(queue);
+  for (const auto& bucket : buckets) {
+    if (bucket) {
+      bucket->setStoreQueue(queue);
+    }
+  }
+}
+
 /*
  * Bucketize <messages> and try to send to each contained bucket store
  * At the end of the function <messages> will contain all the messages that
@@ -2583,7 +2613,11 @@ unsigned long BucketStore::bucketize(const std::string& message) {
             // Calculate what bucket this key would fall into if we used
             // bucket_range to compute the modulo
            double key_mod = atol(key.c_str()) % bucketRange;
-           return (unsigned long) ((key_mod / bucketRange) * numBuckets) + 1;
+           unsigned long bucket =
+             (unsigned long) ((key_mod / bucketRange) * numBuckets) + 1;
+           // Above 2^53 the double conversions can round key_mod / bucketRange
+           // up to 1.0 and give numBuckets + 1, past the last bucket.
+           return bucket > numBuckets ? numBuckets : bucket;
           }
           break;
         case key_hash:
@@ -2687,6 +2721,15 @@ std::shared_ptr<Store> MultiStore::copy(const std::string &category) {
   }
 
   return copied;
+}
+
+void MultiStore::setStoreQueue(StoreQueue* queue) {
+  Store::setStoreQueue(queue);
+  for (const auto& child : stores) {
+    if (child) {
+      child->setStoreQueue(queue);
+    }
+  }
 }
 
 bool MultiStore::open() {
@@ -2866,6 +2909,18 @@ std::shared_ptr<Store> CategoryStore::copy(const std::string &category) {
   }
 
   return copied;
+}
+
+void CategoryStore::setStoreQueue(StoreQueue* queue) {
+  Store::setStoreQueue(queue);
+  if (modelStore) {
+    modelStore->setStoreQueue(queue);
+  }
+  for (const auto& entry : stores) {
+    if (entry.second) {
+      entry.second->setStoreQueue(queue);
+    }
+  }
 }
 
 bool CategoryStore::open() {
