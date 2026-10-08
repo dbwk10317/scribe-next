@@ -1,5 +1,5 @@
 // scribe-next modification: return an empty string from the unavailable HDFS stub.
-// scribe-next modification: C++17 cleanup; override, deleted copies, stub tidy-up.
+// scribe-next modification: C++17 cleanup; override, deleted copies, stub tidy-up; unused HdfsLock class, inputBuffer_/bufferSize_ members and the undefined init() declaration removed.
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -17,7 +17,6 @@ class HdfsFile : public FileInterface {
   explicit HdfsFile(const std::string& name);
   virtual ~HdfsFile();
 
-  static void init();        // initialize hdfs subsystem
   bool openRead() override;  // open for reading file
   bool openWrite() override; // open for appending to file
   bool openTruncate() override; // truncate and open for write

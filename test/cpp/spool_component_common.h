@@ -1,4 +1,5 @@
-// Minimal non-HDFS include boundary for the isolated StdFile component tests.
+// Minimal include boundary for the isolated StdFile component tests and the
+// mock-libhdfs HdfsFile lifetime test (test_hdfs_compat.py).
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 // The pinned C++03 upstream file.cpp uses real Boost.Filesystem; the current C++17 one uses std::filesystem.
 // Only diagnostics and unrelated Thrift/server declarations are omitted.

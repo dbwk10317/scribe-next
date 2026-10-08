@@ -39,7 +39,7 @@ def require_upstream(parser):
             if result.returncode:
                 parser.error("required local upstream object is unavailable: " + object_name
                              + "; prepare the pinned upstream explicitly as described in "
-                             "README.md. No fetch was attempted: " + result.stderr.strip())
+                             "docs/build.md#원본-git-object-준비. No fetch was attempted: " + result.stderr.strip())
     except (OSError, subprocess.TimeoutExpired) as error:
         parser.error("Git preflight failed before creating output or running build tools: "
                      + str(error))
@@ -94,13 +94,16 @@ def main():
     thrift, fb303, tools, python_source = (Path(env[n]).resolve() for n in PREFIXES)
     if not (thrift / "bin/thrift").is_file():
         parser.error("missing prepared compiler: " + str(thrift / "bin/thrift"))
-    version = subprocess.check_output([thrift / "bin/thrift", "--version"], text=True).strip()
-    if version != "Thrift version 0.25.0":
-        parser.error("compiler/runtime lane requires Thrift 0.25.0")
-    paths = subprocess.check_output(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=SOURCE,
-    ).split(b"\0")
-    paths = [Path(os.fsdecode(p)) for p in paths if p]
+    listing = ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+    try:
+        version = subprocess.check_output([thrift / "bin/thrift", "--version"], text=True).strip()
+        if version != "Thrift version 0.25.0":
+            parser.error("compiler/runtime lane requires Thrift 0.25.0")
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=SOURCE, text=True).strip()
+        listed = subprocess.check_output(listing, cwd=SOURCE)
+    except (OSError, subprocess.CalledProcessError) as error:
+        parser.error("thrift/git probe failed before creating output: " + str(error))
+    paths = [Path(os.fsdecode(p)) for p in listed.split(b"\0") if p]
     for relative in paths:
         path = SOURCE / relative
         if (not path.is_file() or path.is_symlink() or path.resolve() != path
@@ -112,7 +115,6 @@ def main():
     build.mkdir(); logs.mkdir()
     (output / "home").mkdir(mode=0o700)
     env["HOME"] = str(output / "home")
-    env["PYTHON_SETUPUTIL_ARGS"] = "--record="
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     for relative in paths:
         target = build / relative
@@ -133,8 +135,7 @@ def main():
     env.update(SCRIBE_BUILD=str(build), THRIFT_PREFIX=str(thrift), FB303_PREFIX=str(fb303),
                TOOLS_PREFIX=str(tools), THRIFT_PYTHON_SOURCE=str(python_source))
     inherited_loader=env.get("LD_LIBRARY_PATH","")
-    result = {"status": "running", "rpc_library_mode":"shared" if args.shared_rpc else "static", "source_head": subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=SOURCE, text=True).strip(),
+    result = {"status": "running", "rpc_library_mode":"shared" if args.shared_rpc else "static", "source_head": head,
         "platform": platform.platform(), "thrift_version": version,
         "hdfs_enabled": bool(hadoop), "hadoop_prefix": str(hadoop) if hadoop else None,
         "java_home": str(java) if java else None,
@@ -199,7 +200,7 @@ suite = unittest.defaultTestLoader.discover(sys.argv[1], pattern='test_*.py')
 r = unittest.TextTestRunner(verbosity=2).run(suite)
 pathlib.Path(sys.argv[2]).write_text(json.dumps({'run': r.testsRun, 'failures': len(r.failures),
     'errors': len(r.errors), 'skipped': len(r.skipped)}, indent=2) + '\\n')
-sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
+sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 230 else 1)
 """, SOURCE / "test", output / "test-results.json"], cwd=SOURCE)
         run("install", ["make", "install", "DESTDIR=" + str(stage)])
         if args.shared_rpc:
@@ -215,7 +216,8 @@ sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
             loader=(logs / "installed-help.log").read_text()
             if any("calling init: "+str(stage / "opt/scribe/lib" / name) not in loader for name in ("libscribe.so","libdynamicbucketupdater.so")):
                 raise RuntimeError("staged help did not load the staged RPC libraries")
-        if records != [file_record(SOURCE / relative, SOURCE) for relative in paths]:
+        if (subprocess.check_output(listing, cwd=SOURCE) != listed
+                or records != [file_record(SOURCE / relative, SOURCE) for relative in paths]):
             raise RuntimeError("source changed during validation; result cannot identify one source snapshot")
         if any(p.is_symlink() for p in stage.rglob("*")):
             raise RuntimeError("unexpected staged symlink; manifest must not follow files outside DESTDIR")
@@ -233,9 +235,13 @@ sys.exit(0 if r.wasSuccessful() and not r.skipped and r.testsRun >= 150 else 1)
                     if p.is_file():
                         result["dependency_files"].append({"prefix": str(root), "resolved_path": str(p.resolve()),
                                                            **file_record(p, root)})
+        # Optional input: recorded above when present, never required; its absence is stated.
+        result["fb303_safety_json"] = ("present" if (fb303 / "share/scribe-next/fb303-safety.json").is_file()
+                                       else "missing")
         result["status"] = "passed"
-    except (OSError, RuntimeError) as error:
-        result["status"] = "failed"; result["error"] = str(error)
+    except Exception as error:  # every failure ends in validation.json, not a bare traceback
+        result["status"] = "failed"
+        result["error"] = str(error) if isinstance(error, (OSError, RuntimeError)) else repr(error)
     finally:
         (output / "validation.json").write_text(json.dumps(result, indent=2) + "\n")
     print(result["status"] + ": " + str(output / "validation.json"))

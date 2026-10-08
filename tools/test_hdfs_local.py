@@ -22,6 +22,10 @@ def main():
                  hadoop / "lib/native/libhdfs.so", java / "lib/server/libjvm.so"):
         if not path.is_file():
             parser.error("missing required existing dependency: " + str(path))
+    env = dict(os.environ)
+    for name in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"):
+        if env.get(name):
+            parser.error("unsupported inherited JVM override: " + name)
     with tempfile.TemporaryDirectory(prefix="scribe-hdfs-local-") as temporary:
         work = Path(temporary)
         for name in ("conf", "data", "tmp"):
@@ -43,14 +47,12 @@ def main():
         command += [str(ROOT / path) for path in
                     ("test/cpp/hdfs_contracts.cpp", "src/HdfsFile.cpp", "src/file.cpp")]
         command += ["-L" + str(path) for path in libraries]
-        stdcxxfs = re.search(r"^STDCXXFS_LIB = (.*)$", (build / "src/Makefile").read_text(), re.M).group(1)
-        command += ["-lhdfs", "-ljvm", *stdcxxfs.split(), "-lthrift",
+        stdcxxfs = re.search(r"^STDCXXFS_LIB = (.*)$", (build / "src/Makefile").read_text(), re.M)
+        if not stdcxxfs:
+            parser.error("configured build lacks STDCXXFS_LIB: " + str(build / "src/Makefile"))
+        command += ["-lhdfs", "-ljvm", *stdcxxfs.group(1).split(), "-lthrift",
                     "-o", str(work / "probe")]
         subprocess.run(command, check=True, timeout=60)
-        env = dict(os.environ)
-        for name in ("JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS"):
-            if env.get(name):
-                parser.error("unsupported inherited JVM override: " + name)
         env.update(JAVA_HOME=str(java), HADOOP_PREFIX=str(hadoop),
                    HADOOP_CONF_DIR=str(work / "conf"),
                    CLASSPATH=os.pathsep.join(map(str, [work / "conf",

@@ -2,6 +2,10 @@
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers (Thrift's are already std); no behaviour change.
 // scribe-next modification: queue mutexes are released by scope guards so a push exception cannot leave them held; same lock order and scope.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: msgQueueSize/targetWriteSize are atomic so the unlocked size and threshold snapshots are not data races.
+// scribe-next modification: a failed mutex/cond init or worker start destroys the resources created so far and reports the error.
+// scribe-next modification: the destructor stops and joins a never-stopped worker via `stopping`; the worker skips close() on a store it never opened.
+// scribe-next modification: getStatus reads the store only after the worker published its configuration (atomic flag, no lock); until then it reports OK ("").
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,6 +51,7 @@ StoreQueue::StoreQueue(ScribeContext& context, const string& type, const string&
   : msgQueueSize(0),
     hasWork(false),
     stopping(false),
+    configured(false),
     isModel(is_model),
     multiCategory(multi_category),
     categoryHandled(category),
@@ -69,6 +74,7 @@ StoreQueue::StoreQueue(const std::shared_ptr<StoreQueue> example,
   : msgQueueSize(0),
     hasWork(false),
     stopping(false),
+    configured(false),
     isModel(false),
     multiCategory(example->multiCategory),
     categoryHandled(category),
@@ -88,6 +94,7 @@ StoreQueue::StoreQueue(const std::shared_ptr<StoreQueue> example,
 
 StoreQueue::~StoreQueue() {
   if (!isModel) {
+    // Unlocked read: the destructor is the sole owner of the queue at this point.
     if (!stopping) {
       // Constructed but never stopped: the handler failed to register the queue
       // after the worker started. Follow the stop() sequence without a command
@@ -115,6 +122,7 @@ StoreQueue::~StoreQueue() {
 
 // Unlocks when the guard leaves scope. Queue pushes can throw std::bad_alloc;
 // the original unlock after them was skipped and the mutex stayed held.
+namespace {
 struct MutexUnlock {
   void operator()(pthread_mutex_t* mutex) const { pthread_mutex_unlock(mutex); }
 };
@@ -123,6 +131,7 @@ static MutexGuard lockGuard(pthread_mutex_t& mutex) {
   pthread_mutex_lock(&mutex);
   return MutexGuard(&mutex);
 }
+} // namespace
 
 void StoreQueue::addMessage(std::shared_ptr<LogEntry> entry) {
   if (isModel) {
@@ -228,8 +237,11 @@ std::string StoreQueue::getStatus() {
   if (isModel) {
     return store->getStatus();
   }
-  // Worker configuration already holds cmdMutex; inspect only a complete publication.
-  MutexGuard command_guard = lockGuard(cmdMutex);
+  // The worker holds cmdMutex through configuration and periodicCheck, so do not wait
+  // on it; read the store only once the worker has published a configured, opened store.
+  if (!configured.load(std::memory_order_acquire)) {
+    return std::string();
+  }
   return store->getStatus();
 }
 
@@ -272,10 +284,13 @@ void StoreQueue::threadMember() {
       case CMD_CONFIGURE:
         configureInline(cmd.configuration);
         openInline();
+        configured.store(true, std::memory_order_release);
         open = true;
         break;
       case CMD_OPEN:
         openInline();
+        // A queue copied from a model is opened, never configured, by its worker.
+        configured.store(true, std::memory_order_release);
         open = true;
         break;
       case CMD_STOP:
@@ -352,7 +367,9 @@ void StoreQueue::threadMember() {
 
   } // while (!stop)
 
-  store->close();
+  // Registered queues always processed CMD_CONFIGURE/CMD_OPEN before stop(), so this
+  // only skips close on the destructor-driven stop of a never-configured queue.
+  if (open) store->close();
 }
 
 void StoreQueue::processFailedMessages(std::shared_ptr<logentry_vector_t> messages) {

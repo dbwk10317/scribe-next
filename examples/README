@@ -1,3 +1,4 @@
+## scribe-next modification: updated for this checkout (file list, example names, scribe_ctrl needs no root, retry timing).
 ##  Copyright (c) 2007-2008 Facebook
 ##
 ##  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,9 +22,16 @@
 #
 # Example code in this directory:
 #  scribe_cat: a simple example of a client that can send messages to Scribe
-#  scribe_ctrl: a script that manages a running Scribe instance (requires root)
+#  scribe_ctrl: a script that manages a running Scribe instance over its port
 #  example1.conf: sample configuration file for running Example 1
-#  example2.conf: sample configuration file for running Example 2
+#  example2central.conf, example2client.conf: sample configuration files for
+#    running Examples 2 and 3
+#  hdfs_example.conf, hdfs_example2.conf: HDFS samples (need a build with --enable-hdfs)
+#  docker.conf: scribe-next default configuration for the Docker image and systemd
+#  scribed.service: scribe-next systemd unit
+#
+# scribe_cat and scribe_ctrl are the original Python 2 scripts. They need Python 2
+# and the Thrift/fb303 Python modules; they do not run under Python 3.
 
 #
 # EXAMPLE 1
@@ -42,12 +50,13 @@ src/scribed examples/example1.conf
 echo "hello world" | ./scribe_cat test
 
 #If the previous command failed, make sure you did a 'make install' from the
-#root scribe directory and that $PYTHONPATH is set correctly(see README.BUILD)
+#root scribe directory and that $PYTHONPATH is set correctly (see the Python
+#client notes in README.md and docs/build.md)
 
 #Verify that the message got logged:
 cat /tmp/scribetest/test/test_current
 
-#Check the status of scribe (requires root):
+#Check the status of scribe:
 ./scribe_ctrl status
 
 #Check scribe's counters (you should see 1 message 'received good'):
@@ -151,7 +160,9 @@ echo "test message 2" | ./scribe_cat -h localhost:1464 test3
 #This message will be buffered by the 'client' since it cannot be forwarded to
 #the 'central' server.  Scribe will keep retrying until it is able to send.
 
-#After a couple seconds, the status of the 'client' will be set to a warning message:
+#After the first reconnect attempt, about 25-40 seconds later with retry_interval=30,
+#retry_interval_range=10 and check_interval=3 in example2client.conf, the status
+#of the 'client' will be set to a warning message:
 ./scribe_ctrl status 1464
 
 #Try to Log yet another message(which will also get buffered):

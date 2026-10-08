@@ -17,7 +17,6 @@ from pathlib import Path
 import re
 import shlex
 import select
-import socket
 import struct
 import subprocess
 import tempfile
@@ -219,7 +218,8 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
     def run_fixture(self, mode, config_text=None, input_files=None):
         directory = Path(tempfile.mkdtemp(prefix=mode + "-", dir=self.temporary))
         config = directory / "scribe.conf"
-        # A port is required by initialize(); no socket/server is constructed.
+        # initialize() requires a port. It is never bound; modes that use sockets
+        # pick their own loopback ports.
         if config_text is None:
             config_text = "port=1463\n<store>\ncategory=accepted\ntype=null\n</store>\n"
         config_text = config_text.replace("@DIRECTORY@", str(directory))

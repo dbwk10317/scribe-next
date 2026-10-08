@@ -3,12 +3,13 @@
 **Facebook Scribe 로그 수집 daemon을 지금의 Linux에서 다시 빌드할 수 있게 옮긴 drop-in[^dropin] 대체판입니다.**
 
 실행 파일 이름, 설정 파일, 통신 방식, 저장 파일 형식, 상태 조회 방법이 원본과 같습니다.
-기존 서버의 실행 파일만 바꿔 끼우고, 설정·클라이언트·로그를 읽는 프로그램은 그대로 두는 것이 목표입니다.
+기존 서버의 `scribed`를 바꿔 끼우고, 설정·클라이언트·로그를 읽는 프로그램은 그대로 두는 것이 목표입니다.
+새 `scribed`는 Thrift 0.25.0 공유 라이브러리 두 개가 함께 있어야 하고, `make install`은 Python client package도 새것으로 설치합니다([설치](#4-scribe-next-빌드와-설치-공통)).
 
 > [!NOTE]
 > 원본과 새 서버를 섞어 쓰는 전송과 파일 읽기를 대표적인 조건에서 비교했습니다.
 > 모든 설정과 장애 상황에서 똑같다거나, 운영 환경에서 충분히 검증됐다는 뜻은 아닙니다.
-> 확인한 범위는 [테스트 결과](#테스트-결과)에 있습니다.
+> 확인한 범위와 그 기준 commit은 [테스트 결과](#테스트-결과)에 있습니다.
 
 ## 목차
 
@@ -20,9 +21,8 @@
 - [원래 버전에서 달라진 점](#원래-버전에서-달라진-점)
   - [빌드와 의존성](#빌드와-의존성)
   - [고친 원래 버그](#고친-원래-버그)
-  - [코드 정리 (동작 불변)](#코드-정리-동작-불변)
+  - [코드 정리](#코드-정리)
   - [새 설정 키](#새-설정-키)
-  - [검증 도구](#검증-도구)
 - [일부러 남겨 둔 원래 버그](#일부러-남겨-둔-원래-버그)
 - [테스트 결과](#테스트-결과)
 - [라이선스](#라이선스)
@@ -79,31 +79,16 @@ scribe-next는 그 [공개 원본](https://github.com/facebookarchive/scribe/tre
 다만 사용 중인 모든 언어·Thrift 버전의 클라이언트 조합을 검증한 것은 아닙니다.
 
 > [!IMPORTANT]
-> 서버가 돌려주는 `OK`는 로그를 **메모리 큐에 받았다**는 뜻입니다.
-> 디스크에 저장했다거나 다음 서버에 전달했다는 뜻이 아니며, 중복 없는 전달도 보장하지 않습니다.
-> 구버전과 신버전 모두 같습니다.
+> 서버가 돌려주는 `OK`는 로그를 **메모리 큐에 받았다**는 뜻일 뿐입니다([자세히](#ok는-메모리-큐에-받았다는-뜻이다)).
 
 ### 확인한 환경
 
-| 배포판 | 컴파일러 | 확인한 범위 |
-| --- | --- | --- |
-| Ubuntu 24.04 | GCC 13.3 | 설치 순서 |
-| Rocky Linux 9 | GCC 11.5 | 설치 순서, 전체 시험, 구·신 비교 |
-| Rocky Linux 8.10 | GCC 8.5 | 빌드, 시험, 임시 설치 |
-| Debian 13 | GCC 14.2 | 빌드, 시험 |
-| Ubuntu 26.04.1 | GCC 15.2 | 빌드, 시험 |
-
-모든 환경은 Linux x86_64입니다.
-Ubuntu 24.04와 Rocky Linux 9는 2026-10-07에 깨끗한 컨테이너에서 이 문서의 [설치](#설치) 명령을 그대로 실행했습니다.
-전체 시험과 구·신 비교는 같은 날 WSL의 Rocky 9.8에서 했습니다([테스트 결과](#테스트-결과)).
-
-Rocky 8.10은 더 새로운 bison이 필요하며, 준비 방법은 [Rocky 빌드 안내](docs/build.md#rocky-linux-8과-9)에 있습니다.
-Rocky 8.10, Debian 13, Ubuntu 26.04.1은 2026-10-07 최종 재검증에 포함하지 않았습니다.
-특히 GCC 14·15에서는 최근 현대화 단계(Boost 제거 등)를 다시 확인하지 않았습니다.
+서버 실행 환경은 Linux x86_64만 확인했으며, Mac과 Windows는 확인하지 않았습니다.
+[설치](#설치) 명령은 Ubuntu 24.04와 Rocky Linux 9용입니다.
+배포판·컴파일러별로 무엇을 언제 확인했는지는 [빌드 안내](docs/build.md#확인한-환경)에, 마지막 전체 재검증과 그 뒤 확인하지 않은 범위는 [테스트 결과](#테스트-결과)에 있습니다.
 
 HDFS[^hdfs] 저장, 공유 RPC 라이브러리[^rpc], Rocky용 개발 RPM은 선택 기능이며 확인 범위가 따로 있습니다.
 각각 [HDFS 안내](docs/hdfs.md), [빌드 안내](docs/build.md#shared-rpc), [Rocky RPM](docs/build.md#rocky-개발-rpm)을 보세요.
-Mac과 Windows는 서버 실행 환경으로 확인하지 않았습니다.
 
 ## 설치
 
@@ -115,8 +100,9 @@ Mac과 Windows는 서버 실행 환경으로 확인하지 않았습니다.
 ### 원래 Scribe 방식
 
 원본 Scribe와 같은 `bootstrap.sh` → `make` → `make install` 흐름입니다.
-배포판에 맞는 1단계 블록 하나를 실행한 뒤, 2~5단계를 위에서부터 복사해 붙여 넣으면 됩니다.
-아래 명령은 2026-10-07에 깨끗한 `ubuntu:24.04`와 `rockylinux:9` 컨테이너에서 그대로 실행해 확인했습니다.
+0단계의 한 줄과 배포판에 맞는 1단계 블록 하나를 실행한 뒤, 2~5단계를 위에서부터 복사해 붙여 넣으면 됩니다.
+6단계는 설치한 것을 지우는 방법입니다.
+지금 형태의 설치·삭제 명령을 깨끗한 시스템에서 처음부터 끝까지 실행한 기록은 아직 없습니다([테스트 결과](#테스트-결과)).
 
 #### 0. 미리 알아둘 것
 
@@ -124,7 +110,7 @@ Mac과 Windows는 서버 실행 환경으로 확인하지 않았습니다.
   - Thrift는 `thrift` 코드 생성기(compiler)와 `scribed`가 쓰는 통신 라이브러리를 함께 제공합니다.
 - fb303은 같은 Thrift 소스에 들어 있는 것을 쓰고, 이 프로젝트의 patch를 적용해 빌드합니다.
   - 이 patch는 카운터 잠금이 풀리지 않던 문제를 막습니다([자세히](#thrift-025와-fb303)).
-- 모두 `/usr/local` 아래에 설치합니다.
+- Python client package를 뺀 모든 것을 `/usr/local` 아래에 설치합니다(Python은 [4단계](#4-scribe-next-빌드와-설치-공통) 참고).
   - 원본 Scribe도 `/usr/local`을 기본값으로 가정했으므로, 아래 `--with-*path` 옵션은 이를 명시할 뿐입니다.
 - 저장소를 따로 받지 않습니다. 이 README가 들어 있는 폴더가 곧 scribe-next 저장소이며, 그대로 빌드합니다.
   - 아래 명령은 그 폴더를 `$SCRIBE_SRC`로 기억해 두고 씁니다. 저장소 폴더에서 다음을 실행합니다.
@@ -162,7 +148,10 @@ Rocky에는 Boost header만 담은 패키지가 없어 `boost-devel`을 설치�
 
 마지막 줄은 공유 라이브러리를 찾는 경로에 `/usr/local/lib`을 추가합니다.
 Ubuntu는 이 경로를 기본으로 찾지만 Rocky는 찾지 않기 때문입니다.
-Rocky 8은 더 새로운 bison이 필요하며, 준비 방법은 [Rocky 빌드 안내](docs/build.md#rocky-linux-8과-9)에 있습니다.
+
+Rocky 8에서는 이 순서를 확인하지 않았습니다.
+배포판의 bison 3.0.4로는 Thrift가 빌드되지 않아 bison 3.8.2가 필요하고, 기본 `python3`(3.6)로는 `tools/prepare_fb303.py`가 동작하지 않아 Python 3.9 이상이 필요합니다.
+검증용 Docker 이미지에서 bison을 준비하는 방법은 [Rocky 빌드 안내](docs/build.md#rocky-linux-8과-9)에 있습니다.
 
 **Boost header가 필요한 이유.**
 빌드하는 컴퓨터에는 Boost[^boost] header가 있어야 합니다.
@@ -207,12 +196,7 @@ aclocal -I ./aclocal && automake -a --copy && autoconf
   --without-java --without-php --without-python
 make -j"$(nproc)" CXXFLAGS='-O2 -std=c++17' CPPFLAGS='-I/usr/local/include'
 sudo make install
-sudo mkdir -p /usr/local/share/scribe-next
-sudo cp scribe-next-fb303-safety.json /usr/local/share/scribe-next/fb303-safety.json
 ```
-
-마지막 두 줄은 patch 적용 기록(`fb303-safety.json`)을 설치합니다.
-검증 도구 `tools/validate_linux.py`가 이 파일을 찾습니다.
 
 #### 4. scribe-next 빌드와 설치 (공통)
 
@@ -227,15 +211,17 @@ sudo make install
 ```
 
 `make install`은 `scribed`를 `/usr/local/bin`에, 정적 RPC 라이브러리를 `/usr/local/lib`에 설치합니다.
-Python client package `scribe`도 시스템 Python(`PY_PREFIX`, 기본값 `/usr`)에 함께 설치됩니다.
+IDL에서 만든 Python 3용 client package `scribe`도 `PY_PREFIX`(기본값 `/usr`) 아래의 시스템 Python 경로에 함께 설치됩니다.
 daemon을 실행하는 데는 Python client가 필요하지 않습니다.
 
-**Python client를 쓸 때.**
-같은 버전의 Thrift Python package(`python3 -m pip install thrift==0.25.0`)와 fb303 Python module도 필요합니다.
-위 3단계는 fb303 Python module을 만들지 않습니다(`--without-python`).
+이름이 같은 `scribe` package(예: 원본의 Python 2 client)가 이미 있는 시스템이라면, 덮어쓰지 않도록 다른 `PY_PREFIX`를 주세요.
+`bootstrap.sh`는 받은 인자를 configure에 그대로 넘기므로, 위 `./bootstrap.sh` 줄 끝에 `PY_PREFIX=/opt/scribe-python`처럼 더하면 됩니다.
 
-이 package는 Thrift 0.25용 Python 3 client이며, 원본의 Python 2 client를 대신하도록 검증하지 않았습니다.
-이름이 같은 `scribe` package가 있는 기존 client 환경에 덮어 설치하지 말고, 별도 가상환경이나 설치 경로를 쓰세요.
+**Python client를 쓸 때.**
+이 저장소는 Python 3 client를 바로 쓸 수 있는 설치 경로를 제공하지 않습니다.
+설치된 `scribe` package를 쓰려면 같은 버전의 Thrift Python package(0.25.0)와 fb303 Python module이 함께 필요한데, 위 순서는 둘 다 설치하지 않습니다.
+특히 fb303 Python module은 이 저장소가 만들지도 제공하지도 않습니다(3단계의 `--without-python`).
+이 package는 원본의 Python 2 client를 대신하도록 검증하지 않았습니다. package 구성은 [빌드 안내](docs/build.md#python-client)에 있습니다.
 
 공유 라이브러리 경로와 HDFS 빌드 설정은 [빌드 안내](docs/build.md)와 [HDFS 안내](docs/hdfs.md)에 있습니다.
 
@@ -274,18 +260,18 @@ sudo userdel scribe
 cd "$SCRIBE_SRC" && sudo make uninstall
 cd ~/scribe-build/fb303-build && sudo make uninstall
 cd ~/scribe-build && sudo xargs rm -f < thrift-build/install_manifest.txt
-sudo rm -rf /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303 /usr/local/share/scribe-next
+sudo rm -rf /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303
 sudo rmdir --ignore-fail-on-non-empty /usr/local/lib/cmake /usr/local/lib/pkgconfig
 sudo rm -f /etc/ld.so.conf.d/scribe-local.conf
 sudo ldconfig
 rm -rf ~/scribe-build
 ```
 
-- 1번째 줄은 `scribed`와 정적 RPC 라이브러리, 그리고 시스템 Python에 들어간 `scribe` package와 그 metadata를 지웁니다.
+- 1번째 줄은 `scribed`와 정적 RPC 라이브러리, 그리고 `PY_PREFIX` 아래에 들어간 `scribe` package와 그 metadata를 지웁니다.
   - `make install`이 Python package로 설치한 파일 목록을 `lib/py/installed_files.txt`에 적어 두고, `make uninstall`은 그 목록의 파일만 지웁니다.
     가상환경이나 사용자 디렉터리에 있는 같은 이름의 package는 건드리지 않습니다.
   - 이 목록이 없는 이전 설치라면 아래 "빌드 폴더를 이미 지웠다면"의 Python 경로를 직접 지웁니다.
-- 2~5번째 줄은 fb303, Thrift, 그리고 그 둘이 남긴 빈 폴더와 patch 기록을 지웁니다.
+- 2~5번째 줄은 fb303, Thrift, 그리고 그 둘이 남긴 header 폴더와 빈 폴더를 지웁니다.
   - `install_manifest.txt`는 파일만 적어 두므로 header 폴더는 따로 지웁니다.
 - `scribe-local.conf`는 Rocky(1-B)에서만 만들었습니다. Ubuntu에서는 없는 파일이라 그 줄은 아무것도 하지 않습니다.
 - 1단계의 배포판 패키지(빌드 도구, libevent, Boost header)는 다른 소프트웨어도 쓸 수 있어 지우지 않습니다.
@@ -298,10 +284,11 @@ sudo rm -rf /usr/local/bin/scribed /usr/local/bin/thrift \
   /usr/local/lib/libthrift.so /usr/local/lib/libthrift.so.0.25.0 \
   /usr/local/lib/libthriftnb.so /usr/local/lib/libthriftnb.so.0.25.0 \
   /usr/local/lib/pkgconfig/thrift.pc /usr/local/lib/pkgconfig/thrift-nb.pc \
-  /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303 /usr/local/share/scribe-next
+  /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303
 ```
 
 Python package는 `PY_PREFIX`(기본값 `/usr`) 아래 시스템 Python 경로에만 들어갑니다.
+다른 `PY_PREFIX`로 설치했다면 아래 경로의 `/usr` 대신 그 값 아래에서 `scribe` 폴더를 찾아 지웁니다.
 `import scribe`로 경로를 찾으면 가상환경이나 사용자 디렉터리의 다른 package를 지울 수 있으므로, 설치 경로를 직접 지정합니다.
 Rocky는 `site-packages`, Ubuntu는 `dist-packages`를 씁니다.
 
@@ -320,34 +307,23 @@ sudo git clean -fdx
 
 [실행](#실행)에서 만든 `$HOME/scribe-demo.conf`와 `$HOME/scribe-data`는 설치와 무관한 본인 파일이므로 필요 없으면 직접 지웁니다.
 
-지운 뒤 `command -v scribed`는 아무것도 출력하지 않고, `python3 -c 'import scribe'`는 `ModuleNotFoundError`로 끝나야 합니다.
-2026-10-07에 Rocky Linux 9에서 1-B~5단계를 그대로 실행한 뒤 지웠을 때, `/usr/local`과 시스템 Python은 설치 전과 같아졌습니다.
-당시 Python package는 `import scribe`로 찾은 경로를 지웠고, 지금의 `make uninstall` 목록 방식은 같은 `setup.py` 설치를 Rocky 9의 `/usr`와 임시 `DESTDIR`에서 재현해 확인했습니다.
-Ubuntu 24.04에서는 삭제를 따로 실행하지 않았습니다.
+지운 뒤 `command -v scribed`는 아무것도 출력하지 않고, 기본 `PY_PREFIX`였다면 `python3 -c 'import scribe'`는 `ModuleNotFoundError`로 끝나야 합니다.
 
 ### Docker 방식
 
 원본 Scribe에는 없던 방법입니다.
 Docker[^docker]로 위 1~4단계를 대신하고, 저장소의 [`Dockerfile`](Dockerfile)로 만든 이미지에서 `scribed`를 실행합니다.
-자세한 내용은 [Docker 안내](docs/docker.md)에 있습니다.
+이미지 구성, 확인 방법, 제한(HDFS 없음, 정적 RPC 라이브러리만, 기반 이미지 digest 미고정)은 [Docker 안내](docs/docker.md)에 있습니다.
+Scribe에는 인증·TLS가 없어 포트에 닿는 모든 client의 요청을 받으므로, 신뢰할 수 있는 네트워크에만 여세요.
 
 #### 이미지 빌드
 
 저장소 checkout의 최상위 폴더에서 실행합니다.
+Thrift 소스를 내려받으므로 네트워크가 필요하고, commit하지 않은 변경도 이미지에 들어갑니다.
 
 ```sh
 docker build -t scribe-next:local .
 ```
-
-- Dockerfile은 저장소를 따로 받지 않고 지금 checkout을 그대로 빌드합니다.
-  - commit하지 않은 변경도 이미지에 들어갑니다.
-- 빌드는 위 1~4단계와 같은 순서(Thrift → patch한 fb303 → `bootstrap.sh`·`make`·`make install`)입니다.
-- Thrift 소스를 내려받으므로 네트워크가 필요합니다.
-- Windows checkout의 CRLF 줄 끝은 빌드 중에 변환하므로, Windows에서 받은 checkout도 쓸 수 있습니다.
-
-확인한 환경(20 core)에서 빌드는 약 1.5분 걸렸고, 이미지는 272 MB(기반 이미지 264 MB)였습니다.
-실행 이미지에는 `scribed`, Thrift 라이브러리 두 개, 배포판 libevent, LICENSE/NOTICE 파일만 들어 있습니다.
-Boost는 들어 있지 않습니다.
 
 #### 실행과 기본 설정
 
@@ -360,20 +336,15 @@ docker run -d --name scribe -p 1463:1463 \
   scribe-next:local
 ```
 
-컨테이너는 root가 아닌 시스템 사용자 `scribe`(확인한 이미지에서 uid 999)로 실행됩니다.
-연결한 폴더에 그 사용자가 쓸 수 있어야 하므로 `chmod 0777`을 했습니다.
-컨테이너가 만든 파일은 host에서도 그 uid의 소유로 보입니다.
+컨테이너는 root가 아닌 시스템 사용자 `scribe`로 실행되므로, 연결한 폴더에 그 사용자가 쓸 수 있어야 합니다(위의 `chmod 0777`).
 
 기본 설정 [`examples/docker.conf`](examples/docker.conf)는 다음과 같이 동작합니다.
 
 - `port=1463`에서 받습니다.
-- 따로 정의하지 않은 모든 category[^category]를 `category=default` [모델](#먼저-모델과-복사본) 하나로 받습니다.
-- 파일은 `/var/log/scribed/<category>/<category>-YYYY-MM-DD_00000`에 쌓입니다.
-- 메시지마다 줄바꿈을 하나 붙입니다(`add_newlines=1`).
-- 하루마다(`rotate_period=daily`) 또는 1 GiB를 넘으면(`max_size=1073741824`) 새 파일을 엽니다.
+- 모든 category[^category]를 `category=default` [모델](#먼저-모델과-복사본) 하나로 받습니다.
+- 파일은 `/var/log/scribed/<category>/<category>-YYYY-MM-DD_00000`에 쌓이고, 메시지마다 줄바꿈을 하나 붙입니다(`add_newlines=1`).
 - `<category>_current` symlink[^symlink]가 지금 쓰는 파일을 가리킵니다.
 
-날짜는 컨테이너 시계(기본 UTC)를 따릅니다.
 직접 만든 설정을 쓰려면 `/etc/scribe/scribe.conf` 위에 읽기 전용으로 연결합니다.
 
 ```sh
@@ -383,41 +354,26 @@ docker run -d --name scribe -p 1463:1463 \
   scribe-next:local
 ```
 
-설정의 `port`를 바꾸면 `docker run`의 `-p` 포트 연결도 같이 바꾸세요.
-설정의 `port`가 `scribed`의 명령행 `-p`보다 우선하기 때문입니다.
+컨테이너 안의 `scribed`는 설정의 `port`에서 받습니다.
+설정의 `port`를 바꾸면 `docker run -p 호스트포트:설정포트`도 같이 바꾸세요.
 
 #### 동작 확인
-
-먼저 컨테이너 로그에서 시작 메시지와 상태를 봅니다.
 
 ```sh
 docker logs scribe
 ```
 
 `Starting scribe server on port 1463`과 `STATUS: ALIVE`가 보여야 합니다.
-프로세스가 떴다는 것만으로 저장이 정상이라고 판단하지 말고, 시험 메시지를 보내 실제 파일을 확인하세요.
-보내는 방법은 [실행의 동작 확인](#3-동작-확인)과 같으며, 첫 줄의 `cd`만 이 checkout 폴더로 바꾸면 됩니다.
-
-확인할 때 category `demo`로 `hello docker\n`을 보내면 `OK`가 돌아왔습니다.
-`scribe-logs/demo/demo-<날짜>_00000`에는 정확히 `hello docker\n\n`이 저장됐습니다.
-메시지에 든 줄바꿈 하나에 `add_newlines=1`이 하나를 더 붙이기 때문입니다.
+프로세스가 떴다는 것만으로 저장이 정상이라고 판단하지 마세요.
+[실행의 동작 확인](#3-동작-확인)과 같은 방법으로 저장소 폴더에서 시험 메시지를 보내고, `scribe-logs/demo/demo_current`의 내용을 확인합니다.
 
 #### 정지
 
 `docker stop`은 유예 시간(기본 10초)을 기다린 뒤 SIGKILL로 강제 종료합니다.
-`scribed`에는 SIGTERM 처리가 없기 때문이며, 원본과 같은 동작입니다.
+`scribed`가 컨테이너의 PID 1이고 SIGTERM을 처리하는 코드가 없어, SIGTERM이 무시되기 때문입니다.
 이때 메모리 큐에 남아 있던 메시지는 잃을 수 있습니다.
 
-깔끔하게 멈추려면 fb303 `shutdown`을 보내세요(종료 코드 0).
-보내는 방법은 [실행의 정지](#4-정지)와 같습니다(첫 줄의 `cd`는 이 checkout 폴더로).
-
-#### 제한
-
-- HDFS를 지원하지 않습니다.
-- RPC 라이브러리는 정적 라이브러리로만 빌드합니다.
-- 기반 이미지 `rockylinux:9`를 digest로 고정하지 않았습니다.
-- 보안 강화 안내가 아닙니다.
-  - Scribe에는 인증·TLS가 없어 포트에 닿는 모든 client의 요청을 받으므로, 신뢰할 수 있는 네트워크에만 여세요.
+깔끔하게 멈추려면 [실행의 정지](#4-정지)와 같은 방법으로 fb303 `shutdown`을 보내세요(종료 코드 0).
 
 #### 삭제
 
@@ -430,7 +386,7 @@ sudo rm -rf scribe-logs
 ```
 
 - `docker rm -f`는 실행 중인 컨테이너를 SIGKILL로 끝내므로, 큐의 로그를 지키려면 먼저 [정지](#정지)대로 `shutdown`을 보내세요.
-- `scribe-logs`의 파일은 컨테이너 사용자(uid 999) 소유라 `sudo`가 필요할 수 있습니다.
+- `scribe-logs`의 파일은 컨테이너 사용자 소유라 `sudo`가 필요할 수 있습니다.
 - 빌드 중간 layer는 `docker builder prune`으로 지웁니다. 다른 이미지의 cache도 함께 지워집니다.
 
 ## 실행
@@ -492,12 +448,17 @@ scribed -c "$SCRIBE_CONFIG"
 
 - `scribed`는 실행한 터미널에 붙은 채 동작하고, 진행 로그를 그 터미널에 출력합니다.
 - 부팅 때 자동으로 시작하고 `systemctl restart scribed`로 다루려면 [systemd 서비스로 등록](#5-systemd-서비스로-등록)을 보세요.
-- 예제는 포트를 localhost로 제한하지 않으므로, 실행 환경의 접근 범위를 먼저 확인하세요.
+- `scribed`에는 받을 주소를 정하는 설정이 없어 모든 네트워크 주소에서 받습니다(원본과 같음). 인증·TLS도 없으니 실행 환경의 접근 범위를 먼저 확인하세요.
+- `-c`와 옵션이 아닌 인자가 모두 없으면 원본 기본값 `/usr/local/scribe/scribe.conf`를 읽습니다.
 
 **설정의 `port`가 명령행 `-p`보다 우선합니다.**
 위 설정으로 `scribed -c "$SCRIBE_CONFIG" -p 1464`를 실행해도 1463에서 받습니다.
 이때 로그에 `port 1463 from conf file overriding old port 1464`가 남습니다.
-`port`와 `-p`가 모두 없으면 `No port number configured` 오류로 시작하지 못합니다.
+
+**설정에 `port=`를 꼭 쓰세요.**
+`port`와 `-p`가 모두 없어도 `scribed`는 끝나지 않습니다.
+`No port number configured` 오류로 상태가 `WARNING`이 되고, store를 하나도 만들지 않은 채 운영체제가 고른 임의의 port에서 받습니다(로그에는 `Starting scribe server on port 0`, 원본과 같음).
+설정 파일을 읽지 못할 때도 store 없이 `WARNING` 상태로 뜹니다(port는 `-p` 값, 없으면 임의의 port).
 
 긴 옵션 `--config`, `--port`는 원본 결함 때문에 제대로 동작하지 않습니다([남겨 둔 버그](#긴-명령행-옵션은-값을-받지-못한다)).
 항상 `-c`, `-p`를 쓰세요.
@@ -512,7 +473,7 @@ scribed -c "$SCRIBE_CONFIG"
 ```
 
 프로세스가 떴다는 것만으로 정상이라고 판단하지 마세요.
-`scribed`는 [시작에 실패해도 종료 코드 0](#시작에-실패해도-종료-코드는-0이다)으로 끝나고, store 설정이 틀려도 계속 떠 있습니다.
+`scribed`는 설정이 틀려도 `WARNING` 상태로 계속 떠 있을 수 있고, 시작에 실패해도 종료 코드 0으로 끝납니다([자세히](#시작에-실패해도-종료-코드는-0이다)).
 그래서 시험 메시지, fb303 상태, 카운터, 실제 파일을 함께 확인합니다.
 
 다른 터미널을 열어 저장소 폴더로 이동한 뒤 아래를 실행합니다.
@@ -546,7 +507,7 @@ demo:received good 1
 scribe_overall:received good 1
 ```
 
-- `Log: 0`은 `OK`(메모리 큐에 받음)이고, `1`이면 `TRY_LATER`[^trylater]입니다.
+- `Log: 0`은 [`OK`](#ok는-메모리-큐에-받았다는-뜻이다)이고, `1`이면 `TRY_LATER`[^trylater]입니다.
 - `status: 2`는 `ALIVE`입니다.
   - `5`(`WARNING`)이면 설정이나 연결에 문제가 있다는 뜻이며, 로그의 `STATUS:` 줄에 이유가 남습니다.
 - 카운터는 `<category>:<이름>`과 전체 합계 `scribe_overall:<이름>`으로 나옵니다.
@@ -562,9 +523,9 @@ cat "$SCRIBE_DATA/demo_current"
 내용은 `hello scribe` 한 줄입니다(`add_newlines=1`이 줄바꿈을 붙임).
 파일은 시작할 때 미리 열리므로, 파일이 있는지만 보지 말고 내용까지 확인하세요.
 
-원본의 [`examples/scribe_cat`](examples/scribe_cat)으로도 보낼 수 있습니다.
-다만 Python 2 시절 스크립트 그대로이며, [Python client](#4-scribe-next-빌드와-설치-공통)와 Thrift·fb303 Python module이 모두 필요합니다.
-지금의 Python에서 동작하는지는 보장하지 않습니다.
+원본 예제 [`examples/scribe_cat`](examples/scribe_cat)·[`examples/scribe_ctrl`](examples/scribe_ctrl)은 Python 2 스크립트 그대로라 이 용도로 쓸 수 없습니다.
+`scribe_ctrl`은 Python 3에서 `SyntaxError`로 바로 끝납니다.
+`scribe_cat`은 첫 줄이 Ubuntu 24.04·Rocky 9 기본 설치에 없는 `/usr/bin/python`이고, [Python client](#4-scribe-next-빌드와-설치-공통)와 Thrift·fb303 Python module이 필요하며, `TRY_LATER`를 받으면 Python 2 `print` 문 때문에 `TypeError`로 끝납니다.
 
 ### 4. 정지
 
@@ -579,15 +540,15 @@ socket.create_connection(('127.0.0.1', 1463)).sendall(framed(b'shutdown', 1, one
 PY
 ```
 
-`scribed`는 큐에 남은 로그를 한 번 더 처리하고 store를 닫은 뒤 `scribe server exiting`을 남기고 끝납니다.
-종료 코드는 0입니다.
+`scribed`는 큐에 남은 로그를 한 번 더 처리하고 store를 닫은 뒤 종료 코드 0으로 끝납니다.
+마지막 로그 `scribe server exiting`은 종료 순서에 따라 남지 않을 수 있습니다.
 다만 직전에 실패해 재시도를 기다리던 묶음(`must_succeed=yes`의 requeue)이 있으면 그 묶음만 처리하고, 그 사이 큐에 들어온 로그는 처리하지 않은 채 store를 닫습니다.
 이때 `lost` 카운터는 늘지 않으며, 원본과 같은 동작입니다.
 
 SIGTERM(예: `kill`)이나 Ctrl+C에는 따로 처리하는 코드가 없어, 프로세스가 그 자리에서 끝납니다.
 이때 메모리 큐에 있던 로그는 잃을 수 있습니다.
 원본과 같은 동작입니다.
-아래 systemd 서비스는 그래서 `systemctl stop`·`restart` 때 SIGTERM 대신 이 `shutdown`을 먼저 보냅니다.
+아래 systemd 서비스는 그래서 `systemctl stop`·`restart` 때 SIGTERM보다 이 `shutdown`을 먼저 보내고 프로세스가 끝나기를 기다립니다.
 
 ### 5. systemd 서비스로 등록
 
@@ -604,9 +565,10 @@ sudo systemctl enable --now scribed
 
 - 서비스는 root가 아닌 시스템 사용자 `scribe`로 실행됩니다.
 - 설정은 `/etc/scribe/scribe.conf`입니다. [`examples/docker.conf`](examples/docker.conf)가 바로 쓸 수 있는 기본 설정이며, Docker 방식과 같은 파일입니다.
-  본인 설정을 쓰려면 이 경로에 두거나, 설치 줄의 원본 경로만 바꾸세요. `port=`는 꼭 있어야 합니다.
-- 파일 store는 `/var/log/scribed`, buffer의 spool은 `/var/lib/scribed`에 씁니다.
-  두 폴더는 systemd가 `scribe` 소유로 만듭니다. 그 밖의 경로는 서비스가 쓸 수 없게 막혀 있으므로(`ProtectSystem=strict`), 다른 곳에 쓰려면 `sudo systemctl edit scribed`로 `[Service]`에 `ReadWritePaths=/다른/경로`를 추가하세요.
+  본인 설정을 쓰려면 이 경로에 두거나, 설치 줄의 원본 경로만 바꾸세요. [`port=`는 꼭 있어야 합니다](#2-시작).
+- systemd가 `/var/log/scribed`와 `/var/lib/scribed`를 `scribe` 소유로 만듭니다. 기본 설정은 buffer 없이 `/var/log/scribed`에만 씁니다.
+  buffer를 쓴다면 spool 위치는 secondary의 `file_path`가 정하며, 이 문서의 예시처럼 `/var/log/scribed/spool`을 써도 됩니다.
+  그 밖의 경로는 서비스가 쓸 수 없게 막혀 있으므로(`ProtectSystem=strict`), 다른 곳에 쓰려면 `sudo systemctl edit scribed`로 `[Service]`에 `ReadWritePaths=/다른/경로`를 추가하세요.
 - 진행 로그는 터미널 대신 journal에 남습니다.
 
 이후에는 평소 systemd 명령으로 다룹니다.
@@ -618,20 +580,23 @@ systemctl status scribed
 journalctl -u scribed -n 50 -f
 ```
 
-`stop`·`restart`는 [정지](#4-정지)와 같은 fb303 `shutdown`을 설정의 `port`로 먼저 보내, 큐에 남은 로그를 처리하고 store를 닫은 뒤 끝나게 합니다.
-그 요청이 닿지 않으면 systemd가 기본 대기 시간(90초) 뒤 SIGTERM으로 끝냅니다.
+`stop`·`restart`는 먼저 [정지](#4-정지)와 같은 fb303 `shutdown`을 보내고, `scribed`가 큐에 남은 로그를 처리하고 store를 닫은 뒤 끝날 때까지 기다립니다.
+보낼 port는 `scribed`와 같은 규칙으로 설정 파일에서 읽습니다(`#` 뒤는 주석, `port=`가 여러 번 나오면 마지막 값).
+기다리는 시간의 상한은 `TimeoutStopSec`(기본 90초)입니다.
+기다림이 끝나면 systemd는 곧바로 남은 프로세스에 SIGTERM을 보내고, 그래도 남아 있으면 SIGKILL로 끝냅니다.
+`shutdown`이 닿지 않았거나 상한 안에 끝나지 않았다면 이 SIGTERM이 `scribed`를 끝내므로, 큐의 로그를 잃을 수 있습니다.
 
 [동작 확인](#3-동작-확인)의 시험 메시지를 보내면 `/var/log/scribed/demo/demo_current`에 저장됩니다(기본 설정은 모든 category를 받습니다).
 
 알아둘 점은 다음과 같습니다.
 
-- `scribed`는 [시작에 실패해도 종료 코드 0](#시작에-실패해도-종료-코드는-0이다)으로 끝나므로, 설정이 틀리면 서비스는 조용히 `inactive`가 되고 다시 시작하지 않습니다(`Restart=on-failure`).
+- store 설정이 틀려도 `scribed`는 끝나지 않고 `WARNING` 상태로 계속 떠 있으므로, 서비스는 `active`로 보입니다.
+  listener를 열지 못해 끝날 때(port 사용 중, 잘못된 크기 한도)도 종료 코드가 0이라, `Restart=on-failure`가 다시 시작하지 않고 서비스는 `inactive`가 됩니다([자세히](#시작에-실패해도-종료-코드는-0이다)).
   `systemctl status scribed`와 `journalctl -u scribed`로 `STATUS:` 줄을 확인하세요.
 - Rocky의 firewalld는 1463을 막습니다. 다른 서버에서 로그를 받으려면 `sudo firewall-cmd --permanent --add-port=1463/tcp && sudo firewall-cmd --reload`를 실행하세요.
 - `ExecStop`은 `python3`을 씁니다. 1단계에서 설치한 Python 표준 라이브러리만 쓰므로 Thrift Python package는 필요 없습니다.
 
-이 unit은 2026-10-07에 Rocky Linux 9(systemd 252)에서, `scribed` 대신 설정의 포트를 열고 `shutdown` frame을 받으면 끝나는 시험용 프로그램으로 `enable --now`·`restart`·`stop`과 폴더 소유자를 확인했습니다.
-실제 `scribed` 바이너리와 Ubuntu 24.04, SELinux enforcing 환경에서는 실행하지 않았습니다.
+`ExecStop` 명령은 Docker 컨테이너의 실제 `scribed`에 대해 실행해 정상 종료를 확인했지만, systemd 아래에서 실제 `scribed`를 띄워 보지는 않았습니다([실행하지 않은 것](#실행하지-않은-것)).
 
 ### 파일 회전 기본
 
@@ -668,7 +633,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 3. 구·신 서버가 같은 데이터·spool 폴더에 동시에 쓰지 않게 합니다.
 4. 별도 폴더에서 작은 로그의 전송·저장·상태를 확인한 뒤 전환합니다.
 
-신버전은 구버전이 남긴 spool을 이어서 다시 보낼 수 있고, 그 반대도 됩니다([시험 결과](#운영-시나리오-7개)).
+신버전은 구버전이 남긴 spool을 이어서 다시 보낼 수 있고, 그 반대도 됩니다([시험 결과](docs/verification.md#운영-시나리오-7개)).
 구버전으로 되돌리면 [고친 원래 버그](#고친-원래-버그)도 원본 동작으로 돌아갑니다(예: 재전송 일부 성공 시 손실).
 실행 파일을 되돌려도 이미 잃은 메시지가 복구되지는 않습니다.
 
@@ -681,10 +646,9 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 | 묶음 | 요약 | 로그 결과 |
 | --- | --- | --- |
 | [빌드와 의존성](#빌드와-의존성) | Thrift 0.25, patch한 fb303, C++17, Boost 제거 | 같음 |
-| [고친 원래 버그](#고친-원래-버그) | 비정상 종료·미정의 동작 8가지, 연결 pool·`service_list`·재전송 3가지 | 분배·형식 같음 |
-| [코드 정리](#코드-정리-동작-불변) | 잠금·메모리·전역 의존 정리 | 같음 |
+| [고친 원래 버그](#고친-원래-버그) | 비정상 종료·미정의 동작 7가지, HDFS 빌드 1가지, 연결 pool·`service_list`·재전송 3가지 | 분배·형식 같음 |
+| [코드 정리](#코드-정리) | 잠금·메모리·전역 의존 정리 | 같음(실패 경로 제외) |
 | [새 설정 키](#새-설정-키) | Thrift 크기 한도 2개 | 같음(256 MiB 초과 제외) |
-| [검증 도구](#검증-도구) | 시험 묶음, 구·신 비교, Docker | 해당 없음 |
 
 고친 원래 버그 중 여덟 가지는 정상 설정에서 결과가 같고, 연결 pool·`service_list`·재전송 세 가지는 분배·파일 형식은 같은 채 일시 실패·메모리 증가·손실이 줄어듭니다.
 
@@ -720,26 +684,11 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   patch 전 fb303에서는 그 뒤 감시 도구의 `getCounters` 호출이 응답 없이 멈춥니다.
   patch한 fb303에서는 잠금이 풀려 다음 호출이 정상으로 답합니다.
 
-#### C++17을 빌드 파일이 직접 정함
+#### C++17
 
-- **왜 바꿨나.**
-  C++17[^cpp17]은 이 이식판이 쓰는 C++ 언어 판(표준)입니다.
-  예전에는 이 판이 검증 도구나 RPM 빌드가 따로 지정할 때만 적용됐습니다.
-  그래서 직접 `./configure && make`를 하면 컴파일러 기본 판으로 빌드될 수 있었습니다.
-
-- **기대할 수 있는 것.**
-  어떤 방법으로 빌드해도 같은 언어 판으로 빌드됩니다.
-
-- **기존과 달라진 점.**
-  빌드 방식은 원본처럼 `configure` + `make`이며 다른 빌드 도구로 바꾸지 않았습니다.
-  빌드할 때 `CXXFLAGS`로 언어 판을 직접 주면 그 값이 우선합니다.
-  실행 중 동작이나 설정 해석은 바뀌지 않습니다.
-
-- **관련 설정 키.** 없습니다.
-
-- **예시.**
-  GCC 8의 기본 판은 C++14 계열(gnu++14)입니다.
-  예전에는 Rocky 8에서 그냥 `make`하면 C++17이 아닌 판으로 빌드될 수 있었지만, 이제는 항상 C++17로 빌드됩니다.
+빌드 파일(`src/Makefile.am`)이 C++17[^cpp17] 표준(`-std=c++17`)을 지정하므로, 원본처럼 `configure` + `make`만 해도 C++17로 빌드됩니다.
+`CXXFLAGS`로 다른 언어 판을 주면 그 값이 뒤에 붙어 우선합니다.
+실행 중 동작이나 설정 해석은 바뀌지 않습니다.
 
 #### Boost 제거
 
@@ -757,27 +706,26 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   Docker 실행 이미지에도 Boost가 없습니다.
 
 - **기존과 달라진 점.**
-  빌드하는 컴퓨터에는 여전히 Boost header가 필요합니다.
-  Thrift 자신의 header가 Boost header를 불러오기 때문입니다.
+  빌드하는 컴퓨터에는 여전히 [Boost header가 필요합니다](#1-b-rocky-linux-9-패키지-rhel-계열).
   `configure`의 `--with-boost` 옵션은 없어졌으며, 예전 빌드 스크립트에 남아 있으면 경고만 출력하고 계속합니다.
 
   로그의 분배·내용·파일 형식과 카운터는 같습니다.
   파일 함수가 실패했을 때의 진단 로그 문구만 표준 라이브러리 표현으로 바뀔 수 있습니다.
 
-  서버 목록을 나누는 새 함수는 원본 빌드가 쓰던 Boost 1.58, 그리고 Boost 1.83과 결과를 비교했습니다.
-  탭·공백·콜론·NUL을 포함한 7개 문자로 만든 길이 7 이하의 모든 문자열에서 결과가 같았습니다.
+  서버 목록을 나누는 새 함수가 Boost 1.58·1.83과 같은 결과를 낸다는 확인은 commit `1e66160`의 메시지에만 적혀 있습니다.
+  그 비교 시험은 저장소에 없어 다시 실행할 수 없습니다.
 
 - **관련 설정 키.** 없습니다.
 
 - **예시.**
-  예전 Docker 이미지에서는 `ldd`에 Boost filesystem·system 라이브러리가 보였고, 실행 서버에도 이것을 설치해야 했습니다.
+  구버전 `scribed`는 Boost filesystem·system 라이브러리를 링크하므로 실행 서버에도 이것을 설치해야 했습니다.
   이제 `ldd "$(command -v scribed)"`에 `libboost_*`가 없습니다.
   GCC 8(Rocky 8)은 표준 파일 함수가 별도 라이브러리에 있어, `configure`가 필요할 때만 `libstdc++fs`를 자동으로 붙입니다.
 
 ### 고친 원래 버그
 
 원본의 버그 가운데 로그의 분배·파일 형식을 바꾸지 않고 고칠 수 있는 것만 고쳤습니다.
-앞의 여덟 가지는 프로그램이 비정상 종료하거나 미정의 동작(UB[^ub])을 하던 경우입니다.
+앞의 여덟 가지 가운데 일곱 가지는 프로그램이 비정상 종료하거나 미정의 동작(UB[^ub])을 하던 경우이고, HDFS 파일 삭제 함수는 지금의 HDFS 라이브러리로 빌드되지 않던 경우입니다.
 이런 경우에는 지켜야 할 "원본과 같은 결과"가 없으므로 안전한 동작으로 바꿨고, 정상 설정의 결과는 바뀌지 않습니다.
 뒤의 세 가지는 논리 오류입니다.
 분배·파일 형식은 같고, 일시 실패·메모리 증가·손실이 줄어듭니다.
@@ -790,7 +738,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 | [기본 port 없음](#list_default_port가-없을-때의-port) | port 없는 `service_list` | 쓰레기 값 | port 0 |
 | [추가 bucket 검사](#추가-bucket-검사의-범위-밖-읽기) | `num_buckets` 6 이상 | 범위 밖 읽기 | 검사 건너뜀 |
 | [HDFS 삭제 함수](#hdfs-파일-삭제-함수) | `fs_type=hdfs` | 빌드 불가 | 두 API에 맞춤 |
-| [종료 시 exit](#종료할-때-exit를-한-번만) | fb303 `shutdown` | 드물게 crash | exit 한 번 |
+| [종료 시 exit](#종료할-때-exit를-한-번만) | fb303 `shutdown` | 두 곳에서 exit(경쟁 가능) | exit 한 번 |
 | [초당 개수 계산](#max_msg_per_second의-동시-계산) | `max_msg_per_second` | 잠금 없이 셈 | 잠금 아래에서 셈 |
 | [동적 목적지 변경](#동적-목적지-변경과-연결-pool) | `use_conn_pool=yes` + 동적 조회 | 엉뚱한 연결을 닫음 | 옛 연결만 닫음 |
 | [`service_list` 재연결](#service_list-재연결) | `service_list` | 후보 목록이 계속 늘어남 | 매번 새로 만듦 |
@@ -927,15 +875,14 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   종료 정리는 한 번만 일어나고, 다른 쪽은 그 끝을 기다립니다.
 
 - **기존과 달라진 점.**
-  종료 코드 0, 종료 로그(`scribe server exiting`), store를 멈추는 순서는 같습니다.
+  종료 코드 0과 store를 멈추는 순서는 같습니다.
   원본도 같은 구조였으므로 같은 경쟁이 있을 수 있었습니다.
 
 - **관련 설정 키.** 없습니다.
 
 - **예시.**
-  구·신 비교 시험(`receiver-restart`)을 개발하던 중, 신버전 수신 서버의 `shutdown` 53번 가운데 1번이 SIGSEGV로 끝났습니다.
-  감시 스크립트가 `shutdown` 뒤 종료 코드 0을 기대한다면 이런 드문 실패를 볼 수 있었습니다.
-  이제 두 종료 경로가 하나로 모여 이 경쟁이 없습니다.
+  개발 중 구·신 비교 시험에서 신버전이 `shutdown` 뒤 SIGSEGV로 끝나는 것을 한 번 관찰했습니다.
+  exit를 한 번으로 모은 수정에는 이 경쟁을 재현하는 회귀 시험이 없습니다.
 
 #### max_msg_per_second의 동시 계산
 
@@ -1108,8 +1055,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 - **기존과 달라진 점.**
   spool 파일 형식은 같아 구버전도 읽을 수 있습니다.
-  보존, exactly-once, 디스크 저장 보장(durable ACK)을 새로 약속하지는 않습니다.
-  secondary에 `add_newlines=1`이 있으면 기존 기록 규칙대로 다시 쓴 메시지 끝에 LF가 하나 더 붙습니다.
+  secondary에 `add_newlines=1`이 있으면 기존 기록 규칙대로 다시 쓴 메시지 끝에 LF가 하나 더 붙습니다([같은 원인의 원본 동작](#buffer-secondary의-add_newlines는-재전송-때-줄바꿈을-하나-더-만든다)).
 
 - **관련 설정 키.**
 
@@ -1161,18 +1107,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   구버전은 이때 `Failed to open file <...> for writing and truncate` 로그를 남깁니다.
   정상 frame에서는 `bytes lost` 카운터가 구·신 모두 0입니다.
 
-  spool은 메시지마다 4-byte little-endian[^little] 길이 뒤에 내용을 둡니다.
-  secondary에 `add_newlines=1`이 있으면 다시 쓴 frame에 LF가 하나 더 붙습니다.
-
-  ```text
-  secondary에 add_newlines가 없을 때(example1.conf 방식): 다시 써도 같음
-    m2 frame:  02 00 00 00  6d 32
-  secondary에 add_newlines=1일 때: 다시 쓴 frame에 LF가 하나 더 붙음
-    처음 frame:     03 00 00 00  6d 32 0a          ("m2\n")
-    다시 쓴 frame:  04 00 00 00  6d 32 0a 0a       ("m2\n\n")
-  ```
-
-### 코드 정리 (동작 불변)
+### 코드 정리
 
 - **왜 바꿨나.**
   원본 코드는 잠금과 메모리를 손으로 관리하는 오래된 방식이라, 예외 상황에서 잠금이 풀리지 않거나 메모리가 새는 곳이 있었습니다.
@@ -1182,8 +1117,8 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   설정을 여러 번 다시 읽어도 메모리가 쌓이지 않고, 예외가 나도 잠금이 풀립니다.
 
 - **기존과 달라진 점.**
-  로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회·설정 해석은 같습니다.
-  바깥에서 보이는 차이는 아래에 적은 진단 로그 몇 줄과, 원래 미정의 동작이던 경우뿐입니다.
+  정상 동작에서 로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회·설정 해석은 같습니다.
+  달라지는 것은 예전에 멈추거나 비정상 종료하던 실패 경로(예외, 메모리 부족, thread 생성 실패)와 아래에 적은 진단 로그 몇 줄입니다.
 
 - **관련 설정 키.** 없습니다.
 
@@ -1203,8 +1138,11 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
     큐에 메시지나 명령을 넣는 동안 잡는 잠금도 범위를 벗어나면 자동으로 풀립니다.
     예전에는 넣는 중 메모리 부족 예외가 나면 큐 잠금이 남아 그 category의 로그 받기와 store thread가 멈출 수 있었습니다.
     잠그는 순서와 범위는 같습니다.
-    또 새 category의 큐를 만든 직후 등록 중에 메모리 부족이 나면, 예전에는 store thread가 도는 채로 큐가 사라져 비정상 종료할 수 있었습니다.
-    이제 큐는 사라지기 전에 평소 정지와 같은 순서로 store thread를 끝내고 기다립니다.
+  - **store 큐의 생성 실패와 상태 조회.**
+    새 category의 큐를 만든 직후 등록 중에 메모리 부족이 나면, 예전에는 store thread가 도는 채로 큐가 사라져 비정상 종료할 수 있었습니다.
+    이제 큐는 사라지기 전에 store thread를 끝내고 기다리며, 처음 열기 전에 끝난 store는 닫지 않습니다.
+    fb303 상태 조회는 store thread가 그 store를 처음 열기 전(직접 설정한 store는 설정하고 열기 전, 모델에서 복사한 store는 열기 전)에는 그 store를 문제없음(빈 상태 문구)으로 보고 기다리지 않습니다.
+    연 뒤에는 store 상태를 잠금 없이 읽습니다. 원본은 열기 전의 짧은 순간에 buffer store의 상태를 읽다 비정상 종료할 수 있었습니다.
   - **복사본의 소유권.**
     multi·category store의 복사본은 하위 store를 복사하기 전에 스마트 포인터가 소유합니다.
     하위 store 복사 중 예외가 나도 부모와 먼저 복사한 하위 store가 새지 않습니다.
@@ -1214,12 +1152,6 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   - **컴파일러 검사 강화.**
     함수를 잘못 덮어쓰거나 복사하면 빌드할 때 오류가 나게 했습니다(`override`, `= delete`).
     만들어지는 실행 파일의 동작은 같습니다.
-  - **표준 스마트 포인터.**
-    메모리를 자동으로 돌려주는 포인터를 Boost 것에서 표준 것으로 바꿨습니다.
-    같은 일을 같은 방식으로 합니다.
-  - **spool 읽기 버퍼.**
-    버퍼를 자동으로 돌려주는 표준 방식으로 받고, 메모리가 모자라면 예외 대신 실패 값을 받습니다(nothrow).
-    메모리 부족일 때의 손실 집계는 예전과 같습니다.
   - **전역 의존 제거.**
     예전에는 store·큐·연결 pool·설정 조회가 프로세스 전체에 하나뿐인 전역 변수를 직접 읽었습니다.
     이제 서버가 카운터·큐 한도·크기 한도·연결 pool을 담은 "context"를 만들어 각 부품에 넘겨줍니다.
@@ -1232,7 +1164,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   겉보기에는 고칠 곳 같지만 원본의 관찰 결과를 만드는 코드는 일부러 건드리지 않았습니다.
 
   - 추가 bucket 검사의 문자열 계산과 bucket key 계산 방식
-  - 긴 명령행 옵션의 결함과 시작 실패 시 종료 코드 0
+  - 긴 명령행 옵션이 값을 받지 않는 선언과 시작 실패 시 종료 코드 0(값 없이 들어온 옵션을 읽던 미정의 동작만 [고쳤습니다](#긴-명령행-옵션은-값을-받지-못한다))
   - 빈 메시지만 든 큐를 전달하지 않는 판단
   - 재시도·bucket·서버 후보 순서에 쓰는 무작위 순서(GNU C 라이브러리의 `rand()`)
   - store 큐의 thread와 깨우기 방식(시간 기준이 바뀔 수 있어 그대로 둠)
@@ -1274,14 +1206,15 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   - 두 값이 다르면 작은 쪽이 실제 한도가 됩니다.
   - 값은 십진수 byte 수로만 씁니다.
     - `0`, 음수, `+` 부호, 16진수, `256M` 같은 단위는 잘못된 값입니다.
-    - 시작할 때 값이 잘못됐으면 `Invalid Thrift wire limits; listener not started`를 남기고 시작에 실패합니다(종료 코드는 0).
-  - 시작할 때만 읽습니다.
-    - fb303 `reinitialize`로 바꾸면 `Thrift wire-limit changes require restart`를 남기고 기존 값을 유지합니다.
+    - 시작할 때 값이 잘못됐으면 `Invalid Thrift wire limits; listener not started`를 남기고 끝납니다([종료 코드는 0](#시작에-실패해도-종료-코드는-0이다)).
+  - 바꾼 값은 재시작해야 적용됩니다.
+    - fb303 `reinitialize`도 두 값을 다시 읽어 검사합니다. 값이 바뀌었으면 `Thrift wire-limit changes require restart`를 남기고 기존 값을 유지합니다.
+    - `reinitialize` 때 값이 잘못됐으면 설정 다시 읽기가 실패해, 고친 설정으로 다시 `reinitialize`할 때까지 store가 하나도 없는 `WARNING` 상태가 됩니다.
 
   신버전 network store는 보내기 전에 요청 크기를 계산합니다.
   요청 전체에 21 bytes, 메시지마다 15 bytes + category 길이 + 메시지 길이입니다.
   한도를 넘으면 `Relay Log exceeds configured wire limit <268435456> bytes`를 남기고 일시 실패로 처리합니다.
-  buffer store 아래라면 spool 파일을 지우지 않고 재시도를 반복하며, 가장 오래된 파일부터 보내므로 뒤의 spool 파일도 모두 멈춥니다.
+  buffer store 아래라면 가장 오래된 spool 파일부터 보내므로, 그 파일이 한도를 넘으면 뒤의 spool 파일도 모두 멈춥니다.
 
 - **예시(계산).**
   짧은 메시지를 많이 보내는 category를 128 MiB spool로 보호하는 경우입니다.
@@ -1331,25 +1264,8 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
   한도를 올리려면 받는 서버도 그 크기를 받을 수 있어야 합니다.
 
 - **확인한 호환성.**
-  대표적인 작은 로그로 구 서버 → 새 서버, 새 서버 → 구 서버 전송과 일반 spool 파일의 양방향 읽기를 확인했습니다.
-  구 ThriftFile writer → 새 reader와 새 writer → 구 reader도 확인했습니다.
-  모든 파일, 손상된 입력, 언어별 client, 장애 상황을 확인한 것은 아닙니다.
-
-  근거는 [호환성 정책](docs/compatibility-policy.md), [실제 비교 기록](docs/verification.md), [ThriftFile 처리 기록](docs/compatibility-policy.md#thriftfile-chunk-초과와-empty)에 있습니다.
-
-### 검증 도구
-
-설치에는 필요 없는 개발자용 도구입니다.
-
-- **`tools/validate_linux.py`**:
-  프로젝트 밖의 새 폴더에서 빌드 설정·전체 빌드·시험·임시 설치·`scribed --help`까지 한 번에 확인합니다.
-  시스템에 설치하거나 서비스를 시작하지 않으며, 준비 방법은 [빌드 안내](docs/build.md#검증기)에 있습니다.
-- **`tools/daemon_differential.py`와 `tools/old-lane/`**:
-  구버전과 신버전 daemon을 실제로 띄워 같은 요청을 보내고, 응답·저장 bytes·카운터·symlink·종료 코드를 비교합니다.
-  `tools/old-lane/`은 구버전을 다시 빌드하고 비교를 네트워크와 권한이 없는 컨테이너에서 돌리는 recipe입니다([세 명령](tools/old-lane/README.md)).
-- **`Dockerfile`**:
-  [Docker 방식](#docker-방식)의 이미지를 만들며, 구·신 비교에 쓰는 신버전 이미지도 이것으로 만듭니다.
-  설치 순서와 같은 빌드이므로, 그 순서가 실제로 동작한다는 확인도 됩니다.
+  구·신 서버 사이의 전송과 일반 spool·ThriftFile 파일의 양방향 읽기는 대표적인 작은 로그로만 확인했고, 256 MiB 근처의 큰 요청은 구·신 비교에 없습니다.
+  근거는 [호환성 정책](docs/compatibility-policy.md#통신-크기-한도), [ThriftFile 처리 기록](docs/compatibility-policy.md#thriftfile-chunk-초과와-empty), [검증 기록](docs/verification.md)에 있습니다.
 
 ## 일부러 남겨 둔 원래 버그
 
@@ -1748,7 +1664,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 - **어떤 동작인가.**
   서버의 `OK` 응답은 로그를 메모리 큐에 받았다는 뜻입니다.
-  디스크 저장 완료나 중복 없는 전달을 보장하지 않습니다.
+  디스크 저장 완료, 다음 서버로의 전달, 중복 없는 전달을 뜻하지 않습니다.
   파일 `flush`도 디스크 기록을 강제하는 `fsync`[^fsync]와 다릅니다.
 
 - **왜 남겼나.**
@@ -1760,7 +1676,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 - **구·신 차이.**
   없습니다.
-  신버전은 디스크 저장 보장(durable ACK), exactly-once, fsync를 새로 약속하지 않습니다.
+  구버전과 신버전 모두 디스크 저장 보장(durable ACK), exactly-once, fsync를 약속하지 않습니다.
 
 - **관련 설정 키.** 없습니다.
 
@@ -1772,8 +1688,8 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 - **어떤 동작인가.**
   원본은 `--config`와 `--port`를 **값을 받지 않는 옵션**으로 선언했습니다.
-  `--config=/etc/scribed/scribed.conf`처럼 쓰면 값을 받지 않는 옵션이라며 사용법만 출력하고 종료(코드 0)합니다.
-  `--config /etc/scribed/scribed.conf`처럼 쓰면 값이 옵션에 전달되지 않습니다.
+  `--config=/etc/scribe/scribe.conf`처럼 쓰면 값을 받지 않는 옵션이라며 사용법만 출력하고 종료(코드 0)합니다.
+  `--config /etc/scribe/scribe.conf`처럼 쓰면 값이 옵션에 전달되지 않습니다.
   원본은 이때 없는 값을 읽어 결과가 정해지지 않았고(UB[^ub], 보통 비정상 종료), 신버전은 사용법을 출력하고 종료(코드 0)합니다.
 
 - **왜 남겼나.**
@@ -1782,7 +1698,7 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 
 - **무엇을 기대하면 되나.**
   항상 짧은 옵션 `-c`, `-p`를 쓰세요.
-  옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
+  옵션이 아닌 첫 인자도 설정 파일로 읽으며, 둘 다 없을 때의 [기본 설정 파일](#2-시작)은 원본과 같습니다.
 
 - **구·신 차이.**
   `--config=값` 형태는 구·신 모두 사용법 출력 뒤 종료(코드 0)입니다.
@@ -1794,9 +1710,9 @@ buffer의 secondary(spool) 파일은 항상 `never`처럼 동작하고 symlink�
 - **예시.**
 
   ```sh
-  scribed -c /etc/scribed/scribed.conf -p 1463
+  scribed -c /etc/scribe/scribe.conf -p 1463
   # 옵션이 아닌 첫 인자도 설정 파일로 읽습니다.
-  scribed /etc/scribed/scribed.conf
+  scribed /etc/scribe/scribe.conf
   ```
 
 ### 그 밖에 원본 그대로인 주의점
@@ -1893,8 +1809,9 @@ key는 설정에 쓴 문자열 그대로라서, `relay-a.example:1463`과 그 �
 #### 시작에 실패해도 종료 코드는 0이다
 
 `scribed`는 시작에 실패해도 **종료 코드 0**으로 끝납니다.
+프로세스가 끝나는 것은 listener를 열지 못할 때뿐입니다.
 예를 들어 port가 이미 쓰이고 있거나 `thrift_max_frame_size=256M`처럼 잘못된 한도를 주면, `Exception in main: ...`을 남기고 0으로 끝납니다.
-반대로 store 설정이 잘못되면 프로세스는 계속 떠 있지만 fb303 상태가 `WARNING`입니다.
+그 밖의 설정 오류(store 설정 오류, 설정 파일을 읽지 못함, [`port` 없음](#2-시작))에서는 프로세스가 끝나지 않고 fb303 상태 `WARNING`으로 계속 떠 있습니다.
 그래서 종료 코드나 "실패 시 재시작" 조건만으로는 이상을 알 수 없으니, fb303 상태·카운터, 열린 port, 실제 파일로 감시하세요.
 
 #### 빈 메시지가 든 spool은 재전송이 중간에 멈출 수 있다
@@ -1926,171 +1843,63 @@ secondary에 `add_newlines`가 없을 때 빈 메시지는 길이 0인 frame(`00
 
 ## 테스트 결과
 
-아래 결과는 2026-10-07 최종 `main`(`9e8d775`) 기준입니다.
-WSL의 Rocky 9.8(GCC 11.5, 20 core)과 Docker 29.8에서, 이전 산출물을 모두 지우고 의존성부터 처음 다시 만들어 실행했습니다.
-모든 수치는 이 한 번 실행의 값이며, 한 환경의 결과를 전체 호환성이나 운영 준비 완료로 확대하지 않습니다.
+검증 방법, case별 입력과 기대값, 수치는 [검증 기록](docs/verification.md)에 있습니다.
+이 절은 그 요약입니다.
 
-### 시험 묶음
+### 마지막 전체 재검증
 
-`tools/validate_linux.py`의 전체 시험 240개가 실패 0, 오류 0, 건너뜀 0으로 통과했습니다.
-빌드한 `scribed`는 Boost 라이브러리를 링크하지 않았습니다.
+아래 표는 2026-10-07에 `main` `9e8d775`를 기준으로 WSL의 Rocky 9.8(GCC 11.5)과 Docker 29.8에서 측정한 결과입니다.
+모든 수치는 한 환경에서 한 번 실행한 값이며, 원시 결과는 저장소에 없습니다.
 
-컴파일 경고는 30줄이었습니다.
+그 뒤 PR #63(`28a4d9a`)과 PR #65(`e4bb4cc`)를 합친 `main` `0afe2b4`는 같은 날 Rocky 9 Docker 검증 이미지에서 시험 묶음 241개가 실패·오류·건너뜀 0으로 통과했습니다.
+`0afe2b4`의 구·신 비교와 Docker 이미지 확인은 하지 않았습니다.
 
-- 26줄: Thrift 자신의 설정 header가 같은 이름(`PACKAGE_VERSION`, `PACKAGE_STRING`)을 다시 정의한다는 경고
-- 1줄: Python 설치 단계의 안내(byte-compile을 하지 않음)
-- 2줄: 재시도 간격 계산 코드의 부호 있는 수와 없는 수 비교
-- 1줄: store 큐 상태 조회 코드의 속성(attribute) 무시 안내
+이번 리뷰 수정(코드·시험·도구 commit `acc7edd`)은 같은 날 WSL Rocky 9.8의 Docker 29.8에서, `docs/build.md`의 recipe대로 만든 Rocky 9 검증 이미지(`rockylinux:9` digest, GCC 11.5)와 `core.autocrlf=false`로 받은 LF checkout으로 확인했습니다.
+- 검증기 `tools/validate_linux.py`: 시험 묶음 241개, 실패·오류·건너뜀 0, 통과. 설치 기록(`installed_files.txt`)과 `make uninstall`도 이 실행의 패키징 시험이 돌렸습니다
+- 구·신 비교 `tools/old-lane` 17개 case: 모두 `exit=0`(performance 제외)
+- 루트 `Dockerfile` 이미지: `Log(demo, "hello docker
+")` 응답 0, `demo_current` bytes `hello docker
 
-### 설치 순서
+`. 그 컨테이너의 실제 `scribed`에 [systemd unit](#5-systemd-서비스로-등록)의 `ExecStop` 명령을 실행해 `STATUS: STOPPING` 뒤 `scribe server exiting`, 종료 코드 0을 확인했습니다. `getStatus`와 다른 port mount는 다시 하지 않았습니다
 
-[원래 Scribe 방식](#원래-scribe-방식)의 명령을 깨끗한 컨테이너 두 개에서 그대로 실행했습니다.
+모두 한 번 실행한 값이고 원시 결과는 저장소 밖에 있습니다. 아래 성능 표는 `9e8d775` 값 그대로이며 다시 재지 않았습니다.
 
-| 컨테이너 | 컴파일러 | 결과 |
-| --- | --- | --- |
-| `ubuntu:24.04` | GCC 13.3.0 | `scribed --help`, `ldd` 통과, Boost 없음 |
-| `rockylinux:9` | GCC 11.5.0 | `scribed --help`, `ldd` 통과, Boost 없음 |
-
-이 컨테이너들에서는 전체 시험 묶음을 실행하지 않았습니다.
-
-### 구버전과 신버전 비교
-
-구버전은 `tools/old-lane/`의 recipe로 다시 빌드했습니다.
-공개 원본 `fcd294f`를 Ubuntu 16.04, GCC 5.4, Thrift/fb303 0.9.0으로 빌드하며, 원본에 더한 변경은 빌드 설정(autotools[^autotools])만 고치는 하나입니다.
-
-구·신 daemon을 각각 실제로 띄워 같은 입력을 주고 결과를 비교했습니다.
-아래 17개 case를 한 번씩 실행했고 모두 통과했습니다.
-통과는 응답, 카운터, 저장 파일, symlink, 종료 코드가 구·신 모두 같았다는 뜻입니다.
-
-#### 원본 계약 10개
-
-| case | 확인한 것 |
+| 항목 | `9e8d775` 결과 |
 | --- | --- |
-| `file` | 파일 저장, 상태·카운터, 빈 요청, 잘못된 category |
-| `stores` | `null`·`multi`·`category` store |
-| `rotation` | 크기 회전, `reinitialize` 뒤 이어 쓰기 |
-| `restart` | 강제 종료 뒤 재시작해 같은 파일에 이어 쓰기 |
-| `spool` | 수신측이 없을 때 spool, 살아난 뒤 전체 재전송 |
-| `mixed-spool` | 위 흐름을 구 → 신, 신 → 구로 |
-| `file-stores` | bucket·thriftfile·multifile 파일 형식 |
-| `fb303` | 옵션·카운터 조회, 모르는 요청 뒤 회복 |
-| `mapping` | dynamic bucket updater로 목적지 조회·변경 |
-| `game-profile` | 게임 서버에서 흔한 설정 기능 묶음 |
+| 시험 묶음(`tools/validate_linux.py`) | 240개, 실패·오류·건너뜀 0 |
+| 구·신 비교([17개 case](docs/verification.md#case)) | 모두 통과 |
+| 성능(`performance` case) | 신버전 ACK 처리량이 구버전의 약 0.92배, 지연은 같은 수준 |
+| Docker 이미지 | 기본 설정으로 `Log` 응답 `OK`, 저장 bytes, `ALIVE`, `shutdown` 뒤 종료 코드 0 |
 
-`game-profile`은 가상의 설정 하나에 다음 기능을 모았습니다.
-
-- prefix가 섞인 `categories=` 목록과 `category=default` 모델, 단독 prefix 모델
-- `type=multi` 아래 두 개의 buffer
-- 연결 pool을 쓰는 network primary와 쓰지 않는 network primary, 각각 `add_newlines=1` file secondary
-- `rotate_period=1h`인 file primary
-- 줄 중간의 `#` 주석
-
-#### 운영 시나리오 7개
-
-세 역할로 실제 운영 흐름을 흉내 냈습니다.
-
-- **송신측**: buffer store를 쓰는 `scribed`입니다.
-  - primary는 수신측으로 보내는 network store, secondary는 spool 파일입니다.
-- **수신측**: 받은 로그를 file store로 저장하는 `scribed`입니다.
-- **소비 클라이언트**: 수신측 폴더를 읽기만 하는 쪽입니다.
-  - 파일 목록, `_current`가 가리키는 파일, 파일을 번호 순서로 이은 내용을 확인합니다.
-
-| case | 흐름 | 결과 |
-| --- | --- | --- |
-| `relay-stream` | 송신측 → 수신측 연속 전송, 수신측이 작은 크기로 회전 | 순서 보존 |
-| `mixed-relay-stream` | 위 흐름을 구 송신 → 신 수신, 신 송신 → 구 수신으로 | 순서 보존 |
-| `receiver-restart` | 수신측 정상 종료 → spool → 같은 폴더로 재시작 | 재전송 후 이어 씀 |
-| `receiver-crash` | 위 흐름을 SIGKILL로 | 재전송 후 이어 씀 |
-| `sender-restart-spool` | 송신측이 spool을 남기고 종료 → 재시작 | 이전 spool 재전송 |
-| `mixed-sender-restart-spool` | 위 흐름에서 spool을 쓴 쪽과 읽는 쪽 버전을 바꿈 | 이전 spool 재전송 |
-| `throttle-retry` | 수신측 초당 한도 4, 메시지 5개 | 5개 모두 순서대로 |
-
-각 case의 내용은 다음과 같습니다.
-
-- **`relay-stream`, `mixed-relay-stream`**:
-  송신측에 로그를 세 번 보내고, 수신측은 `max_size=4`로 받은 로그를 저장하며 회전합니다.
-  소비 클라이언트는 `_00000`, `_00001`, `_00002` 세 파일이 차례로 생기고 `_current`가 마지막 파일로 옮겨 가는 것을 봅니다.
-  파일을 이은 내용은 보낸 순서와 같았습니다.
-- **`receiver-restart`**:
-  첫 로그가 수신측 파일에 보인 뒤 수신측을 fb303 `shutdown`으로 멈춥니다.
-  송신측은 다음 로그를 보내지 못해 spool에 쓰고, 수신측을 같은 설정·같은 폴더로 다시 띄우면 spool을 재전송합니다.
-  이어서 새 로그도 바로 전달되며, 수신측은 모두 같은 파일(`_00000`)에 이어 씁니다.
-- **`receiver-crash`**:
-  `receiver-restart`와 같지만 수신측을 SIGKILL로 강제 종료합니다.
-  송신측에서는 두 경우가 똑같이 보이며, 결과도 같았습니다.
-- **`sender-restart-spool`, `mixed-sender-restart-spool`**:
-  수신측이 없는 동안 송신측이 spool을 쓰고 정상 종료하며, spool 파일은 지워지지 않고 남습니다.
-  수신측을 띄우고 송신측을 같은 spool 폴더로 다시 띄우면, 이전 프로세스가 남긴 spool을 재전송한 뒤 연속 전송으로 돌아갑니다.
-  mixed는 구버전이 쓴 spool을 신버전이, 신버전이 쓴 spool을 구버전이 재전송합니다(수신측은 신버전).
-- **`throttle-retry`**:
-  수신측은 `max_msg_per_second=4`이고, 같은 1초 안에 송신측이 메시지 5개를 보냅니다.
-  수신측은 다섯 번째 메시지를 `TRY_LATER`로 거절하고, 송신측은 그것을 spool에 쓴 뒤 `retry_interval`이 지나 다시 보냅니다.
-  수신측 파일에는 다섯 개가 모두 보낸 순서대로 남았습니다.
-
-#### 이 결과가 보여 주지 않는 것
-
-- 디스크 저장 보장이나 exactly-once를 보여 주지 않습니다.
-  - `OK`는 메모리 큐에 받았다는 뜻이고, SIGKILL은 첫 로그가 파일에 보인 뒤에만 보냈습니다.
-- 각 case는 한 번씩만 실행했으며, 반복 실행의 통계는 없습니다.
-- 재전송 일부 성공은 구·신이 [일부러 다르게](#buffer-재전송-일부-성공) 동작하므로 비교하지 않았습니다.
-- 반복 실패, 여러 송신측, 연결 pool, `service_list`, 디스크 가득 참, 실제 운영 설정과 부하는 다루지 않았습니다.
-- 구버전 실행 파일은 Ubuntu 16.04 전체 환경이 아니라 비교 이미지의 Rocky 시스템 라이브러리 위에서 실행했습니다.
-- 아래 성능 결과는 기준값 없는 서술적 측정입니다.
-
-### 성능
-
-`performance` case로 같은 컴퓨터에서 구·신을 측정했습니다.
-
-- 4개 producer가 각각 1 KiB 메시지 4096개를 256개씩 묶어 보냅니다.
-- 3번 반복한 값의 중앙값입니다.
-- 구·신은 서로 다른 시스템 라이브러리와 컴파일러로 만들어져, 차이의 원인을 나누지 않았습니다.
-
-| 지표 | 구버전 | 신버전 |
-| --- | --- | --- |
-| ACK 처리량 (msg/s) | 1,414,109 | 1,297,960 |
-| ACK payload (MiB/s) | 1,381 | 1,268 |
-| 파일 기록 완료 (MiB/s) | 957 | 895 |
-| batch 지연 p95 (ms) | 1.24 | 1.21 |
-| daemon CPU 시간 (s) | 0.04 | 0.04 |
-| 최대 메모리 사용량 (MiB) | 23.5 | 21.1 |
-
-신버전의 ACK 처리량은 구버전의 0.92배입니다.
-처리량은 약 8% 이내, 지연은 같은 수준, 메모리는 조금 적었습니다.
-한 번의 서술적 측정이며 벤치마크 결과로 주장하는 것은 아닙니다.
-
-ACK는 `OK` 응답 기준이고, 파일 기록 완료는 저장 파일에 모두 쓰일 때까지를 기준으로 합니다.
-
-### Docker 이미지
-
-Windows의 CRLF checkout으로도 이미지를 빌드했습니다.
-이미지는 272 MB였고, 기본 설정으로 다음을 확인했습니다.
-
-- `Log` 응답 `OK`
-- 저장된 bytes `hello docker\n\n`
-- fb303 `getStatus` `ALIVE`
-- fb303 `shutdown` 뒤 종료 코드 0
+- 구·신 비교의 통과는 응답, 카운터, 저장 파일, symlink, 종료 코드가 구·신 모두 같았다는 뜻입니다. 각 case는 한 번씩 실행했습니다.
+- 성능은 구·신의 컴파일러와 라이브러리가 달라 차이의 원인을 나누지 않은 서술적 측정입니다.
+- 당시 기록은 그때 README의 설치 명령을 깨끗한 `ubuntu:24.04`·`rockylinux:9` 컨테이너에서 실행했다고 적었지만, 원시 결과가 저장소에 없고 그때 Ubuntu 패키지 목록에는 `curl`이 없었습니다.
+- 이 결과는 디스크 저장 보장, exactly-once, 재전송 일부 성공(구·신이 [일부러 다름](#buffer-재전송-일부-성공)), 반복 실패, 여러 송신측, 연결 pool 공유, `service_list`, 디스크 가득 참, 운영 설정과 부하를 보여 주지 않습니다([자세히](docs/verification.md#비교가-증명하지-않는-것)).
 
 ### 실행하지 않은 것
 
-- HDFS lane
-- Rocky 9 RPM
-- GCC 14·15에서의 최근 현대화 단계
+- `0afe2b4`의 구·신 비교와 Docker 이미지 확인(`acc7edd`에서는 했습니다). `acc7edd` 뒤에 코드가 바뀌면 그 변경의 재검증
+- 지금 README의 설치·삭제 명령(Ubuntu 24.04, Rocky Linux 9). 삭제 순서를 깨끗한 시스템에서 실행한 기록은 없습니다.
+- systemd 아래에서 실제 `scribed`를 띄운 [서비스 실행](#5-systemd-서비스로-등록).
+  `ExecStop` 명령 자체는 Docker 컨테이너의 실제 `scribed`에 대해 확인했고, unit 등록·`enable`·`restart`는 Rocky Linux 9에서 `shutdown` frame을 받는 대체 프로그램으로만 확인했으며, Ubuntu 24.04와 SELinux enforcing 환경에서는 실행하지 않았습니다.
+- Python client 사용(Thrift·fb303 Python module과 함께)과 다른 `PY_PREFIX`로의 설치
+- HDFS lane, 현대화 뒤의 `--shared-rpc` lane, Rocky 9 RPM
+- Rocky 8.10, Debian 13, Ubuntu 26.04.1 재검증. 특히 GCC 14·15에서는 최근 현대화 단계(Boost 제거 등)를 확인하지 않았습니다.
+- [종료 시 exit 한 번](#종료할-때-exit를-한-번만) 수정의 회귀 시험
 - 반복 실행으로 보는 불안정성(flake) 통계
 
 ### 관련 문서
 
 | 문서 | 내용 |
 | --- | --- |
-| [최종 재검증 기록](docs/verification.md#최종-재검증-2026-10-07) | 이 절의 수치와 실행 순서 |
-| [실제 구·신 비교](docs/verification.md#구신-daemon-비교) | case별 입력·기대값과 시험 방법 |
+| [검증 기록](docs/verification.md) | 검증기 단계, 구·신 비교 case별 입력·기대값, `9e8d775` 재검증 수치와 경고 |
 | [구버전 비교 환경](tools/old-lane/README.md) | 구버전 재현 빌드와 비교를 다시 돌리는 명령 |
 | [호환성 정책](docs/compatibility-policy.md) | 원본 동작을 지키기로 한 결정, 남은 버그, 일반 spool의 손실 경로 |
-| [빌드 안내](docs/build.md) | 의존성 경로, 빌드·임시 설치, 검증 준비, fb303 patch, Rocky 빌드·RPM, Python client |
-| [Docker 안내](docs/docker.md) | 이미지 빌드·실행·정지 |
+| [빌드 안내](docs/build.md) | 의존성 경로, 배포판별 확인 범위, 검증 준비, fb303 patch, Rocky 빌드·RPM, Python client |
+| [Docker 안내](docs/docker.md) | 이미지 구성·실행·정지·제한 |
 | [HDFS 안내](docs/hdfs.md) | 선택 기능의 빌드·실행 범위, Rocky HDFS |
 | [설계](docs/design.md) | 원본 구조와 개발 방향 |
 | [문서 안내](docs/README.md) | docs 폴더의 문서 목록 |
-| [개발 지침](AGENTS.md) | 코드를 바꾸고 검증할 때의 규칙 |
 
 ## 라이선스
 
@@ -2113,11 +1922,10 @@ Docker 실행 이미지에는 Scribe LICENSE와 함께 Thrift의 LICENSE/NOTICE,
 [^hdfs]: HDFS: Hadoop의 분산 파일 시스템입니다.
   Scribe는 선택 기능으로 로그를 HDFS에 직접 쓸 수 있습니다(`fs_type=hdfs`).
 [^rpc]: RPC 라이브러리: Scribe의 통신 함수(`Log` 등)를 다른 프로그램이 쓸 수 있게 묶은 라이브러리입니다.
-  기본은 정적 라이브러리이며, 선택하면 공유 라이브러리로도 빌드합니다.
+  기본은 정적 라이브러리이며, `--disable-static`을 주면 정적 대신 공유 라이브러리로 빌드합니다.
 [^libevent]: libevent: 많은 네트워크 연결을 적은 thread로 처리하도록 돕는 C 라이브러리입니다.
   Thrift의 서버가 사용합니다.
 [^boost]: Boost: C++에서 널리 쓰는 공개 라이브러리 모음입니다.
-  `scribed`는 Boost를 쓰지 않지만, Thrift의 header가 Boost header를 불러옵니다.
 [^docker]: Docker: 프로그램과 필요한 라이브러리를 한 묶음(이미지)으로 만들어, 격리된 환경(컨테이너)에서 실행하는 도구입니다.
 [^category]: category: 로그의 종류를 나타내는 이름입니다(예: `game_login`).
   Scribe는 category를 보고 어느 store로 보낼지 정합니다.
@@ -2129,8 +1937,7 @@ Docker 실행 이미지에는 Scribe LICENSE와 함께 Thrift의 LICENSE/NOTICE,
   256 MiB는 268,435,456 bytes입니다.
 [^lf]: LF(Line Feed): 줄바꿈 문자 `\n`이며, byte 값은 `0x0a`입니다.
 [^trylater]: TRY_LATER: `Log` 요청의 결과 값 중 하나로, "지금은 받을 수 없으니 나중에 다시 보내라"는 뜻입니다.
-  클라이언트가 요청을 다시 보내야 합니다.
-  보통은 요청의 메시지를 하나도 받지 않은 상태지만, 서버가 종료되는 중에 처음 보는 category를 만들다 돌려준 `TRY_LATER`는 앞 메시지 일부를 이미 큐에 넣은 뒤일 수 있어 재전송하면 그만큼 중복될 수 있습니다(원본과 같음).
+  클라이언트가 요청을 다시 보내야 합니다([예외](#그-밖의-주의점)).
 [^cpp17]: C++17: 2017년에 정해진 C++ 언어 표준입니다.
   컴파일러에 이 판을 지정하면, 그 판의 문법과 표준 라이브러리로 빌드합니다.
 [^smartptr]: 스마트 포인터: 메모리를 다 쓰면 자동으로 돌려주는 C++ 도구입니다.
@@ -2146,10 +1953,7 @@ Docker 실행 이미지에는 Scribe LICENSE와 함께 Thrift의 LICENSE/NOTICE,
 [^primary]: primary/secondary: buffer store 안의 두 하위 store입니다.
   primary는 평소 로그를 보내는 곳(보통 다음 Scribe 서버), secondary는 primary가 실패할 때 로그를 모아 두는 곳(보통 spool 파일)입니다.
 [^replay]: replay(재전송): secondary에 모아 둔 로그를 primary가 살아난 뒤 다시 보내는 것입니다.
-[^little]: little-endian: 여러 byte로 된 숫자를 작은 자리부터 저장하는 방식입니다.
-  길이 9는 `09 00 00 00`으로 저장됩니다.
 [^raii]: RAII: 자원(잠금, 메모리 등)을 만들 때 얻고, 범위를 벗어나면 자동으로 돌려주는 C++ 방식입니다.
   중간에 예외가 나도 자원이 풀립니다.
 [^fsync]: fsync: 운영체제 메모리에 있는 파일 내용을 디스크에 실제로 기록하도록 강제하는 호출입니다.
   `flush`는 프로그램의 버퍼를 운영체제로 넘길 뿐이라, 전원이 꺼지면 내용이 사라질 수 있습니다.
-[^autotools]: autotools: `configure` 스크립트와 `Makefile`을 만들어 주는 전통적인 빌드 도구 묶음(autoconf, automake, libtool)입니다.

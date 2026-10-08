@@ -2,6 +2,7 @@
 // scribe-next modification: C++17 cleanup; override and deleted copies, no behaviour change.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: a new throttleLock serializes the per-second throttle state across concurrent Log calls (independent of the handler read lock).
 //  Copyright (c) 2007-2009 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,7 +95,7 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
   unsigned long checkPeriod; // periodic check interval for all contained stores
 
   // This map has an entry for each configured category.
-  // Each of these entries is a map of type->StoreQueue.
+  // Each of these entries is a vector of StoreQueue.
   // The StoreQueue contains a store, which could contain additional stores.
   category_map_t categories;
   category_map_t category_prefixes;
@@ -150,4 +151,3 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
                   const std::shared_ptr<store_list_t>& store_list);
 };
 #endif // SCRIBE_SERVER_H
-// scribe-next modification: serialize the per-second throttle state independently of handler read access.

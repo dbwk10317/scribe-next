@@ -1,5 +1,4 @@
 """Bounded synthetic game-server feature profile: copied multi/buffer relay, prefixes, default."""
-from __future__ import print_function
 import binascii, hashlib, os, struct, time
 
 TEMPLATE=os.path.join(os.path.dirname(os.path.abspath(__file__)),'daemon_game_profile.conf.template')
@@ -10,7 +9,7 @@ RELAYED=(LOGIN,SESSION,METRICS,EXT)   # store0 unpooled copies + pooled ext-* co
 PHASES=('startup','spooled','replayed','drained','final_upstream','final_downstream')
 
 # Absolute upstream getCounters values; each delta is the difference of two phases.
-# retries: new_thread_per_category=yes, so every category handled here is
+# retries: new_thread_per_category=yes by default (unset in the template), so every category handled here is
 # StoreQueue(model, category) -> Store::copy (scribe_server.cpp configureStoreCategory for
 # explicit names at startup, createCategoryFromModel for prefix/default at Log time).
 # Each copied BufferStore whose NetworkStore primary cannot connect enters
@@ -73,7 +72,7 @@ def upstream_outputs(c,date,phase):
     links['default/%s/%s_current'%(name,name)]=dated
     if phase=='spooled':
         for cat in RELAYED:
-            # Buffer file frame: native little-endian uint32 of message+"\n".
+            # Buffer file frame: explicit little-endian uint32 (FileInterface::serializeUInt) of message+"\n".
             data=b''.join(struct.pack('<I',len(m)+1)+m+b'\n' for m in messages(c,cat))
             files['%s/%s/%s_00000'%('ext-spool' if cat==EXT else 'relay-spool',cat.decode(),cat.decode())]=data
     return snapshot(c,files,links)

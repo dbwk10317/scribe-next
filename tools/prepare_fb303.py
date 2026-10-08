@@ -40,10 +40,13 @@ def main():
         "config.status", "autom4te.cache"))
     subprocess.run(["git", "apply", "--check", str(patch)], cwd=output, check=True)
     subprocess.run(["git", "apply", str(patch)], cwd=output, check=True)
+    patched = digest(output / "cpp/FacebookBase.cpp")
+    if patched == BASE:  # git apply skips paths outside cwd when output sits in another work tree
+        raise SystemExit("git apply left cpp/FacebookBase.cpp unpatched in " + str(output))
     manifest = {"version": "0.25.0", "patch": patch.name,
                 "patch_sha256": digest(patch), "base_cpp_sha256": BASE,
                 "header_sha256": HEADER,
-                "patched_cpp_sha256": digest(output / "cpp/FacebookBase.cpp")}
+                "patched_cpp_sha256": patched}
     (output / "scribe-next-fb303-safety.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(json.dumps(manifest))
 

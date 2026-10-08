@@ -4,6 +4,9 @@
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: std::filesystem::path replaces Boost's for the category check; same result and log text.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: new thrift_max_frame_size/thrift_max_message_size startup keys; an invalid value leaves the listener not started (on reinitialize it fails the store reload).
+// scribe-next modification: --config FILE/--port N reach the value-less long options with optarg NULL and exit through usage.
+// scribe-next modification: a new throttleLock serializes the per-second throttle state across concurrent Log calls (independent of the handler read lock).
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -267,7 +270,9 @@ const char* scribeHandler::statusAsString(fb_status status) {
 bool scribeHandler::createCategoryFromModel(
   const string &category, const std::shared_ptr<StoreQueue> &model) {
 
-  // Make sure the category name is sane.
+  // Original "sane name" check. On POSIX std::filesystem::path(category).string()
+  // equals category, so this never rejects anything ("../x" included); kept as
+  // the original behaviour.
   try {
     string clean_path = std::filesystem::path(category).string();
 
@@ -596,7 +601,9 @@ void scribeHandler::initialize() {
     }
     config.getUnsigned("max_conn", maxConn);
     // An invalid initial wire policy must not silently start a listener using
-    // defaults. A failed store reload leaves the existing wire policy intact.
+    // defaults. A failed store reload leaves the existing wire policy intact,
+    // but an invalid value still throws here on reinitialize and fails the reload
+    // before any store is configured (the old stores are already stopped).
     if (!server) thriftLimitsValid = false;
     const int frame_limit = readThriftLimit(config, "thrift_max_frame_size");
     const int message_limit = readThriftLimit(config, "thrift_max_message_size");
@@ -677,8 +684,8 @@ void scribeHandler::initialize() {
   }
 
   if (!enough_config_to_run) {
-    // If the new configuration failed we'll run with
-    // nothing configured and status set to WARNING
+    // If the new configuration failed, clear the category and prefix stores
+    // and set status to WARNING; stores already in defaultStores keep running.
     deleteCategoryMap(categories);
     deleteCategoryMap(category_prefixes);
   }
@@ -811,7 +818,7 @@ std::shared_ptr<StoreQueue> scribeHandler::configureStoreCategory(
     return std::shared_ptr<StoreQueue>();
   }
 
-  // look for the store in the current list
+  // create a new queue (or copy/reuse the model); existing stores are not looked up
   std::shared_ptr<StoreQueue> pstore;
 
   try {
@@ -923,4 +930,3 @@ void scribeHandler::deleteCategoryMap(category_map_t& cats) {
   } // for each category
   cats.clear();
 }
-// scribe-next modification: protect shared per-second throttle state under concurrent Log calls.

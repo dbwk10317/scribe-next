@@ -85,7 +85,8 @@ static void testMultiReportDefault() {
 }
 
 // GNU link wrapping injects one local allocation failure; every other allocation
-// uses the real operator new. Only the single-threaded updater driver arms it.
+// uses the real operator new. It is armed per thread: by the updater driver and
+// by testLogExceptionLock (directly, or from the wrlock wrapper in write mode).
 static thread_local bool reviewFailNextAllocation = false;
 static thread_local std::size_t reviewFailAllocationSize = 0;
 extern "C" void* __real__Znwm(std::size_t size);
@@ -103,6 +104,13 @@ static thread_local bool reviewTrackLogLock = false, reviewFailOnWrite = false;
 static thread_local pthread_rwlock_t* reviewLogMutex = nullptr;
 static thread_local int reviewLogBalance = 0, reviewLogEventCount = 0;
 static thread_local char reviewLogEvents[8];
+// Events past the buffer are only counted; the check below rejects that overflow.
+static void reviewLogEvent(char event) {
+  if (reviewLogEventCount < static_cast<int>(sizeof(reviewLogEvents))) {
+    reviewLogEvents[reviewLogEventCount] = event;
+  }
+  ++reviewLogEventCount;
+}
 extern "C" int __real_pthread_rwlock_rdlock(pthread_rwlock_t*);
 extern "C" int __real_pthread_rwlock_wrlock(pthread_rwlock_t*);
 extern "C" int __real_pthread_rwlock_unlock(pthread_rwlock_t*);
@@ -110,14 +118,14 @@ extern "C" int __wrap_pthread_rwlock_rdlock(pthread_rwlock_t* mutex) {
   const int result = __real_pthread_rwlock_rdlock(mutex);
   if (reviewTrackLogLock && result == 0) {
     reviewLogMutex = mutex; ++reviewLogBalance;
-    reviewLogEvents[reviewLogEventCount++] = 'R';
+    reviewLogEvent('R');
   }
   return result;
 }
 extern "C" int __wrap_pthread_rwlock_wrlock(pthread_rwlock_t* mutex) {
   const int result = __real_pthread_rwlock_wrlock(mutex);
   if (reviewTrackLogLock && mutex == reviewLogMutex && result == 0) {
-    ++reviewLogBalance; reviewLogEvents[reviewLogEventCount++] = 'W';
+    ++reviewLogBalance; reviewLogEvent('W');
     if (reviewFailOnWrite) { reviewFailOnWrite = false; reviewFailNextAllocation = true; }
   }
   return result;
@@ -125,7 +133,7 @@ extern "C" int __wrap_pthread_rwlock_wrlock(pthread_rwlock_t* mutex) {
 extern "C" int __wrap_pthread_rwlock_unlock(pthread_rwlock_t* mutex) {
   const int result = __real_pthread_rwlock_unlock(mutex);
   if (reviewTrackLogLock && mutex == reviewLogMutex && result == 0) {
-    --reviewLogBalance; reviewLogEvents[reviewLogEventCount++] = 'U';
+    --reviewLogBalance; reviewLogEvent('U');
   }
   return result;
 }
@@ -153,7 +161,8 @@ static void testLogExceptionLock(const std::string& filename, bool write) {
   if (balance == 1) __real_pthread_rwlock_unlock(reviewLogMutex);
   require(threw, "Log allocation exception was not exercised");
   require(balance == 0, "Log exception retained its handler lock");
-  require(std::string(reviewLogEvents, reviewLogEventCount) == (write ? "RUWU" : "RU"),
+  require(reviewLogEventCount <= static_cast<int>(sizeof(reviewLogEvents)) &&
+              std::string(reviewLogEvents, reviewLogEventCount) == (write ? "RUWU" : "RU"),
           "Log read-release-write handoff changed");
   fixture.handler->reinitialize();  // Actual subsequent write lock must succeed.
   require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "Log exception prevented reinitialize");

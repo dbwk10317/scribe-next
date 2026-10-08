@@ -1,4 +1,5 @@
-// Bounded JNI local-filesystem probe for the actual original HdfsFile class.
+// Bounded JNI local-filesystem probe for the actual HdfsFile class (original plus
+// the scribe-next modifications listed at the top of src/HdfsFile.cpp).
 #include "common.h"
 #include "file.h"
 #include "HdfsFile.h"

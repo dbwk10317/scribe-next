@@ -1,5 +1,4 @@
 """Bounded real dynamic mapping/TTL case; public source expectations, no fixes."""
-from __future__ import print_function
 import binascii, os, socket, struct, threading, time, traceback
 
 TTL=5
@@ -57,7 +56,7 @@ def config(c,port_a,port_mapping,missing=None):
     settings=[('remote_host','127.0.0.1'),('remote_port',port_a),('dynamic_config_type','thrift_bucket'),
               ('bucket_id',1),('bucket_updater_host','127.0.0.1'),('bucket_updater_port',port_mapping),
               ('bucket_updater_ttl',TTL),('use_conn_pool','no'),('timeout',1000),
-              ('target_write_size',1),('max_write_interval',1),('retry_interval_range',1)]
+              ('target_write_size',1),('max_write_interval',1)]
     return text+''.join('%s=%s\n'%item for item in settings if item[0]!=missing)+'</store>\n'
 
 
@@ -116,7 +115,6 @@ class Peers(object):
                 if address[0]!='127.0.0.1':raise ValueError('non-loopback peer')
                 with self.lock:self.connections.append(conn)
                 try:
-                    conn.settimeout(3)
                     while not self.stop.is_set():
                         conn.settimeout(.2)
                         try:first=conn.recv(4)
@@ -334,7 +332,6 @@ def validate(c,result):
                 if mode not in ('A','B','fail'):raise ValueError('mapping mode differs')
                 if record['reply_hex']!=c.hexbytes(mapping_reply(c,seq,mode,scenario['ports'].get(mode,0))):raise ValueError('mapping reply/IDL/port differs')
                 if not modes or modes[-1]!=mode:modes.append(mode)
-            elif record['role']=='control':continue
             elif record['role'] in routed:
                 seq,entries=log_request(c,body)
                 if record['payloads_hex']!=[c.hexbytes(value) for value in entries] or record['reply_hex']!=c.hexbytes(reply(c,b'Log',seq,b'\x08\0\0'+struct.pack('>i',0))):raise ValueError('relay wire differs')

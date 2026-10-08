@@ -605,8 +605,8 @@ FileStore::~FileStore() {
 void FileStore::configure(pStoreConf configuration, pStoreConf parent) {
   FileStoreBase::configure(configuration, parent);
 
-  // We can run using defaults for all of these, but there are
-  // a couple of suspicious things we warn about.
+  // We can run using defaults for all of these, but buffer files
+  // silently override a couple of settings.
   if (isBufferFile) {
     // scheduled file rotations of buffer files lead to too many messy cases
     rollPeriod = ROLL_NEVER;
@@ -1277,7 +1277,7 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
   // Constructor defaults are fine if these don't exist
   configuration->getUnsigned("buffer_send_rate", bufferSendRate);
 
-  // Used for linear backoff case
+  // Used when adaptive_backoff=no: fixed interval with random jitter
   unsigned long interval;
   if (configuration->getUnsigned("retry_interval", interval)) {
     avgRetryInterval = interval;
@@ -1291,7 +1291,7 @@ void BufferStore::configure(pStoreConf configuration, pStoreConf parent) {
   // 20% of max_retry_interval should be a decent value
   // if you are using max_random_offset > max_retry_interval you should
   // probably not be using adaptive backoff and using retry_interval and
-  // retry_interval_range parameters to do linear backoff instead
+  // retry_interval_range parameters (fixed interval with jitter) instead
   configuration->getUnsigned("min_retry_interval", minRetryInterval);
   configuration->getUnsigned("max_retry_interval", maxRetryInterval);
   configuration->getUnsigned("max_random_offset", maxRandomOffset);
@@ -1661,8 +1661,9 @@ void BufferStore::periodicCheck() {
  * is increased by multiplying a MULT_INC_FACTOR to it. To avoid thundering
  * herds problems a random offset is added to this new retry interval
  * controlled by 'max_random_offset' config parameter.
- * The range of the retry interval is controlled by config parameters
- * 'min_retry_interval' and 'max_retry_interval'.
+ * 'max_retry_interval' caps every increase. 'min_retry_interval' is only
+ * applied on a decrease, so until then the interval grows from its start
+ * value DEFAULT_MIN_RETRY whatever the configured minimum.
  * Currently CONT_SUCCESS_THRESHOLD, ADD_DEC_FACTOR and MULT_INC_FACTOR
  * are not config parameters. This can be done later if need be.
  *
@@ -1949,7 +1950,8 @@ bool NetworkStore::open() {
       opened = context.getConnPool().open(remoteHost, remotePort,
           static_cast<int>(timeout));
     } else {
-      // only open unpooled connection if not already open
+      // always create a new unpooled connection (as the original); one
+      // still set is only logged
       if (unpooledConn != nullptr) {
         LOG_OPER("Logic error: NetworkStore::open unpooledConn is not NULL"
             " %s:%lu", remoteHost.c_str(), remotePort);
@@ -2302,7 +2304,7 @@ void BucketStore::configure(pStoreConf configuration, pStoreConf parent) {
     }
   }
 
-  // This is either a key_hash or key_modulo, not context log, figure out the delimiter and store it
+  // This is a key_hash, key_modulo or key_range, not context log, figure out the delimiter and store it
   if (need_delimiter) {
     configuration->getUnsigned("delimiter", delim_long);
     if (delim_long > 255) {

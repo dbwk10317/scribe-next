@@ -58,7 +58,7 @@ def wait_size(path,size,process):
         if process.poll() is not None:raise ValueError('daemon exited before file completion')
         try:actual=os.path.getsize(path)
         except OSError as error:
-            if error.errno!=2:raise
+            if error.errno!=errno.ENOENT:raise
             actual=0
         if actual==size:return
         if actual>size or time.monotonic()>=deadline:raise ValueError('performance file size differs')

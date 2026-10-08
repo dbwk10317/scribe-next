@@ -73,6 +73,9 @@ store 계층은 출력, relay, buffering, 분배를 맡는다.
 - 기본 `new_thread_per_category=yes`는 category마다 worker를 만든다
 - mutex, condition variable, worker 수, command 순서, 실패 batch 우선, `must_succeed`, retry, `flush_streaming`, 종료 동작을 유지한다
 - 시간 기준과 wakeup 의미가 바뀔 수 있어 StoreQueue의 pthread·조건 변수는 그대로 둔다
+- StoreQueue의 status 조회는 원본처럼 잠그지 않는다. worker가 첫 구성·open을 마치기 전에는 빈 문자열을 돌려준다
+- handler 등록 전에 파괴되는 StoreQueue는 소멸자가 worker를 멈추고 join한다. 구성·open하지 않은 store는 닫지 않는다
+- 두 동작의 세부는 [정책](compatibility-policy.md#안전이식-수정)에 있다
 
 ### 저장과 라우팅
 
@@ -109,7 +112,8 @@ store 계층은 출력, relay, buffering, 분배를 맡는다.
 Thrift 0.25.0 경계에서 정한 것은 다음과 같다.
 
 - 두 IDL은 `cpp:pure_enums`로 생성한다. 생성 결과에 없는 빈 `*_constants.cpp`는 build 목록에서 뺐다
-- `TNonblockingServer`는 port 대신 server transport 객체를 받는다. `ThreadFactory`와 좁은 POSIX read/write wrapper로 이식했다
+- `TNonblockingServer`는 port 대신 server transport 객체와 `ThreadFactory`를 받는다
+- 0.25에서 사라진 Thrift `ReadWriteMutex`는 POSIX read-write lock을 감싼 좁은 wrapper(`src/compat_mutex.h`)로 대신한다. 호출 지점의 잠금 범위는 그대로다
 - 기본 frame·message 한도가 원본 시절과 달라 설정으로 명시한다
 - 0.9.0은 thread stack 1 MiB를 명시했지만 0.25의 `std::thread`는 OS 기본값을 쓴다. 8 MiB라고 가정하지 않는다
 - timeout, NODELAY, relay 5000 ms·linger 설정은 바꾸지 않았다
@@ -119,20 +123,21 @@ Thrift 0.25.0 경계에서 정한 것은 다음과 같다.
 ## 현대화 경계
 
 2026-10-07 사용자 승인으로 아래 단계를 이 순서대로 각각 별도 PR로 진행했다.
-각 단계는 외부 계약, lock 순서·범위, 시간 기준, `rand()` 사용, 파일·wire bytes, 카운터를 바꾸지 않는다.
-완료 조건은 검증기 전체 시험과 `tools/old-lane` 구·신 비교 통과다.
+각 단계가 지킨 기준과 완료 조건은 [AGENTS.md](../AGENTS.md#작고-검증-가능한-변경)에 있다.
+확인 수치는 각 commit 메시지에 적힌 것이며 원시 결과는 저장소에 없다.
+구·신 비교 case는 1·2단계 때 10개였고 3단계 때 17개였다.
 
 | 단계 | 내용 | 상태 |
 | --- | --- | --- |
-| 1 | 내부 `boost::shared_ptr`/`weak_ptr`를 `std::shared_ptr`/`weak_ptr`로 | 완료(PR #55) |
-| 2 | Boost 라이브러리 제거. `boost::filesystem`은 `std::filesystem`, `boost::split`은 같은 결과의 자체 함수 | 완료(PR #58) |
-| 3 | store·queue·connection pool·config·bucket updater에 `ScribeContext` 주입 | 완료(PR #59) |
+| 1 | 내부 `boost::shared_ptr`/`weak_ptr`를 `std::shared_ptr`/`weak_ptr`로 | 완료(PR #55, `72212c0`). Rocky 9.8 검증기 236 tests, 구·신 10개 case |
+| 2 | Boost 라이브러리 제거. `boost::filesystem`은 `std::filesystem`, `boost::split`은 같은 결과의 자체 함수 | 완료(PR #58, `1e66160`). Rocky 9.8·8.10 검증기 236 tests, 구·신 10개 case |
+| 3 | store·queue·connection pool·config·bucket updater에 `ScribeContext` 주입 | 완료(PR #59, `42ef74e`). Rocky 9.8 검증기 240 tests, 구·신 17개 case |
 | - | StoreQueue thread·조건 변수의 `std::thread` 전환 | 보류 |
 
 - 3단계 뒤 전역 `g_Handler`는 Thrift 서버 구성(`main`, `scribe::createServer`)에만 남는다
 - 서버 하나에 context 하나이므로 값·카운터·연결 공유 범위는 같다
-- raw StoreQueue backlink의 소유권은 바꾸지 않았다
-- 자체 분리 함수는 Boost 1.58·1.83과 7개 문자로 만든 길이 7 이하 모든 문자열에서 결과가 같았다
+- raw StoreQueue backlink의 소유권은 바꾸지 않았다. clone이 모델 queue를 가리키는 원본 문제는 [정책](compatibility-policy.md#남긴-원본-버그)의 "clone의 StoreQueue 포인터" 행에 있다
+- 자체 분리 함수가 Boost 1.58·1.83의 `boost::split`과 1,921,600개 입력에서 같은 결과를 냈다는 것은 `1e66160` commit 메시지의 기록이다. 그 비교 프로그램과 결과는 저장소에 없어 다시 실행할 수 없다
 - 파일 함수 실패 시 진단 로그 문구만 표준 라이브러리 표현으로 바뀔 수 있다
 - GCC 8은 `std::filesystem`에 `-lstdc++fs`가 필요하며 configure가 확인해 붙인다
 

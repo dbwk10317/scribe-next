@@ -7,7 +7,6 @@ historical libhdfs binary equivalence or a durable-ACK test.
 """
 import argparse
 from contextlib import contextmanager
-import json
 import hashlib
 import ipaddress
 import os

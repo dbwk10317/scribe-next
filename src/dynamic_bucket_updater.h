@@ -33,7 +33,8 @@ class ScribeContext;
   */
 class DynamicBucketUpdater {
  public:
-  // bucket updater connection error
+  // bucket updater connection error. Never incremented (its dead null-socket
+  // check was removed); connect failures count under FB303_ERR_THRIFTCALL.
   static const char *FB303_ERR_CONNECT;
   // error calling bucketupdater.thrift
   static const char *FB303_ERR_THRIFTCALL;
@@ -119,6 +120,7 @@ class DynamicBucketUpdater {
   /**
     * actual implementation of getHost.
     *
+    * @param context server context (Thrift wire limits)
     * @param category the category name, or any identifier that uniquely
     *        identifies a bucket store.
     * @param ttl ttl in seconds
@@ -140,13 +142,15 @@ class DynamicBucketUpdater {
                       uint32_t sendTimeout,
                       uint32_t recvTimeout);
   /**
-    * Given a category name, remote host:port, current time, and category
-    * mapping, performs a periodic update.  The current mapping will be
+    * Given a category name and remote host:port, always performs an update
+    * (getHostInternal decides when one is due).  The current mapping will be
     * removed first before update is performed.
     *
-    * This function takes care of try/catch and locking.  The bulk of the
-    * update logic is delegated to updateInternal.
+    * This function takes care of try/catch. It does not lock; the caller
+    * holds lock_ (getHost's Guard). The bulk of the update logic is
+    * delegated to updateInternal.
     *
+    * @param context server context (Thrift wire limits)
     * @param category category or key that uniquely identifies this updater.
     * @param ttl ttl in seconds
     * @param host remote host that will be used to retrieve bucket mapping
@@ -191,6 +195,7 @@ class DynamicBucketUpdater {
     * using bucketupdater thrift interface and update internal category,
     * bucket id to host mappings.
     *
+    * @param context server context (Thrift wire limits)
     * @param category category or other uniquely identifiable key
     * @param ttl ttl in seconds
     * @param remoteHost remote host that will be used to retrieve bucket mapping

@@ -221,7 +221,7 @@ bool HdfsFile::createSymlink(std::string oldpath, std::string newpath) {
 
 /**
  * If the URI is specified of the form
- * hdfs://server::port/path, then connect to the
+ * hdfs://server:port/path, then connect to the
  * specified cluster
  */
 hdfsFS HdfsFile::connectToPath(const char* uri) {

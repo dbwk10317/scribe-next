@@ -4,6 +4,7 @@
 // scribe-next modification: C++17 cleanup; printf-style LOG_OPER, dead null checks removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: a BucketStoreMappingException is logged under its own name (was labelled TTransportException); unused ostringstream removed.
 #include <iostream>
 #include "dynamic_bucket_updater.h"
 #include "scribe_server.h"
@@ -19,7 +20,8 @@ using namespace scribe::thrift;
 DynamicBucketUpdater* DynamicBucketUpdater::instance_ = NULL;
 Mutex DynamicBucketUpdater::instanceLock_;
 
-// bucket updater connection error
+// bucket updater connection error. Never incremented: its only use was a dead
+// null-socket check (removed); connect failures count under FB303_ERR_THRIFTCALL.
 const char* DynamicBucketUpdater::FB303_ERR_CONNECT = "bucketupdater.err.update_connect";
 // error calling bucketupdater.thrift
 const char* DynamicBucketUpdater::FB303_ERR_THRIFTCALL = "bucketupdater.err.thrift_call";
@@ -83,15 +85,15 @@ bool DynamicBucketUpdater::getHost(ScribeContext& context,
 
 bool DynamicBucketUpdater::isConfigValid(const string& category,
                                          const StoreConf* pconf) {
-  // we need dynamic_updater_bid paramter
+  // we need the bucket_id parameter
   string bid;
   if (!pconf->getString("bucket_id", bid)) {
     LOG_OPER("[%s] dynamic bucket updater configuration invalid. Missing bucket_id.  Is the network a descendant of a bucket store?", category.c_str());
     return false;
   }
 
-  // requires either dynamic_updater_host and networ_updater_port, or
-  // dynamic_updater_service
+  // requires either bucket_updater_host and bucket_updater_port, or
+  // bucket_updater_service
   string host, port, service;
   if (!pconf->getString("bucket_updater_service", service) &&
     (!pconf->getString("bucket_updater_host", host) ||
@@ -118,7 +120,8 @@ bool DynamicBucketUpdater::isConfigValid(const string& category,
   *        If no mapping is found, this variable is not modified.
   * @param port the output parameter that receives the host output.
   *        If no mapping is found, this variable is not modified.
-  * @param service service name
+  * @param updateHost remote host to fetch mapping
+  * @param updatePort remote port to fetch mapping
   * @param connTimeout connection timeout
   * @param sendTimeout send timeout
   * @param recvTimeout receive timeout
@@ -161,6 +164,11 @@ bool DynamicBucketUpdater::getHost(ScribeContext& context,
   *        If no mapping is found, this variable is not modified.
   * @param port the output parameter that receives the host output.
   *        If no mapping is found, this variable is not modified.
+  * @param serviceName service name
+  * @param serviceOptions service options
+  * @param connTimeout connection timeout
+  * @param sendTimeout send timeout
+  * @param recvTimeout receive timeout
   */
 bool DynamicBucketUpdater::getHost(ScribeContext& context,
                       const string &category,
@@ -201,6 +209,7 @@ bool DynamicBucketUpdater::getHost(ScribeContext& context,
 /**
   * actual implementation of getHost.
   *
+  * @param context server context (Thrift wire limits)
   * @param category the category name, or any identifier that uniquely
   *        identifies a bucket store.
   * @param ttl ttl in seconds
@@ -261,15 +270,16 @@ bool DynamicBucketUpdater::getHostInternal(const ScribeContext& context,
 }
 
 /**
-  * Given a category name, remote host:port, current time, and category
-  * mapping time to live (ttl), check whether we need to update the
-  * category mapping.  If so query bucket mapping
-  * using bucketupdater thrift interface and update internal category,
-  * bucket id to host mappings.
+  * Given a category name, remote host:port and category mapping time to
+  * live (ttl), query bucket mapping using bucketupdater thrift interface
+  * and update internal category, bucket id to host mappings. It always
+  * calls updateInternal; getHostInternal decides when an update is due.
   *
-  * This function takes care of try/catch and locking.  The bulk of the
-  * update logic is delegated to updateInternal.
+  * This function takes care of try/catch. It does not lock; the caller
+  * holds lock_ (getHost's Guard). The bulk of the update logic is
+  * delegated to updateInternal.
   *
+  * @param context server context (Thrift wire limits)
   * @param category category or key that uniquely identifies this updater.
   * @param ttl ttl in seconds
   * @param host remote host that will be used to retrieve bucket mapping
@@ -306,8 +316,7 @@ bool DynamicBucketUpdater::periodicCheck(const ScribeContext& context,
     addStatValue(DynamicBucketUpdater::FB303_ERR_THRIFTCALL, 1);
     ret = false;
   } catch (const BucketStoreMappingException& bex) {
-    ostringstream oss;
-    LOG_OPER("periodicCheck(%s, %s, %u, %d, %d, %d) TTransportException: %s",
+    LOG_OPER("periodicCheck(%s, %s, %u, %d, %d, %d) BucketStoreMappingException: %s",
             category.c_str(), host.c_str(), port,
             connTimeout, sendTimeout, recvTimeout,
             bex.message.c_str());
@@ -330,6 +339,7 @@ bool DynamicBucketUpdater::periodicCheck(const ScribeContext& context,
   * using bucketupdater thrift interface and update internal category,
   * bucket id to host mappings.
   *
+  * @param context server context (Thrift wire limits)
   * @param category category or other uniquely identifiable key
   * @param ttl ttl in seconds
   * @param remoteHost remote host that will be used to retrieve bucket mapping

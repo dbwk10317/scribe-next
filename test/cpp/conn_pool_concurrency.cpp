@@ -11,7 +11,7 @@ static std::mutex state;
 static std::condition_variable changed;
 static bool sending=false,release_send=false,reopen_event=false,reopened=false,unsafe_open=false,wrong_unlock=false;
 static thread_local bool opener=false;
-static bool throw_send=false,wrong_context=false;
+static bool throw_send=false,wrong_context=false,lock_error=false;
 // The pool must hand its own context to every connection it creates.
 struct FixtureContext:ScribeContext{void incCounter(std::string,std::string)override{} void incCounter(std::string,std::string,long)override{} void incCounter(std::string)override{} void incCounter(std::string,long)override{}
  unsigned long long getMaxQueueSize()override{return 0;} int getThriftMaxFrameSize()const override{return 0;} int getThriftMaxMessageSize()const override{return 0;} bool hasValidThriftLimits()const override{return false;}
@@ -23,7 +23,8 @@ scribeConn::scribeConn(ScribeContext& c,const std::string&,unsigned long,int):co
 scribeConn::scribeConn(ScribeContext& c,const std::string&,const server_vector_t&,int):context(c),refCount(1){if(&c!=&::context)wrong_context=true;pthread_mutex_init(&mutex,nullptr);{std::lock_guard<std::mutex> g(state);opened[this]=false;}}
 scribeConn::~scribeConn(){pthread_mutex_destroy(&mutex);}
 void scribeConn::addRef(){++refCount;} void scribeConn::releaseRef(){--refCount;} unsigned scribeConn::getRef(){return refCount;} void scribeConn::setRef(unsigned n){refCount=n;}
-void scribeConn::lock(){if(opener){std::lock_guard<std::mutex> g(state);reopen_event=true;changed.notify_all();}pthread_mutex_lock(&mutex);std::lock_guard<std::mutex> g(state);owners[this]=std::this_thread::get_id();}
+// The host/port mutex is ERRORCHECK: relocking one this thread never unlocked returns EDEADLK.
+void scribeConn::lock(){if(opener){std::lock_guard<std::mutex> g(state);reopen_event=true;changed.notify_all();}const int locked=pthread_mutex_lock(&mutex);std::lock_guard<std::mutex> g(state);if(locked)lock_error=true;owners[this]=std::this_thread::get_id();}
 void scribeConn::unlock(){std::lock_guard<std::mutex> g(state);if(owners[this]!=std::this_thread::get_id())wrong_unlock=true;owners[this]=std::thread::id();pthread_mutex_unlock(&mutex);}
 bool scribeConn::isOpen(){std::lock_guard<std::mutex> g(state);if(opener){unsafe_open=owners[this]!=std::this_thread::get_id();reopen_event=true;changed.notify_all();}return opened[this];}
 bool scribeConn::open(){std::lock_guard<std::mutex> g(state);opened[this]=true;return true;}
@@ -35,17 +36,18 @@ int main(int argc,char** argv){
  std::shared_ptr<logentry_vector_t> messages(new logentry_vector_t);
  if(argc==2 && std::string(argv[1])=="exception") {
   throw_send=true;try {pool.send("fixture",1,messages);return 2;}catch(const std::runtime_error&){}
+  // Had the throwing send left the connection locked, this open's relock records lock_error.
   if(!pool.open("fixture",1,1) || pool.refs()!=2)return 3;
   pool.close("fixture",1);pool.close("fixture",1);
-  std::cout<<"PASS exception"<<std::endl;return pool.empty()&&!wrong_context?0:4;
+  if(!pool.empty()||wrong_context||wrong_unlock||lock_error)return 4;
+  std::cout<<"PASS exception"<<std::endl;return 0;
  }
  int result=-99;std::thread sender([&]{result=pool.send("fixture",1,messages);});
  {std::unique_lock<std::mutex> g(state);if(!changed.wait_for(g,std::chrono::seconds(3),[]{return sending;}))std::abort();}
  std::thread reopener([&]{opener=true;bool success=pool.open("fixture",1,1);{std::lock_guard<std::mutex> g(state);reopened=success;changed.notify_all();}});
  {std::unique_lock<std::mutex> g(state);if(!changed.wait_for(g,std::chrono::seconds(3),[]{return reopen_event;}))std::abort();if(unsafe_open && !changed.wait_for(g,std::chrono::seconds(3),[]{return reopened;}))std::abort();release_send=true;changed.notify_all();}
  sender.join();reopener.join();bool bad=unsafe_open||wrong_unlock||wrong_context;
- if(bad)old->unlock();
  if(result!=CONN_TRANSIENT || pool.refs()!=2)bad=true;
- pool.close("fixture",1);if(pool.refs()!=1)bad=true;pool.close("fixture",1);if(!pool.empty())bad=true;
- std::cout<<"unsafe_isOpen="<<unsafe_open<<" wrong_unlock="<<wrong_unlock<<" refcount/key_preserved="<<!bad<<std::endl;return bad?1:0;
+ pool.close("fixture",1);if(pool.refs()!=1)bad=true;pool.close("fixture",1);if(!pool.empty()||wrong_unlock||lock_error)bad=true;
+ std::cout<<"unsafe_isOpen="<<unsafe_open<<" wrong_unlock="<<wrong_unlock<<" lock_error="<<lock_error<<" checks_passed="<<!bad<<std::endl;return bad?1:0;
 }

@@ -1,4 +1,6 @@
-// Original zero-byte behavior in the real handler/StoreQueue/FileStore path.
+// Original zero-byte queue behavior and concurrent Log throttling in the real
+// handler/StoreQueue/FileStore path. Also defines the fixture binary's __wrap_time
+// (-Wl,--wrap=time): the real clock unless the throttle test pins it.
 // Licensed under the Apache License, Version 2.0; see LICENSE.
 #ifndef SCRIBE_TEST_REVIEW_QUEUE_CONTRACTS_H
 #define SCRIBE_TEST_REVIEW_QUEUE_CONTRACTS_H
@@ -17,7 +19,9 @@ extern "C" time_t __wrap_time(time_t* value) {
 }
 
 static void testReviewConcurrentThrottle(const std::string& config) {
-  reviewFixedTime = 123456;
+  // Pinned ahead of the real clock: StoreQueue workers derive their CLOCK_REALTIME
+  // timedwait deadline from time(), so a past value would make them busy-spin.
+  reviewFixedTime = __real_time(nullptr) + 3600;
   HandlerFixture fixture(config);
   const auto handler = fixture.handler;
   handler->initialize();
@@ -86,7 +90,8 @@ static void testReviewQueue(const std::string& mode, const std::string& config,
   MemoryRpc rpc(handler);
   rpc.client.send_Log(messages);
   rpc.process();
-  require(rpc.client.recv_Log() == scribe::thrift::OK, "queue Log ACK changed");
+  const auto ack = rpc.client.recv_Log();
+  require(ack == scribe::thrift::OK, "queue Log ACK changed");
   require(handler->received == messages, "queue RPC changed payloads");
   require(handler->getCounter("accepted:received good") == static_cast<int64_t>(messages.size()),
           "queue received-good counter changed");
@@ -114,7 +119,8 @@ static void testReviewQueue(const std::string& mode, const std::string& config,
 
   handler->stopForTest();
   std::ostringstream state;
-  state << "ack=0\nreceived=" << handler->getCounter("accepted:received good")
+  state << "ack=" << static_cast<int>(ack)
+        << "\nreceived=" << handler->getCounter("accepted:received good")
         << "\nlost=" << handler->getCounter("accepted:lost")
         << "\nrequeue=" << handler->getCounter("accepted:requeue")
         << "\nbytes-lost=" << handler->getCounter("accepted:bytes lost") << "\n";

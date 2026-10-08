@@ -8,6 +8,7 @@
 #include <vector>
 #include <memory>
 #include <stdexcept>
+#include <cstdlib>
 #include <pthread.h>
 inline void LOG_OPER(const char*, ...) {}
 namespace scribe { namespace thrift { struct LogEntry {std::string message;}; } }
@@ -25,6 +26,7 @@ struct StoreConf {
 typedef std::shared_ptr<StoreConf> pStoreConf;
 class ScribeContext {public: void incCounter(const std::string&,const std::string&,size_t){}};
 void fixture_configure();
+inline unsigned long long fixture_handled_bytes=0; // written by the worker, read after stop() joined it
 std::string fixture_status();
 class StoreQueue;
 struct Store {
@@ -33,8 +35,9 @@ struct Store {
  void configure(pStoreConf,pStoreConf){fixture_configure();}
  std::string getStatus(){return fixture_status();}
  std::string getType(){return "fixture";}
- bool isOpen(){return false;} bool open(){return true;} void close(){}
+ bool opened=false; // close() on a store that was never opened is a queue bug (a real BufferStore crashes)
+ bool isOpen(){return false;} bool open(){opened=true;return true;} void close(){if(!opened)std::abort();}
  void periodicCheck(){} void flush(){}
- bool handleMessages(std::shared_ptr<logentry_vector_t>){return true;}
+ bool handleMessages(std::shared_ptr<logentry_vector_t> messages){for(auto& entry:*messages)fixture_handled_bytes+=entry->message.size();return true;}
 };
 #endif

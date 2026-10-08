@@ -60,8 +60,9 @@ class TestHandler : public scribeHandler {
     return scribeHandler::Log(messages);
   }
 
-  // There is only one caller of the handler in this fixture. This joins actual
-  // store workers, but never calls shutdown(), stopServer(), exit(), or serve().
+  // `received` is a single-caller spy; concurrent tests call scribeHandler::Log
+  // directly. This joins actual store workers, but never calls shutdown(),
+  // stopServer(), exit(), or serve().
   void stopForTest() { stopStores(); }
 
   std::vector<LogEntry> received;
@@ -366,9 +367,6 @@ static void testConfigInheritance(const std::string& filename) {
   pStoreConf absent = child;
   require(!child->getStore("leaf", absent) && absent == child,
           "nested stores must not be inherited");
-  // Break the explicit test tree's parent/child shared ownership cycles.
-  child->setParent(pStoreConf());
-  parent->setParent(pStoreConf());
 }
 
 static void testConfigMalformed(const std::string& filename, const std::string& directory) {
@@ -539,14 +537,11 @@ int main(int argc, char** argv) {
       testHandlerInvalid(argv[2]);
     } else if (std::string(argv[1]) == "routing") {
       testRouting(argv[2]);
-    } else if (dispatchThriftFile(argv[1], argv[2], argv[3])) {
-      // Test-only actual Thrift file-transport characterization completed.
-    } else if (dispatchFileStore(argv[1], argv[2], argv[3])) {
-      // Actual filesystem contract mode completed.
-    } else if (dispatchReviewQueue(argv[1], argv[2], argv[3])) {
-      // Actual queue regression mode completed.
-    } else if (dispatchReviewRetryShuffle(argv[1], argv[2], argv[3])) {
-      // Actual zero-jitter and C++17 portability contracts completed.
+    } else if (dispatchThriftFile(argv[1], argv[2], argv[3]) ||
+               dispatchFileStore(argv[1], argv[2], argv[3]) ||
+               dispatchReviewQueue(argv[1], argv[2], argv[3]) ||
+               dispatchReviewRetryShuffle(argv[1], argv[2], argv[3])) {
+      // The dispatcher that recognized the mode has already run it.
     } else {
       throw std::runtime_error("unknown fixture mode");
     }

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Actual StoreQueue methods with a barrier-controlled store dependency stub."""
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,22 +7,20 @@ import tempfile
 import unittest
 ROOT = Path(__file__).resolve().parents[1]
 class QueuePublicationTests(unittest.TestCase):
-    def test_status_waits_for_worker_configuration_publication(self):
-        self.run_component("queue_publication.cpp", "early_status=0 status=")
+    def test_status_reports_ok_until_worker_publishes_configuration_without_command_lock(self):
+        self.run_component("queue_publication.cpp",
+                           "early_status= locked=0 store_read=0 late_status=configured copy_status=configured")
 
     def test_concurrent_byte_size_and_configured_target_snapshots(self):
-        self.run_component("queue_snapshots.cpp", "snapshot_bounds=1 final_bytes=0")
+        self.run_component("queue_snapshots.cpp", "snapshot_bounds=1 final_bytes=0 handled_bytes=40000")
 
     def test_worker_init_failures_reject_publication_and_release_partial_resources(self):
         self.run_component("queue_init_failures.cpp", "PASS init failure matrix")
 
-    def test_message_push_allocation_failure_releases_queue_mutex(self):
-        self.run_component("queue_lock_exceptions.cpp", "threw=1 held=0 accepted=1")
+    def test_message_and_command_push_allocation_failures_release_queue_mutexes(self):
+        self.run_component("queue_lock_exceptions.cpp", "threw=1 held=0 accepted=1 cmd_threw=1 cmd_held=0")
 
     def run_component(self, source, expected):
-        tools = os.environ.get("TOOLS_PREFIX")
-        if not tools:
-            self.skipTest("requires prepared Boost headers")
         with tempfile.TemporaryDirectory(prefix="scribe-queue-publication-") as directory:
             work = Path(directory)
             for name in ("store_queue.cpp", "store_queue.h"):
@@ -31,7 +28,7 @@ class QueuePublicationTests(unittest.TestCase):
             shutil.copyfile(ROOT / "test/cpp/queue_component_common.h", work / "common.h")
             (work / "scribe_server.h").write_text('#include "store_queue.h"\n')
             command = ["g++", "-std=c++17", "-O0", "-g", "-pthread", "-I", str(work),
-                       "-I", str(Path(tools) / "include"), str(work / "store_queue.cpp"),
+                       str(work / "store_queue.cpp"),
                        str(ROOT / "test/cpp" / source),
                        *(["-Wl,--wrap=pthread_mutex_lock"] if source=="queue_publication.cpp" else []),
                        *(["-Wl,--wrap="+name for name in ("pthread_mutex_init", "pthread_mutex_destroy",

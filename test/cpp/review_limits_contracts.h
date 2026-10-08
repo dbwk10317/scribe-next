@@ -113,7 +113,9 @@ static void runLimitSpoolRelay(const std::string& filename) {
     buffer.close();
     return;
   }
-  buffer.periodicCheck();  // Exhaustion is detected on the next normal check.
+  // The first check already sent the only spool file and, finding the spool
+  // empty, switched to STREAMING; this further normal check must keep that.
+  buffer.periodicCheck();
   require(buffer.streaming() && fixture.store->empty(&fixture.now),
           "20MiB spool did not finish replay");
   require(fixture.handlerFixture.handler->getCounter("fallback:lost") == 0 &&
