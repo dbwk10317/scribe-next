@@ -213,9 +213,7 @@ sudo make install
   예를 들어 원본의 Python 2 client가 있는 시스템이라면, 덮어쓰지 않도록 다른 `PY_PREFIX`를 주세요.
   위 `./bootstrap.sh` 줄 끝에 `PY_PREFIX=/opt/scribe-python`처럼 더하면 됩니다.
 - **Python client를 쓸 때.**
-  - 이 저장소는 Python 3 client를 바로 쓸 수 있는 설치 경로를 제공하지 않습니다.
-  - 설치된 `scribe` package를 쓰려면 같은 버전의 Thrift Python package(0.25.0)와 fb303 Python module이 함께 필요한데, 위 순서는 둘 다 설치하지 않습니다.
-  - 이 package는 원본의 Python 2 client를 대신하도록 검증하지 않았습니다. 구성은 [빌드 안내](docs/build.md#python-client)에 있습니다.
+  위 순서만으로는 Python client를 바로 쓸 수 없습니다(Thrift·fb303 Python module이 따로 필요). 자세한 것은 [빌드 안내](docs/build.md#python-client)에 있습니다.
 - **그 밖의 설정.**
   공유 라이브러리 경로와 HDFS 빌드 설정은 [빌드 안내](docs/build.md)와 [HDFS 안내](docs/hdfs.md)에 있습니다.
 
@@ -270,35 +268,8 @@ rm -rf ~/scribe-build
 - **`scribe-local.conf`.** Rocky(1-B)에서만 만들었습니다. Ubuntu에서는 없는 파일이라 그 줄은 아무것도 하지 않습니다.
 - **1단계의 배포판 패키지.** 빌드 도구, libevent, Boost header는 다른 소프트웨어도 쓸 수 있어 지우지 않습니다.
 
-**빌드 폴더를 이미 지웠다면** 설치된 파일을 직접 지웁니다. 위 설치가 `/usr/local`에 만든 것은 이것이 전부입니다.
-
-```sh
-sudo rm -rf /usr/local/bin/scribed /usr/local/bin/thrift \
-  /usr/local/lib/libscribe.a /usr/local/lib/libdynamicbucketupdater.a /usr/local/lib/libfb303.a \
-  /usr/local/lib/libthrift.so /usr/local/lib/libthrift.so.0.25.0 \
-  /usr/local/lib/libthriftnb.so /usr/local/lib/libthriftnb.so.0.25.0 \
-  /usr/local/lib/pkgconfig/thrift.pc /usr/local/lib/pkgconfig/thrift-nb.pc \
-  /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303
-```
-
-- Python package는 `PY_PREFIX`(기본값 `/usr`) 아래 시스템 Python 경로에만 들어갑니다.
-  다른 `PY_PREFIX`로 설치했다면 아래 경로의 `/usr` 대신 그 값 아래에서 `scribe` 폴더를 찾아 지웁니다.
-- `import scribe`로 경로를 찾으면 가상환경이나 사용자 디렉터리의 다른 package를 지울 수 있으므로, 설치 경로를 직접 지정합니다.
-- Rocky는 `site-packages`, Ubuntu는 `dist-packages`를 씁니다.
-
-```sh
-sudo rm -rf /usr/lib/python3.*/site-packages/scribe /usr/lib/python3.*/site-packages/scribe-2.0-*.egg-info \
-  /usr/lib/python3/dist-packages/scribe /usr/lib/python3/dist-packages/scribe-2.0-*.egg-info
-```
-
-**저장소 폴더의 빌드 산출물**은 `make distclean`으로 다 지워지지 않습니다(`configure`, `Makefile.in` 등이 남습니다).
-`sudo make install`이 root 소유로 만든 `lib/py/scribe.egg-info`도 있으므로, 저장소 폴더에서 다음으로 지웁니다.
-commit하지 않은 파일도 함께 지워지니, 먼저 `git clean -ndx`로 목록을 확인하세요.
-
-```sh
-sudo git clean -fdx
-```
-
+- **빌드 폴더를 이미 지웠다면.**
+  설치된 파일을 직접 지우는 목록과 저장소 폴더의 빌드 산출물 정리는 [빌드 안내](docs/build.md#설치한-파일-직접-삭제)에 있습니다.
 - [실행](#실행)에서 만든 `$HOME/scribe-demo.conf`와 `$HOME/scribe-data`는 설치와 무관한 본인 파일이므로 필요 없으면 직접 지웁니다.
 - 지운 뒤 `command -v scribed`는 아무것도 출력하지 않고, 기본 `PY_PREFIX`였다면 `python3 -c 'import scribe'`는 `ModuleNotFoundError`로 끝나야 합니다.
 
@@ -1377,50 +1348,17 @@ file store는 일정 시간이나 크기가 되면 새 파일을 엽니다(회�
     요청 전체에 21 bytes, 메시지마다 15 bytes + category 길이 + 메시지 길이입니다.
     한도를 넘으면 `Relay Log exceeds configured wire limit <268435456> bytes`를 남기고 일시 실패로 처리합니다.
     buffer store 아래라면 가장 오래된 spool 파일부터 보내므로, 그 파일이 한도를 넘으면 뒤의 spool 파일도 모두 멈춥니다.
-- **예시(계산).**
-  짧은 메시지를 많이 보내는 category를 128 MiB spool로 보호하는 경우입니다.
+- **예시.**
+  spool 파일 하나가 재전송 요청 하나가 되고, 재전송 요청은 메시지마다 category 이름만큼 spool 파일보다 커집니다.
+  그래서 짧은 메시지가 많은 category는 spool 파일(secondary `max_size`)이 128 MiB여도 요청이 256 MiB를 넘을 수 있습니다.
 
-  ```conf
-  <store>
-    category=game_pvp
-    type=buffer
-    retry_interval=30
-    retry_interval_range=10
+  | 평균 메시지 길이 | 128 MiB spool 파일의 재전송 요청 크기 | 256 MiB 한도 |
+  | --- | --- | --- |
+  | 12 bytes | 약 280 MiB | **넘음: 계속 재시도** |
+  | 30 bytes | 약 200 MiB | 통과 |
 
-    <primary>
-      type=network
-      remote_host=relay-a.example
-      remote_port=1463
-    </primary>
-
-    <secondary>
-      type=file
-      fs_type=std
-      file_path=/var/log/scribed/spool
-      base_filename=game_pvp
-      max_size=134217728
-    </secondary>
-  </store>
-  ```
-
-  - spool 파일은 메시지마다 `4-byte 길이 + 메시지`를 저장합니다.
-  - 재전송 요청은 메시지마다 `15 + category 길이 + 메시지 길이` bytes가 됩니다.
-  - 따라서 **재전송 요청 크기 ≈ spool 파일 크기 + 메시지 수 × (11 + category 길이)** 입니다.
-    `game_pvp`(8글자)라면 메시지 하나당 약 19 bytes가 늘어납니다.
-
-  | 평균 메시지 길이 | 128 MiB 파일의 메시지 수 | 재전송 요청 크기 | 256 MiB 한도 |
-  | --- | --- | --- | --- |
-  | 12 bytes | 8,388,608 | 293,601,301 bytes (약 280 MiB) | **넘음: 계속 재시도** |
-  | 30 bytes | 약 3,947,580 | 약 209,221,761 bytes (약 199.5 MiB) | 통과 |
-
-  - `game_pvp`라면 평균 메시지가 약 15 bytes(= category 길이 + 7)보다 짧을 때, 가득 찬 128 MiB spool 하나가 256 MiB를 넘습니다.
-    이런 category는 secondary `max_size`를 더 작게 잡으세요(예: `max_size=67108864`).
-  - `max_size`는 쓰고 난 뒤에 검사하므로 파일이 `max_size`를 넘을 수 있습니다.
-    넘는 양은 보통 `max_write_size`(기본 1,000,000 bytes) 안팎이지만 상한은 아닙니다.
-    메시지 하나를 통째로 쓰기 버퍼에 더한 뒤 검사하므로, 큰 메시지 하나가 있으면 그 길이만큼 더 넘습니다.
-  - secondary에 `max_size`를 쓰지 않으면 file store 기본값 1,000,000,000 bytes가 적용됩니다.
-    그러면 장애가 길어질 때 256 MiB를 넘는 spool이 생길 수 있습니다.
-    `max_write_size`나 회전 설정만 줄여서는 요청 크기가 보장되지 않습니다.
+  - 이런 category는 secondary `max_size`를 64 MiB(`67108864`) 이하로 잡으세요.
+  - secondary에 `max_size`를 쓰지 않으면 기본값 1,000,000,000 bytes라, 장애가 길어지면 256 MiB를 넘는 spool이 생길 수 있습니다.
   - 한도를 올리려면 받는 서버도 그 크기를 받을 수 있어야 합니다.
 - **확인한 호환성.**
   구·신 서버 사이의 전송과 일반 spool·ThriftFile 파일의 양방향 읽기는 대표적인 작은 로그로만 확인했고, 256 MiB 근처의 큰 요청은 구·신 비교에 없습니다.

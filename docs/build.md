@@ -259,6 +259,33 @@ SRPM은 의존성을 스스로 준비하지 않는다. 위 recipe의 prefix가 �
 Rocky 9 RPM은 fb303 patch와 Boost 제거 뒤 다시 만들지 않았다.
 버전 간 upgrade, 비정상 중단, HDFS·shared RPM, 운영 kernel·service 배포는 확인하지 않았다.
 
+## 설치한 파일 직접 삭제
+
+README의 [설치 삭제](../README.md#6-삭제)는 빌드 폴더의 `make uninstall`과 Thrift `install_manifest.txt`를 쓴다.
+빌드 폴더를 이미 지웠다면 설치된 파일을 직접 지운다. README 설치 순서가 `/usr/local`에 만드는 파일은 다음이 전부다.
+
+```sh
+sudo rm -rf /usr/local/bin/scribed /usr/local/bin/thrift \
+  /usr/local/lib/libscribe.a /usr/local/lib/libdynamicbucketupdater.a /usr/local/lib/libfb303.a \
+  /usr/local/lib/libthrift.so /usr/local/lib/libthrift.so.0.25.0 \
+  /usr/local/lib/libthriftnb.so /usr/local/lib/libthriftnb.so.0.25.0 \
+  /usr/local/lib/pkgconfig/thrift.pc /usr/local/lib/pkgconfig/thrift-nb.pc \
+  /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303
+```
+
+- Python package는 `PY_PREFIX`(기본값 `/usr`) 아래 시스템 Python 경로에만 들어간다. 다른 `PY_PREFIX`로 설치했다면 `/usr` 대신 그 값 아래의 `scribe` 폴더를 지운다
+- `import scribe`로 경로를 찾으면 가상환경이나 사용자 디렉터리의 다른 package를 지울 수 있으므로 설치 경로를 직접 지정한다
+- Rocky는 `site-packages`, Ubuntu는 `dist-packages`다
+
+```sh
+sudo rm -rf /usr/lib/python3.*/site-packages/scribe /usr/lib/python3.*/site-packages/scribe-2.0-*.egg-info \
+  /usr/lib/python3/dist-packages/scribe /usr/lib/python3/dist-packages/scribe-2.0-*.egg-info
+```
+
+저장소 폴더의 빌드 산출물은 `make distclean`으로 다 지워지지 않는다(`configure`, `Makefile.in` 등이 남는다).
+`sudo make install`이 root 소유로 만든 `lib/py/scribe.egg-info`도 있으므로 저장소 폴더에서 `sudo git clean -fdx`로 지운다.
+commit하지 않은 파일도 함께 지워지므로 먼저 `git clean -ndx`로 목록을 확인한다.
+
 ## Python client
 
 - `make install`은 Python package `scribe`(version 2.0)를 `PY_PREFIX`(기본 `/usr`)에 설치한다
