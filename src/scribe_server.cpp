@@ -2,7 +2,8 @@
 // scribe-next modification: main exits through scribe::stopServer so it never races the shutdown RPC thread.
 // scribe-next modification: C++17 cleanup; RAII guard keeps Log's lock points, unused local removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
-// scribe-next modification: std::filesystem::path replaces Boost's for the category check; same result and log text.
+// scribe-next modification: the no-op category name check is replaced by rejecting dynamic categories with a ".." path component (user-approved security exception to the compatibility policy).
+// scribe-next modification: SIGTERM/SIGINT run the shutdown RPC path from a sigwait thread; startup failure exits 1; a failed dynamic category store creation counts as received bad.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 // scribe-next modification: new thrift_max_frame_size/thrift_max_message_size startup keys; an invalid value leaves the listener not started (on reinitialize it fails the store reload).
 // scribe-next modification: --config FILE/--port N reach the value-less long options with optarg NULL and exit through usage.
@@ -33,7 +34,9 @@
 #include "common.h"
 #include "scribe_server.h"
 #include <climits>
-#include <filesystem>
+#include <csignal>
+#include <pthread.h>
+#include <system_error>
 
 using namespace apache::thrift::concurrency;
 using scribe::concurrency::RWGuard;
@@ -94,9 +97,33 @@ void scribeHandler::incCounter(string counter, long amount) {
   incrementCounter(overall_category + log_separator + counter, amount);
 }
 
+// SIGTERM/SIGINT are blocked in every thread (main blocks them before any
+// other thread exists and later threads inherit the mask) and taken here.
+static sigset_t shutdown_signals;
+
+static void* shutdownSignalThread(void*) {
+  int sig = 0;
+  if (sigwait(&shutdown_signals, &sig) == 0) {
+    LOG_OPER("received signal %d, shutting down", sig);
+    g_Handler->shutdown(); // same path as the fb303 shutdown RPC; exits 0
+  }
+  return NULL;
+}
+
+static void checkPthread(int result, const char* operation) {
+  if (result) throw std::system_error(result, std::generic_category(), operation);
+}
+
 int main(int argc, char **argv) {
 
+  int exit_code = 0;
   try {
+    sigemptyset(&shutdown_signals);
+    sigaddset(&shutdown_signals, SIGTERM);
+    sigaddset(&shutdown_signals, SIGINT);
+    checkPthread(pthread_sigmask(SIG_BLOCK, &shutdown_signals, NULL),
+                 "block shutdown signals");
+
     /* Increase number of fds */
     struct rlimit r_fd = {65535,65535};
     if (-1 == setrlimit(RLIMIT_NOFILE, &r_fd)) {
@@ -149,14 +176,22 @@ int main(int argc, char **argv) {
     g_Handler = std::shared_ptr<scribeHandler>(new scribeHandler(port, config_file));
     g_Handler->initialize();
 
-    scribe::startServer(); // returns after the shutdown RPC stops the server
+    // Started only after initialize(): a signal received earlier stays pending
+    // until sigwait takes it, so shutdown() never stops stores mid-configure.
+    pthread_t signal_thread;
+    checkPthread(pthread_create(&signal_thread, NULL, shutdownSignalThread, NULL),
+                 "shutdown signal thread create");
+    pthread_detach(signal_thread);
+
+    scribe::startServer(); // returns after the shutdown RPC or a signal stops the server
 
   } catch(const std::exception& e) {
     LOG_OPER("Exception in main: %s", e.what());
+    exit_code = 1; // startup failure, e.g. listener bind or invalid wire limits
   }
 
   LOG_OPER("scribe server exiting");
-  scribe::stopServer(); // single exit; blocks here if the shutdown thread is already exiting
+  scribe::stopServer(exit_code); // single exit; blocks here if the shutdown thread is already exiting
   return 0;
 }
 
@@ -270,26 +305,32 @@ const char* scribeHandler::statusAsString(fb_status status) {
 bool scribeHandler::createCategoryFromModel(
   const string &category, const std::shared_ptr<StoreQueue> &model) {
 
-  // Original "sane name" check. On POSIX std::filesystem::path(category).string()
-  // equals category, so this never rejects anything ("../x" included); kept as
-  // the original behaviour.
-  try {
-    string clean_path = std::filesystem::path(category).string();
-
-    if (clean_path.compare(category) != 0) {
-      LOG_OPER("Category not a valid boost filename");
+  // The original "sane name" check never rejected anything on POSIX, so a
+  // client category such as "../x" made file models write outside file_path.
+  // Categories containing '/' still create subdirectories as upstream did.
+  for (string::size_type start = 0;;) {
+    string::size_type end = category.find('/', start);
+    if (category.compare(start, end - start, "..") == 0) {
+      LOG_OPER("[%s] rejecting category with parent-directory component",
+               category.c_str());
       return false;
     }
-
-  } catch(const std::exception& e) {
-    LOG_OPER("Category not a valid boost filename.  Boost exception:%s", e.what());
-    return false;
+    if (end == string::npos) {
+      break;
+    }
+    start = end + 1;
   }
 
   std::shared_ptr<StoreQueue> pstore;
   if (newThreadPerCategory) {
     // Create a new thread/StoreQueue for this category
-    pstore = std::shared_ptr<StoreQueue>(new StoreQueue(model, category));
+    try {
+      pstore = std::shared_ptr<StoreQueue>(new StoreQueue(model, category));
+    } catch (const std::exception& e) {
+      LOG_OPER("[%s] failed to create category store from model %s: %s",
+               category.c_str(), model->getCategoryHandled().c_str(), e.what());
+      return false;
+    }
     LOG_OPER("[%s] Creating new category store from model %s",
              category.c_str(), model->getCategoryHandled().c_str());
 
@@ -546,8 +587,11 @@ void scribeHandler::stopStores() {
 void scribeHandler::shutdown() {
   RWGuard monitor(*scribeHandlerLock, true);
   stopStores();
-  // calling stop to allow thrift to clean up client states and exit
-  server->stop();
+  // calling stop to allow thrift to clean up client states and exit.
+  // A signal can arrive before main has created the server (startup abort).
+  if (server) {
+    server->stop();
+  }
   scribe::stopServer();
 }
 

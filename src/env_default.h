@@ -1,6 +1,7 @@
 // scribe-next modification: adapt the Thrift 0.25 API boundary; preserve Scribe behavior.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: stopServer takes the exit code (default 0).
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -142,9 +143,9 @@ std::shared_ptr<apache::thrift::server::TNonblockingServer> createServer(
 void startServer();
 
 /*
- * Stopping a scribe server.
+ * Stopping a scribe server. Exits the process once with the first caller's code.
  */
-void stopServer();
+void stopServer(int code = 0);
 
 } // !namespace scribe
 
