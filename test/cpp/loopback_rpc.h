@@ -9,11 +9,13 @@
 
 class LoopbackReady : public apache::thrift::server::TServerEventHandler {
  public:
-  explicit LoopbackReady(const std::shared_ptr<
-      apache::thrift::transport::TNonblockingServerSocket>& transport)
-      : transport_(transport) {}
+  LoopbackReady(const std::shared_ptr<
+                    apache::thrift::transport::TNonblockingServerSocket>& transport,
+                const std::shared_ptr<TServerEventHandler>& production)
+      : transport_(transport), production_(production) {}
 
   void preServe() override {
+    production_->preServe();  // publishes the server to the handler as main() does
     // Thrift calls preServe after listen(). getPort() is the requested zero;
     // check the actual socket rather than selecting/releasing a port in advance.
     sockaddr_storage address = {};
@@ -35,6 +37,7 @@ class LoopbackReady : public apache::thrift::server::TServerEventHandler {
 
  private:
   std::shared_ptr<apache::thrift::transport::TNonblockingServerSocket> transport_;
+  std::shared_ptr<TServerEventHandler> production_;
 };
 
 static void runLoopbackServer(const std::string& config,
@@ -71,7 +74,8 @@ static void runLoopbackServer(const std::string& config,
                     apache::thrift::server::T_OVERLOAD_CLOSE_ON_ACCEPT,
             "production factory did not apply max_conn");
   }
-  server->setServerEventHandler(std::make_shared<LoopbackReady>(transport));
+  server->setServerEventHandler(
+      std::make_shared<LoopbackReady>(transport, server->getEventHandler()));
   server->serve();
 }
 

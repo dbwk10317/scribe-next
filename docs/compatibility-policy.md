@@ -111,6 +111,7 @@ PR #25가 되돌린 수정 중 세 가지를 2026-10-07 사용자 승인으로 �
 - 구성 중에 온 신호는 pending으로 남았다가 구성이 끝난 뒤 처리된다. 구성 중인 store를 멈추지 않는다
 - 정지 중의 두 번째 신호는 받는 thread가 없어 무시된다. 마지막 수단은 SIGKILL이다
 - `shutdown()`은 서버가 아직 publish되지 않았으면 서버 정지를 건너뛴다. `setServer`는 handler write lock 아래에서 publish한다
+- 서버는 Thrift `preServe()`, 즉 `serve()`가 IO thread를 다 만든 뒤에 handler에 publish한다. 시작 중에 온 신호의 `stop()`이 서버 초기화와 경합하지 않는다
 - 원본은 신호 처리 코드가 없어 flush 없이 끝났다. 그래서 Ctrl+C, `docker stop`, `systemctl stop`이 이제 큐를 처리한다
 - 구버전은 그대로이므로 구버전 정지는 fb303 `shutdown`을 쓴다
 
@@ -167,7 +168,8 @@ PR #25가 되돌린 수정 중 세 가지를 2026-10-07 사용자 승인으로 �
 - worker의 `cmdMutex` 범위는 원본과 같다. status 조회가 구성이나 `periodicCheck`(spool replay·재연결)를 기다리지 않는다. 원본은 이 짧은 구성 창에서 잠금 없이 구성 중인 store를 읽었고, upstream BufferStore는 그때 null primary를 역참조했다
 - 큐 byte 합과 `target_write_size`는 atomic snapshot으로 읽는다
 - worker·mutex·cond 생성 실패는 만든 자원만 정리한 뒤 설정 오류가 된다
-- 동적 category의 StoreQueue를 모델에서 만들지 못하면(thread·mutex 생성, 모델 copy 실패) `failed to create category store from model`을 남기고 그 메시지를 `received bad`로 센다. 이전에는 예외가 client에 연결 오류로 갔다(`c226849`). default·prefix 모델이 여럿이면 실패한 모델만 빠지고 다른 모델의 store는 남는다
+- 동적 category의 StoreQueue를 모델에서 만들지 못하면(thread·mutex 생성, 모델 copy 실패) `failed to create category store from model`을 남기고 그 batch에 `TRY_LATER`를 돌려주며 `denied for store creation`(category와 `scribe_overall`)을 센다. 앞선 모델로 만든 store는 멈추고 category 등록을 되돌려 다음 요청이 처음부터 다시 만든다. batch의 앞 메시지는 이미 큐에 들어가 재전송 때 중복될 수 있다(종료 중 `TRY_LATER`와 같다). `..` 거부는 그대로 `received bad`와 `OK`다
+- 원본은 `pthread_create` 결과를 보지 않아 이 실패에서 로그가 조용히 사라졌다. 정의되지 않던 실패 경로를 정한 것이며 wire·IDL은 같다
 - 설정 트리의 부모 참조는 weak다. `reinitialize`마다 이전 설정이 남지 않는다
 - MultiStore의 `report_success` 초기값은 미지정 기본값 `SUCCESS_ALL`이다
 - HDFS emulated link의 임시 객체와 handle을 실패 경로에서도 닫는다. 비-HDFS stub의 `getFrame`은 빈 문자열을 돌려준다

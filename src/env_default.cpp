@@ -3,6 +3,7 @@
 // scribe-next modification: stopServer takes the exit code (first caller wins) so a startup failure exits 1.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: the server is published to the handler from Thrift preServe(), after serve() has built its IO threads.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -125,6 +126,22 @@ uint32_t scribe::strhash::hash32(const char *s) {
 /*
  * Starting a scribe server.
  */
+namespace {
+// A signal-driven shutdown() calls server->stop(), which reads the IO thread
+// list serve() is still filling; publish the server only once it is complete.
+class PublishServer : public TServerEventHandler {
+ public:
+  explicit PublishServer(const std::weak_ptr<TNonblockingServer>& server)
+    : server_(server) {}
+  void preServe() override {
+    std::shared_ptr<TNonblockingServer> server = server_.lock();
+    g_Handler->setServer(server);
+  }
+ private:
+  std::weak_ptr<TNonblockingServer> server_;  // the server owns this handler
+};
+} // namespace
+
 // note: this function uses global g_Handler.
 std::shared_ptr<TNonblockingServer> scribe::createServer(
     std::shared_ptr<TNonblockingServerTransport> server_transport) {
@@ -159,7 +176,7 @@ std::shared_ptr<TNonblockingServer> scribe::createServer(
   server->setConfiguration(config);
   server->setInputTransportFactory(
       std::make_shared<ConfiguredInputTransportFactory>(config));
-  g_Handler->setServer(server);
+  server->setServerEventHandler(std::make_shared<PublishServer>(server));
 
   LOG_OPER("Starting scribe server on port %lu", g_Handler->port);
   fflush(stderr);

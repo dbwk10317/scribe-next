@@ -35,7 +35,7 @@ symlink·setuid 파일, Thrift 0.25.0이 아닌 compiler, 원본 Git object 누�
 - 시험에는 C++03 원본 component와의 일반 spool 교차 비교, ASan·UBSan component, loopback RPC, fb303 patch 회귀가 들어 있다
 - LSan은 `test/test_hdfs_compat.py`의 component 하나에서만 켠다(`detect_leaks=1`). `test/test_ordinary_spool.py`의 ASan은 `detect_leaks=0`이다
 - TSan은 어디에서도 실행하지 않는다. 전체 daemon sanitizer 결과가 아니다. 리뷰 수정과 함께 더한 store 시험도 ASan 아래에서 돌지 않는다(sanitizer 범위는 그대로)
-- 신호 정지(SIGTERM·SIGINT 뒤 종료 코드 0)와 port 사용 중 종료 코드 1은 `test/test_scribe_api_compat.py`가 이번에 빌드한 실제 scribed로 확인한다. 설치본이나 Docker 이미지가 아니다. 같은 fixture는 `pthread_create`를 한 번 실패하게 감싸 동적 category 큐 생성 실패를 본다
+- 신호 정지(SIGTERM·SIGINT 뒤 종료 코드 0)와 port 사용 중 종료 코드 1은 `test/test_scribe_api_compat.py`가 이번에 빌드한 실제 scribed로 확인한다. 설치본이나 Docker 이미지가 아니다. 같은 fixture는 `pthread_create`를 한 번 실패하게 감싸 동적 category 큐 생성 실패(`TRY_LATER`, `denied for store creation`, 모델 둘 중 둘째 실패 때 등록 되돌림)를 본다
 - packaging 시험은 `SCRIBE_BUILD`의 임시 사본에서 install·uninstall을 돌린다
 - 253개 중 약 108개는 scribed가 아니라 harness·검증 도구를 확인한다. daemon 수준의 근거는 구·신 비교 case와, scribed source로 만든 fixture 프로그램을 돌리는 시험이다
 - 검증기 밖에서 `python3 -m unittest discover test`를 실행하면 준비된 prefix가 없는 module 대부분을 조용히 건너뛴다. 의미 있는 실행이 아니다
