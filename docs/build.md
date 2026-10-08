@@ -28,6 +28,7 @@
 | Debian 13 | GCC 14.2 | 기본·shared 빌드와 시험, HDFS 빌드·local JNI | 2026-10-05 |
 | Ubuntu 26.04.1 | GCC 15.2 | 기본·shared 빌드와 시험, HDFS | 2026-10-05 |
 | Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `0afe2b4` 검증기 241 tests; `acc7edd` 검증기 241 tests, 구·신 비교 17개 case, Docker smoke([검증](verification.md#0afe2b4와-acc7edd의-재확인-2026-10-07)) | 2026-10-07 |
+| Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `f2494d4`(src는 `e2fe61a`와 같음) 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke([검증](verification.md#재검증-2026-10-08)) | 2026-10-08 |
 
 첫 두 행은 `9e8d775`에서 잰 것이다. 그 뒤 코드를 바꾼 PR #63(`28a4d9a`), PR #65(`e4bb4cc`)를 합친 `0afe2b4`와 리뷰 수정 `acc7edd`는 마지막 행의 Rocky 9 Docker 이미지에서만 다시 확인했다.
 지금 README의 설치 명령(`SCRIBE_SRC`, `curl` 추가, 기록 목록 기반 삭제)도 실행 기록이 없다.

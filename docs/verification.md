@@ -206,10 +206,41 @@ WSL Rocky 9.8(GCC 11.5, 20 core), Docker 29.8에서 이전 산출물을 모두 �
 
 신버전 ACK 처리량은 구버전의 0.918배다.
 
+## 재검증 (2026-10-08)
+
+README 재작성과 함께 branch `docs/readme-rewrite-20261008`의 `f2494d4`(src는 `main` `e2fe61a`와 같고, 구·신 비교 case 5개를 더한 commit)를 WSL Rocky 9.8의 Docker 29.8에서 처음부터 다시 확인했다.
+이전 이미지·clone·결과를 모두 지운 뒤 [빌드](build.md#rocky-linux-8과-9)의 recipe대로 Rocky 9 검증 이미지(`rockylinux/rockylinux@sha256:8101994…`, GCC 11.5, Thrift 0.25.0, patch한 fb303), root `Dockerfile` 이미지, [old-lane](../tools/old-lane/README.md)의 구버전 이미지와 비교 이미지를 새로 만들었다.
+checkout은 `core.autocrlf=false`로 받은 LF clone이고, 비교 case의 `/validation-input`은 그 clone의 `git archive HEAD`다.
+README의 [테스트 결과](../README.md#테스트-결과)는 이 실행의 요약이다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 검증기 | 8단계 통과, 241 tests, 실패·오류·건너뜀 0, `status: passed` |
+| 구·신 비교 | 기본 22개 case 모두 `exit=0`. 새 case `mixed-receiver-restart`·`mixed-receiver-crash`·`mixed-throttle-retry`·`receiver-stall`·`mixed-receiver-stall` 포함 |
+| receiver-stall 관찰 | 네 lane 모두 `resumed` 단계에서 수신 파일이 첫 batch + 둘째 batch, `final_receiver`가 첫 batch + 둘째 batch 두 번 + `Z`로, 소스에서 정한 중복 기대값과 같았다 |
+| performance | 정확성 통과. 아래 표 |
+| Docker smoke | `Log(demo, "hello docker\n")` 응답 0, `getStatus` 2(`ALIVE`), `demo-2026-10-08_00000`에 `hello docker\n\n`, `demo_current` symlink. 컨테이너의 실제 scribed에 `examples/scribed.service`의 `ExecStop` 명령을 `MAINPID=1`로 실행해 `STATUS: STOPPING` 뒤 `scribe server exiting`, 컨테이너 종료 코드 0 |
+
+performance는 old0 → modern0 → modern1 → old1 → old2 → modern2 순서 3회의 중앙값이다.
+
+| 지표 | 구버전 | 신버전 |
+| --- | --- | --- |
+| ACK 처리량 (msg/s) | 1,482,580 | 1,353,607 |
+| ACK payload (MiB/s) | 1,448 | 1,322 |
+| 파일 기록 완료 (MiB/s) | 989 | 925 |
+| batch 지연 p95 (ms) | 1.19 | 1.46 |
+| daemon CPU (s) | 0.03 | 0.04 |
+| 최대 메모리 VmHWM (MiB) | 21.7 | 19.2 |
+
+신버전 ACK 처리량은 구버전의 0.913배다(2026-10-07 `9e8d775`에서는 0.918배).
+모두 한 번 실행한 값이고 원시 결과(`validation.json`, `test-results.json`, case별 `evidence/`, `comparison.json`)는 저장소 밖 WSL home에 있다.
+설치·삭제 명령, systemd 아래의 실제 실행, HDFS, shared RPC, RPM은 이 실행에 없다.
+
 ## 확인한 것과 하지 않은 것
 
 확인한 것은 다음과 같다.
 
+- `f2494d4`(src는 `e2fe61a`와 같음)의 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke와 실제 scribed에 대한 `ExecStop`([재검증](#재검증-2026-10-08))
 - `9e8d775`의 검증기 240 tests, 구·신 비교 17개 case, performance, 그때 README의 설치 순서 두 컨테이너, Docker 이미지
 - `0afe2b4`의 검증기 241 tests; `acc7edd`의 검증기 241 tests, 구·신 비교 17개 case, Docker smoke와 실제 scribed에 대한 `ExecStop`([재확인](#0afe2b4와-acc7edd의-재확인-2026-10-07))
 - 2026-10-05~06 서버에서 Ubuntu 16.04 전체 userland 위 구버전으로 file부터 mapping까지 9개 case와 performance 실행
@@ -218,7 +249,7 @@ WSL Rocky 9.8(GCC 11.5, 20 core), Docker 29.8에서 이전 산출물을 모두 �
 
 하지 않은 것은 다음과 같다.
 
-- `0afe2b4`의 구·신 비교·Docker smoke(`acc7edd`에서는 했다). `acc7edd` 뒤에 코드가 바뀌면 그 변경의 재검증
+- `f2494d4` 뒤에 코드가 바뀌면 그 변경의 재검증
 - 지금 README의 설치·삭제 명령. Rocky 9 삭제 확인은 저장소에 기록이 없고 Ubuntu 삭제는 하지 않았다
 - `9e8d775`의 HDFS lane, Rocky 9 RPM, Rocky 8.10·Debian 13·Ubuntu 26.04.1 재검증
 - 현대화 단계 뒤의 `--shared-rpc` lane. 마지막 실행은 2026-10-06이다([빌드](build.md#확인한-환경))
@@ -226,5 +257,7 @@ WSL Rocky 9.8(GCC 11.5, 20 core), Docker 29.8에서 이전 산출물을 모두 �
 - 설치한 Python client로 실제 `Log`를 보내는 시험
 - GCC 14·15에서의 현대화 단계
 - 반복 실행으로 보는 불안정성 통계
+- [종료 시 exit 한 번](../README.md#종료할-때-exit를-한-번만) 수정의 회귀 시험
+- 네트워크 중간 장애(패킷 유실·지연)의 흉내. daemon 비교의 네트워크 장애는 수신측 SIGKILL(연결 끊김)과 SIGSTOP(응답 없음)뿐이다
 - 부분 replay의 구·신 비교(의도적으로 다름)
 - 운영 설정·부하, 장기 운영, 상세 성능 비교
