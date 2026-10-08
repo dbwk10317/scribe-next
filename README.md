@@ -639,9 +639,9 @@ file store는 일정 시간이나 크기가 되면 새 파일을 엽니다(회�
 
 | 시험 | 내용 | 결과 |
 | --- | --- | --- |
-| [단독 동작 비교](#1-같은-입력에-같은-결과를-내는가) | 같은 요청에 같은 파일·카운터·응답을 내는지, 11개 case | <<25 case 결과>> |
-| [구·신 혼용 장애 시나리오](#2-구버전과-신버전을-섞어-썼을-때) | 송신측·수신측에 구·신을 조합한 7개 시나리오 × 4조합 = 28개 실행(14개 case) | <<25 case 결과>> |
-| [성능 비교](#3-성능-비교) | 같은 부하에서 처리량·지연·자원 | <<25 case 결과>>(performance) |
+| [단독 동작 비교](#1-같은-입력에-같은-결과를-내는가) | 같은 요청에 같은 파일·카운터·응답을 내는지, 11개 case | 11개 모두 통과 |
+| [구·신 혼용 장애 시나리오](#2-구버전과-신버전을-섞어-썼을-때) | 송신측·수신측에 구·신을 조합한 7개 시나리오 × 4조합 = 28개 실행(14개 case) | 28개 모두 통과 |
+| [성능 비교](#3-성능-비교) | 같은 부하에서 처리량·지연·자원 | 신버전 처리량 0.91배, 지연·자원 같은 수준 |
 | [빌드·단위 시험](#4-빌드단위-시험과-docker-이미지) | 빌드, 단위 시험 묶음, 임시 설치 | 시험 253개 모두 통과 |
 | [Docker 이미지](#4-빌드단위-시험과-docker-이미지) | 기본 설정으로 받기·저장, `docker stop`·SIGINT로 정상 종료, port 사용 중 종료 코드 1 | 통과 |
 
@@ -662,9 +662,9 @@ file store는 일정 시간이나 크기가 되면 새 파일을 엽니다(회�
 | 상태 조회 API (`fb303`) | getOptions·setOption·getCounter·getCounters, 모르는 method | 응답 14개의 bytes가 같고, 모르는 method 뒤에도 같은 연결로 계속 동작 | 구·신 같음, 통과 |
 | 동적 목적지 (`mapping`) | bucket updater가 알려 주는 목적지가 A → B → (조회 실패) → A로 바뀜 | TTL 만료 전 A 유지, 만료 뒤 B, 조회 실패 때 B 유지, 회복 뒤 A | 구·신 같음, 통과 |
 | 게임 서버형 설정 (`game-profile`) | prefix 모델, `categories=` 목록, multi 아래 buffer 두 개, 연결 pool, 시간 회전, 줄 중간 주석을 한 설정에 모음 | 시작 상태, spool frame, 수신측 기동 뒤 재전송 결과가 같음 | 구·신 같음, 통과 |
-| 시간 회전 (`rotation-time`) | `rotate_period=2s`에서 `first`, 회전을 기다린 뒤 `second` | `_00000`=`first`, `_00001`=`second`, `_current`는 `_00001`, `received good 2` | <<25 case 결과>> |
-| 큐 한도 (`backpressure`) | `max_queue_size=8`로 큐가 빠지지 않게 한 뒤 9 bytes 묶음과 다음 `Log` | 둘째 `Log`가 `TRY_LATER`, `denied for queue size` 1, 파일은 `shutdown` 때 9 bytes | <<25 case 결과>> |
-| bucket 분배 (`bucket-hash`) | `key_hash`·`key_modulo` bucket store에 숫자·문자·UTF-8·음수·빈 key | bucket 파일 8개의 bytes가 원본 계산(djb2, `atol`)과 같음 | <<25 case 결과>> |
+| 시간 회전 (`rotation-time`) | `rotate_period=2s`에서 `first`, 회전을 기다린 뒤 `second` | `_00000`=`first`, `_00001`=`second`, `_current`는 `_00001`, `received good 2` | 구·신 같음, 통과 |
+| 큐 한도 (`backpressure`) | `max_queue_size=8`로 큐가 빠지지 않게 한 뒤 9 bytes 묶음과 다음 `Log` | 둘째 `Log`가 `TRY_LATER`, `denied for queue size` 1, 파일은 `shutdown` 때 9 bytes | 구·신 같음, 통과 |
+| bucket 분배 (`bucket-hash`) | `key_hash`·`key_modulo` bucket store에 숫자·문자·UTF-8·음수·빈 key | bucket 파일 8개의 bytes가 원본 계산(djb2, `atol`)과 같음 | 구·신 같음, 통과 |
 
 ### 2. 구버전과 신버전을 섞어 썼을 때
 
@@ -836,7 +836,7 @@ file store는 일정 시간이나 크기가 되면 새 파일을 엽니다(회�
 ### 3. 성능 비교
 
 같은 부하를 구버전과 신버전에 번갈아 주고 중앙값을 비교했습니다.
-아래 수치는 2026-10-08 `f2494d4`에서 잰 값입니다. <<25 case 결과>>(통합 branch의 performance로 표 교체)
+아래 수치는 2026-10-08 통합 branch `fix/review-20261008`의 최종 commit(검증기 253 tests를 잰 commit)에서 잰 값입니다. old0 → modern0 → modern1 → old1 → old2 → modern2 순서 3회의 중앙값입니다.
 
 - **부하.** producer 4개가 각각 1 KiB 메시지 4,096개를 256개씩 묶어 보냅니다(합계 16,384개, 16 MiB). 먼저 256개로 warm-up합니다.
 - **서버 설정.** `num_thrift_server_threads=4`, `max_queue_size=33554432`, file store(`rotate_period=never`).
@@ -845,12 +845,12 @@ file store는 일정 시간이나 크기가 되면 새 파일을 엽니다(회�
 
 | 지표 | 구버전 | 신버전 | 뜻 |
 | --- | --- | --- | --- |
-| ACK 처리량 (msg/s) | 1,482,580 | 1,353,607 | 모든 batch가 `OK`를 받을 때까지의 초당 메시지 수 |
-| ACK payload (MiB/s) | 1,448 | 1,322 | 같은 기간의 초당 bytes |
-| 파일 기록 완료 (MiB/s) | 989 | 925 | 기대 크기가 파일에 보일 때까지(fsync 아님) |
-| batch 지연 p95 (ms) | 1.19 | 1.46 | batch 하나가 `OK`를 받기까지, 상위 5% 경계 |
-| daemon CPU (s) | 0.03 | 0.04 | 프로세스가 쓴 CPU 시간 |
-| 최대 메모리 (MiB) | 21.7 | 19.2 | 프로세스가 실행 중 가장 많이 쓴 물리 메모리(`VmHWM`) |
+| ACK 처리량 (msg/s) | 1,501,101 | 1,371,568 | 모든 batch가 `OK`를 받을 때까지의 초당 메시지 수 |
+| ACK payload (MiB/s) | 1,466 | 1,339 | 같은 기간의 초당 bytes |
+| 파일 기록 완료 (MiB/s) | 995 | 936 | 기대 크기가 파일에 보일 때까지(fsync 아님) |
+| batch 지연 p95 (ms) | 1.25 | 1.35 | batch 하나가 `OK`를 받기까지, 상위 5% 경계 |
+| daemon CPU (s) | 0.04 | 0.04 | 프로세스가 쓴 CPU 시간 |
+| 최대 메모리 (MiB) | 20.9 | 21.2 | 프로세스가 실행 중 가장 많이 쓴 물리 메모리(`VmHWM`) |
 
 - 신버전의 ACK 처리량은 구버전의 **0.91배**입니다. 지연과 자원 사용은 같은 수준입니다.
 - 정확성 검사(누락·중복·변형·순서)는 구·신 모두 통과했습니다.

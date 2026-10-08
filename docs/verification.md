@@ -268,8 +268,8 @@ Rocky 9 digest에서 toolchain `scribe-next-rocky-toolchain:9`와 검증 이미�
 | 항목 | 결과 |
 | --- | --- |
 | 검증기 | 통합 branch 최종 commit에서 253 tests, 실패·오류·건너뜀 0, `status: passed`(241에서 12개 증가) |
-| 구·신 비교 | <<25 case 결과>>. 새 case는 `rotation-time`·`backpressure`·`bucket-hash`([store 계약 3개](#store-계약-3개-2026-10-08)) |
-| performance | <<25 case 결과>>(performance) |
+| 구·신 비교 | 기본 25개 case 모두 `exit=0`. 새 case는 `rotation-time`·`backpressure`·`bucket-hash`([store 계약 3개](#store-계약-3개-2026-10-08)) |
+| performance | 정확성 통과. ACK 처리량 구 1,501,101 msg/s·신 1,371,568 msg/s(0.914배), ACK payload 1,466·1,339 MiB/s, 파일 기록 완료 995·936 MiB/s, batch 지연 p95 1.25·1.35 ms, daemon CPU 0.04·0.04 s, VmHWM 20.9·21.2 MiB. 모두 3회 중앙값, 한 번의 실행 |
 | Docker smoke | root `Dockerfile` 이미지. `docker stop` 뒤 `received signal 15, shutting down`, `STATUS: STOPPING`, `scribe server exiting`, 종료 코드 0, 큐에 있던 메시지가 `demo_current`에 남음. SIGINT는 `received signal 2` 뒤 종료 코드 0. port 사용 중이면 `Exception in main: Could not bind: Address already in use` 뒤 종료 코드 1 |
 | 신호·종료 코드·`..` category | 검증기 안의 `test/test_scribe_api_compat.py`가 이번에 빌드한 실제 scribed로 신호 정지와 종료 코드 1을, store 시험이 `..` 거부와 `..x` 수락을 확인 |
 
@@ -279,7 +279,7 @@ Rocky 9 digest에서 toolchain `scribe-next-rocky-toolchain:9`와 검증 이미�
 
 확인한 것은 다음과 같다.
 
-- 통합 branch `fix/review-20261008` 최종 commit의 검증기 253 tests, Docker smoke(신호 정지·종료 코드 1), 구·신 비교 25개 case <<25 case 결과>>([리뷰 수정 뒤 재검증](#리뷰-수정-뒤-재검증-2026-10-08))
+- 통합 branch `fix/review-20261008` 최종 commit의 검증기 253 tests, Docker smoke(신호 정지·종료 코드 1), 구·신 비교 25개 case 모두 `exit=0`, performance 정확성 통과([리뷰 수정 뒤 재검증](#리뷰-수정-뒤-재검증-2026-10-08))
 - `examples/scribed.service`의 `systemd-analyze verify`(unit 주석의 기록)
 - `f2494d4`(src는 `e2fe61a`와 같음)의 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke와 그때 unit의 `ExecStop`([재검증](#재검증-2026-10-08))
 - `9e8d775`의 검증기 240 tests, 구·신 비교 17개 case, performance, 그때 README의 설치 순서 두 컨테이너, Docker 이미지
