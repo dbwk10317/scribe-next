@@ -275,10 +275,24 @@ Rocky 9 digest에서 toolchain `scribe-next-rocky-toolchain:9`와 검증 이미�
 
 이 실행에 없는 것: 설치·삭제 명령, systemd 아래 실제 실행, HDFS 빌드, `--shared-rpc` lane, RPM, Podman, CI workflow.
 
+## P1·P2 수정 뒤 재검증 (2026-10-08)
+
+branch `fix/review-p1-p2`의 commit `ab8ab27`(동적 category store 생성 실패의 `TRY_LATER` 전환과 등록 되돌림, 서버 publish를 Thrift `preServe()`로 이동)을 확인한 실행이다.
+WSL Rocky 9.8의 Docker 29.8에서 toolchain·검증·구버전·신버전·비교 이미지를 모두 처음부터 다시 만들었다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 검증기 | `ab8ab27`에서 253 tests, 실패·오류·건너뜀 0, `status: passed`. 시험 수는 같고 `test_review_dynamic_category_queue_failure_rolls_back_and_defers`가 모델 1개·2개 subcase로 `TRY_LATER`·`denied for store creation`·등록 되돌림을 본다 |
+| 구·신 비교 | 기본 25개 case 모두 `exit=0` |
+
+이 실행에 없는 것: performance, Docker smoke, 설치·삭제 명령, systemd 아래 실제 실행, HDFS 빌드, `--shared-rpc` lane, RPM, Podman, CI workflow.
+기동 직후 신호가 `preServe()` 전에 오는 창은 시험하지 않았다. 그때는 이전처럼 서버 정지를 건너뛰고 종료한다.
+
 ## 확인한 것과 하지 않은 것
 
 확인한 것은 다음과 같다.
 
+- `ab8ab27`의 검증기 253 tests와 구·신 비교 25개 case 모두 `exit=0`([P1·P2 수정 뒤 재검증](#p1p2-수정-뒤-재검증-2026-10-08))
 - 통합 branch `fix/review-20261008` 최종 commit의 검증기 253 tests, Docker smoke(신호 정지·종료 코드 1), 구·신 비교 25개 case 모두 `exit=0`, performance 정확성 통과([리뷰 수정 뒤 재검증](#리뷰-수정-뒤-재검증-2026-10-08))
 - `examples/scribed.service`의 `systemd-analyze verify`(unit 주석의 기록)
 - `f2494d4`(src는 `e2fe61a`와 같음)의 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke와 그때 unit의 `ExecStop`([재검증](#재검증-2026-10-08))
