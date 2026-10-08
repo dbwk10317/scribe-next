@@ -8,7 +8,8 @@ must have matching sources, generated code, and non-stale compiler dependencies.
 Only temporary fixture files/owned loopback children are created; no dependency download occurs.
 
 This is a single-version golden and config/handler fixture, not old/new differential,
-unmodified scribed/main/startServer coverage, full old/new compatibility, or a durability guarantee.
+full old/new compatibility, or a durability guarantee. The built scribed itself is run
+only for --help and for its signal/exit-code contract on a free loopback-reachable port.
 FileStore cases use real temporary files and controlled primary replay outcomes.
 """
 
@@ -17,9 +18,12 @@ from pathlib import Path
 import re
 import shlex
 import select
+import signal
+import socket
 import struct
 import subprocess
 import tempfile
+import time
 import unittest
 
 import loopback_rpc as tcp
@@ -212,7 +216,7 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
                  *hdfs_libs, "-levent", *shlex.split(make_value(makefile, "STDCXXFS_LIB")),
                  "-Wl,--wrap=_Znwm", "-Wl,--wrap=time",
                  "-Wl,--wrap=pthread_rwlock_rdlock", "-Wl,--wrap=pthread_rwlock_wrlock",
-                 "-Wl,--wrap=pthread_rwlock_unlock",
+                 "-Wl,--wrap=pthread_rwlock_unlock", "-Wl,--wrap=pthread_create",
                  "-o", cls.fixture], ROOT, cls.env)
 
     def run_fixture(self, mode, config_text=None, input_files=None):
@@ -417,6 +421,27 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
             [(b"fallback", x) for x in (b"one", b"two", b"three")]))
         self.assertEqual((directory / "states-again.txt").read_text(),
                          "lost=0\nbytes-lost=0\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
+        self.assertEqual(list((directory / "data").iterdir()), [])
+
+    def test_filestore_partial_replay_counts_discarded_corrupt_tail_once(self):
+        # replaceOldest truncates the spool, dropping the corrupt tail readOldest found.
+        # Like deleteOldest it publishes `bytes lost`; StdFile::calcLoss reports the whole
+        # file size (tellg fails after the short read), the same value deleteOldest counts.
+        good = b"".join(self.file_frame(x) for x in (b"one", b"two", b"three"))
+        content = good + struct.pack("<I", 5) + b"xy"
+        self.assertEqual(len(content), 29)
+        directory = self.run_fixture("filestore-buffer-replay", self.file_config(
+            test_partial=1, test_resume=1), {"data/fixture_00000": content})
+        self.assertEqual((directory / "received.txt").read_bytes(), self.file_entries(
+            [(b"fallback", x) for x in (b"one", b"two", b"three")]))
+        self.assertEqual((directory / "states.txt").read_text(),
+                         "lost=0\nbytes-lost=29\nretries=1\ndisconnected=1\nstreaming=0\nempty=0\n")
+        self.assertEqual((directory / "remaining.bin").read_bytes(),
+                         self.file_frame(b"two") + self.file_frame(b"three"))
+        self.assertEqual((directory / "received-again.txt").read_bytes(),
+                         self.file_entries([(b"fallback", b"two"), (b"fallback", b"three")]))
+        self.assertEqual((directory / "states-again.txt").read_text(),
+                         "lost=0\nbytes-lost=29\nretries=1\ndisconnected=0\nstreaming=1\nempty=1\n")
         self.assertEqual(list((directory / "data").iterdir()), [])
 
     def test_filestore_partial_rewrite_preserves_categories_and_reapplies_add_newlines(self):
@@ -712,6 +737,63 @@ class ScribeApiIntegrationTests(ThriftFileContracts, StoreReviewContracts, Revie
         # Upstream calls setrlimit before getopt. Its process-local warning is
         # permitted here and must not be described as a daemon/runtime failure.
         self.assertNotIn("scribe server exiting", output)
+
+    def actual_scribed(self, port):
+        """Start the built scribed (-c only) on 127.0.0.1-reachable `port` with one file store."""
+        directory = Path(tempfile.mkdtemp(prefix="scribed-", dir=self.temporary))
+        config = directory / "scribe.conf"
+        config.write_text(f"port={port}\n<store>\ncategory=signal\ntype=file\n"
+                          f"file_path={directory}/data\nbase_filename=signal\nrotate_period=never\n"
+                          "create_symlink=no\nadd_newlines=0\n</store>\n")
+        log = (directory / "scribed.log").open("wb")
+        self.addCleanup(log.close)
+        process = subprocess.Popen([str(self.scribed), "-c", str(config)], cwd=directory, env=self.env,
+                                   stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+        def reap():
+            if process.poll() is None:
+                process.kill()  # only this owned child
+            process.wait(timeout=5)
+        self.addCleanup(reap)
+        return process, directory
+
+    @staticmethod
+    def free_port():
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            return probe.getsockname()[1]
+
+    def test_actual_scribed_sigterm_and_sigint_shut_down_cleanly_with_exit_0(self):
+        for number in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(signal=number.name):
+                port = self.free_port()
+                process, directory = self.actual_scribed(port)
+                deadline = time.monotonic() + 10
+                while True:
+                    self.assertIsNone(process.poll(), (directory / "scribed.log").read_text())
+                    try:
+                        connection = socket.create_connection(("127.0.0.1", port), timeout=1)
+                        break
+                    except OSError:
+                        self.assertLess(time.monotonic(), deadline, "scribed readiness timeout")
+                        time.sleep(0.05)
+                with connection:
+                    self.assertEqual(self.tcp_call(connection, b"Log", 1,
+                                                   tcp.log_fields([(b"signal", b"before-signal")])),
+                                     tcp.reply(b"Log", 1, tcp.result_i32(0)))
+                process.send_signal(number)
+                self.assertEqual(process.wait(timeout=10), 0)
+                output = (directory / "scribed.log").read_text()
+                self.assertIn(f"received signal {int(number)}, shutting down", output)
+                self.assertIn("scribe server exiting", output)
+                self.assertEqual((directory / "data/signal_00000").read_bytes(), b"before-signal")
+
+    def test_actual_scribed_exits_1_when_the_port_is_taken(self):
+        with socket.socket() as holder:
+            holder.bind(("127.0.0.1", 0))
+            holder.listen(1)
+            process, directory = self.actual_scribed(holder.getsockname()[1])
+            self.assertEqual(process.wait(timeout=10), 1, (directory / "scribed.log").read_text())
+        self.assertIn("Exception in main", (directory / "scribed.log").read_text())
 
 
 if __name__ == "__main__":

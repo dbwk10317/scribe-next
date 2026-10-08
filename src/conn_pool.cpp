@@ -2,7 +2,8 @@
 // scribe-next modification: C++17 cleanup; std::mutex pool guards, dead null checks removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
-// scribe-next modification: connection locks are scope-guarded and send pins its connection; openCommon takes the existing connection's lock while holding the map lock (new lock point, same order map -> connection).
+// scribe-next modification: connection locks are scope-guarded and send pins its connection; openCommon never waits for a connection lock while holding the map lock (it inspects the pooled connection with the map unlocked, then re-checks the entry).
+// scribe-next modification: scribeConn::send checks the relay wire limit once after summing the batch; same result and log text.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,21 +105,52 @@ bool ConnPool::openCommon(const string &key, std::shared_ptr<scribeConn> conn) {
   // The locks on each connection serialize writes and deletion.
   // The lock on a connection doesn't protect its refcount, as refcounts
   // are only accessed under the mapMutex.
-  // mapMutex MUST be held before attempting to lock particular connection
+  // openCommon never waits for a connection lock while holding mapMutex:
+  // sendCommon holds a connection's lock for a whole RPC, and waiting for it
+  // under mapMutex would stall every pool operation for every key. The
+  // pooled connection is inspected with only its own lock held, and the map
+  // entry is re-checked afterwards.
+  // conn is private to this call until it is inserted, so it needs no lock.
+  bool new_open = false;
+  for (;;) {
+    // Declared before the map lock so a replaced connection is destroyed
+    // after mapMutex is released.
+    std::shared_ptr<scribeConn> old_conn;
+    std::unique_lock<std::mutex> map_lock(mapMutex);
+    conn_map_t::iterator iter = connMap.find(key);
+    if (iter == connMap.end()) {
+      if (new_open || conn->open()) {
+        // ref count starts at one, so don't addRef here
+        connMap[key] = conn;
+        return true;
+      }
+      // conn object that failed to open is deleted
+      return false;
+    }
+    old_conn = iter->second;
+    map_lock.unlock();
 
-  // Declared before the guard so a replaced connection is still destroyed
-  // after mapMutex is released, as with the former unlock-then-return.
-  std::shared_ptr<scribeConn> old_conn;
-  std::lock_guard<std::mutex> map_lock(mapMutex);
-  conn_map_t::iterator iter = connMap.find(key);
-  if (iter != connMap.end()) {
-    old_conn = (*iter).second;
-    ConnectionGuard connection_guard(*old_conn);
-    if (old_conn->isOpen()) {
+    bool old_open;
+    {
+      ConnectionGuard connection_guard(*old_conn);
+      old_open = old_conn->isOpen();
+      if (!old_open && !new_open) {
+        new_open = conn->open();
+      }
+    }
+
+    map_lock.lock();
+    iter = connMap.find(key);
+    if (iter == connMap.end() || iter->second != old_conn) {
+      // The entry was closed or replaced while mapMutex was released; decide
+      // again. Each retry needs another concurrent close/open of this key.
+      continue;
+    }
+    if (old_open) {
       old_conn->addRef();
       return true;
     }
-    if (conn->open()) {
+    if (new_open) {
       LOG_OPER("CONN_POOL: switching to a new connection <%s>", key.c_str());
       conn->setRef(old_conn->getRef());
       conn->addRef();
@@ -128,15 +160,6 @@ bool ConnPool::openCommon(const string &key, std::shared_ptr<scribeConn> conn) {
     }
     return false;
   }
-  // don't need to lock the conn yet, because no one know about
-  // it until we release the mapMutex
-  if (conn->open()) {
-    // ref count starts at one, so don't addRef here
-    connMap[key] = conn;
-    return true;
-  }
-  // conn object that failed to open is deleted
-  return false;
 }
 
 void ConnPool::closeCommon(const string &key) {
@@ -291,11 +314,6 @@ scribeConn::send(std::shared_ptr<logentry_vector_t> messages) {
   uint64_t wire_size = 21;
   for (const auto& message : *messages) {
     wire_size += 15 + message->category.size() + message->message.size();
-    if (wire_size > limit) {
-      LOG_OPER("Relay Log exceeds configured wire limit <%llu> bytes",
-               static_cast<unsigned long long>(limit));
-      return CONN_TRANSIENT;
-    }
   }
   if (wire_size > limit) {
     LOG_OPER("Relay Log exceeds configured wire limit <%llu> bytes",

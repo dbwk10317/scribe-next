@@ -1,6 +1,7 @@
 // scribe-next modification: C++17 cleanup; std::mutex status lock, override, deleted copies.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
+// scribe-next modification: setStoreQueue() rebinds a copied store tree's StoreQueue back-pointer to the queue that owns it.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,6 +90,10 @@ class Store {
 
   // don't need to override
   virtual const std::string& getType();
+
+  // Points this store and its children at the queue that owns them; a store
+  // copied from a model otherwise keeps the model queue's pointer.
+  virtual void setStoreQueue(StoreQueue* queue);
 
  protected:
   virtual void setStatus(const std::string& new_status);
@@ -298,6 +303,7 @@ class BufferStore : public Store {
   void close() override;
   void flush() override;
   void periodicCheck() override;
+  void setStoreQueue(StoreQueue* queue) override;
 
   std::string getStatus() override;
 
@@ -445,6 +451,7 @@ class BucketStore : public Store {
   void close() override;
   void flush() override;
   void periodicCheck() override;
+  void setStoreQueue(StoreQueue* queue) override;
 
   std::string getStatus() override;
 
@@ -534,6 +541,7 @@ class MultiStore : public Store {
   bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   void periodicCheck() override;
   void flush() override;
+  void setStoreQueue(StoreQueue* queue) override;
 
   // read won't make sense since we don't know which store to read from
   bool readOldest(/*out*/ std::shared_ptr<logentry_vector_t> messages,
@@ -581,6 +589,7 @@ class CategoryStore : public Store {
   bool handleMessages(std::shared_ptr<logentry_vector_t> messages) override;
   void periodicCheck() override;
   void flush() override;
+  void setStoreQueue(StoreQueue* queue) override;
 
  protected:
   void configureCommon(pStoreConf configuration, pStoreConf parent,

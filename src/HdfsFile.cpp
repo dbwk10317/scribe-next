@@ -1,6 +1,7 @@
 // scribe-next modification: adapt libhdfs delete API arity; preserve recursive behavior.
 // scribe-next modification: bound the emulated symlink object's lifetime and close failed output handles.
 // scribe-next modification: C++17 cleanup; strrchr and std::string host, same calls and logs.
+// scribe-next modification: the destructor closes an open file before disconnecting, and openRead refuses an already open file like openWrite (leak fixes).
 // Copyright (c) 2009- Facebook
 // Distributed under the Scribe Software License
 //
@@ -32,18 +33,17 @@ HdfsFile::HdfsFile(const std::string& name) : FileInterface(name, false) {
 }
 
 HdfsFile::~HdfsFile() {
-  if (fileSys) {
-    LOG_OPER("[hdfs] disconnecting fileSys for %s", filename.c_str());
-    hdfsDisconnect(fileSys);
-    LOG_OPER("[hdfs] disconnected fileSys for %s", filename.c_str());
-  }
-  fileSys = 0;
-  hfile = 0;
+  // Same as close(): an open hfile is closed before the disconnect.
+  HdfsFile::close();
 }
 
 bool HdfsFile::openRead() {
   if (!fileSys) {
     fileSys = connectToPath(filename.c_str());
+  }
+  if (hfile) {
+    LOG_OPER("[hdfs] already opened for read %s", filename.c_str());
+    return false;
   }
   if (fileSys) {
     hfile = hdfsOpenFile(fileSys, filename.c_str(), O_RDONLY, 0, 0, 0);

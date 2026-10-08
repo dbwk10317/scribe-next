@@ -3,6 +3,7 @@
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 // scribe-next modification: a new throttleLock serializes the per-second throttle state across concurrent Log calls (independent of the handler read lock).
+// scribe-next modification: setServer publishes the server under the handler write lock, which the signal-driven shutdown() also holds.
 //  Copyright (c) 2007-2009 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -77,6 +78,8 @@ class scribeHandler : virtual public scribe::thrift::scribeIf,
 
   inline void setServer(
       std::shared_ptr<apache::thrift::server::TNonblockingServer> & server) {
+    // shutdown() reads it under the write lock from the signal thread.
+    scribe::concurrency::RWGuard monitor(*scribeHandlerLock, true);
     this->server = server;
   }
   unsigned long getMaxConn() {

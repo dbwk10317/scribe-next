@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Opt-in actual-daemon old/new comparison (22 cases plus performance); stdlib, Python2/3.
+"""Opt-in actual-daemon old/new comparison (25 cases plus performance); stdlib, Python2/3.
 
 Requires an already isolated lo-only environment and uid65534. This tool never
 sets up Docker, namespaces, privileges, dependencies or deployment.
@@ -14,6 +14,7 @@ TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'daemon_diff
 MAX_REPLY = 262144
 PAYLOADS = [b'A\x00B\n\xff', b'', b'tail']
 METHODS = ['getName','getVersion','getStatus','getStatusDetails','getCounters','Log','Log','getCounters','shutdown']
+STORE_CASES = ('rotation-time','backpressure','bucket-hash')
 SCENARIO_CASES = ('relay-stream','mixed-relay-stream','receiver-restart','mixed-receiver-restart','receiver-crash','mixed-receiver-crash','receiver-stall','mixed-receiver-stall','sender-restart-spool','mixed-sender-restart-spool','throttle-retry','mixed-throttle-retry')
 EXPECTED_DELTA = {'fixture:received good':3,'scribe_overall:received good':3,'unknown:received bad':1,'scribe_overall:received bad':1,'scribe_overall:received blank category':1}
 
@@ -319,7 +320,7 @@ def run_lane(lane,restart_stage=None):
         try:
             port_free()
             with open(os.devnull,'rb') as stdin:
-                process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,preexec_fn=os.setsid)
+                process=subprocess.Popen(command,env=env,stdin=stdin,stdout=stdout,stderr=stderr,start_new_session=True)
             result['pid']=process.pid
             conn=connect_owned(process,PORT)
             result['owned_connection_inode']=connection_owner(process.pid,conn)
@@ -484,7 +485,7 @@ def main():
     parser.add_argument('--targets',required=True,help='JSON with old/modern command arrays and explicit environment maps')
     parser.add_argument('--output',required=True,help='new directory outside this checkout')
     parser.add_argument('--port',type=int,default=14630)
-    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','mixed-spool','file-stores','performance','fb303','mapping','game-profile')+SCENARIO_CASES,default='file')
+    parser.add_argument('--case',choices=('file','stores','rotation','restart','spool','mixed-spool','file-stores','performance','fb303','mapping','game-profile')+STORE_CASES+SCENARIO_CASES,default='file')
     args=parser.parse_args()
     if not args.run_isolated_daemons: parser.error('actual daemon execution requires --run-isolated-daemons')
     network_check()
@@ -540,6 +541,11 @@ def main():
         old=daemon_game_profile_case.run_lane(sys.modules[__name__],daemon_spool_case,'old')
         new=daemon_game_profile_case.run_lane(sys.modules[__name__],daemon_spool_case,'modern')
         result=daemon_game_profile_case.compare_lanes(sys.modules[__name__],old,new)
+    elif CASE in STORE_CASES:
+        import daemon_store_case,daemon_spool_case
+        old=daemon_store_case.run_lane(sys.modules[__name__],daemon_spool_case,CASE,'old')
+        new=daemon_store_case.run_lane(sys.modules[__name__],daemon_spool_case,CASE,'modern')
+        result=daemon_store_case.compare_lanes(sys.modules[__name__],old,new,CASE)
     elif CASE in SCENARIO_CASES:
         import daemon_scenario_case,daemon_spool_case
         old=daemon_scenario_case.run_lane(sys.modules[__name__],daemon_spool_case,CASE,'old')

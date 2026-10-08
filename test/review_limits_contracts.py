@@ -112,6 +112,15 @@ class ReviewLimitsContracts:
                 connection.sendall(tcp.message(b"reinitialize", 730, oneway=True))
                 self.assertEqual(self.send_sized_log(connection, 128, 731),
                                  tcp.reply(b"Log", 731, tcp.result_i32(0)))
+                # An invalid limit fails the store reload: WARNING and no store, so the Log above
+                # was discarded (received bad). A valid one reloads the null store (ALIVE, good).
+                invalid = frame == "0" or message == "garbage"
+                self.assertEqual(self.tcp_call(connection, b"getStatus", 732),
+                                 tcp.reply(b"getStatus", 732, tcp.result_i32(5 if invalid else 2)))
+                for sequence, (counter, value) in enumerate(((b"accepted:received good", 0 if invalid else 1),
+                                                             (b"accepted:received bad", 1 if invalid else 0)), 733):
+                    self.assertEqual(self.tcp_call(connection, b"getCounter", sequence, tcp.string_argument(counter)),
+                                     tcp.reply(b"getCounter", sequence, tcp.result_i64(value)))
                 self.limit_header_rejected(server, 129)
             if frame != "0" and message != "garbage":
                 self.assertIn("wire-limit changes require restart", server.diagnostics())

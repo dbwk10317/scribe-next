@@ -16,6 +16,7 @@
 - Rocky 8의 bison 3.0.4는 Thrift 빌드가 쓰는 `--file-prefix-map`을 지원하지 않는다. bison 3.8.2가 필요하다
 - `tools/prepare_fb303.py`와 검증기는 Python 3.9 이상이 필요하다(`Path.is_relative_to`). Rocky 8 기본 `python3`는 3.6이므로 `python3.12` 패키지로 실행한다
 - 기본 RPC library는 정적이다. scribed는 완전 정적 실행 파일이 아니므로 실행할 때 Thrift·libevent를 찾아야 한다
+- 링크 순서는 `-lfb303 -lthriftnb -lthrift`다. libthriftnb가 libthrift에 의존하므로 static link에서도 풀린다
 
 ## 확인한 환경
 
@@ -29,11 +30,27 @@
 | Ubuntu 26.04.1 | GCC 15.2 | 기본·shared 빌드와 시험, HDFS | 2026-10-05 |
 | Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `0afe2b4` 검증기 241 tests; `acc7edd` 검증기 241 tests, 구·신 비교 17개 case, Docker smoke([검증](verification.md#0afe2b4와-acc7edd의-재확인-2026-10-07)) | 2026-10-07 |
 | Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `f2494d4`(src는 `e2fe61a`와 같음) 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke([검증](verification.md#재검증-2026-10-08)) | 2026-10-08 |
+| Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | 통합 branch `fix/review-20261008` 최종 commit의 검증기 253 tests, Docker smoke, 구·신 비교 25개 case(결과는 [검증](verification.md#리뷰-수정-뒤-재검증-2026-10-08)) | 2026-10-08 |
 
-첫 두 행은 `9e8d775`에서 잰 것이다. 그 뒤 코드를 바꾼 PR #63(`28a4d9a`), PR #65(`e4bb4cc`)를 합친 `0afe2b4`와 리뷰 수정 `acc7edd`는 마지막 행의 Rocky 9 Docker 이미지에서만 다시 확인했다.
+첫 두 행은 `9e8d775`에서 잰 것이다. 그 뒤 코드를 바꾼 PR #63(`28a4d9a`), PR #65(`e4bb4cc`)를 합친 `0afe2b4`와 리뷰 수정 `acc7edd`는 Rocky 9 Docker 검증 이미지에서만 다시 확인했다.
+README가 "Rocky 8에서는 실행하지 않았다"고 한 것은 README 설치 명령이다. Rocky 8.10은 위 표처럼 Docker 검증 이미지에서 검증기·개발 RPM만 확인했다.
 지금 README의 설치 명령(`SCRIBE_SRC`, `curl` 추가, 기록 목록 기반 삭제)도 실행 기록이 없다.
 Rocky 8.10의 Boost 제거 단계 확인은 3단계(context 주입) 전이다.
 GCC 14·15에서는 2026-10-07 현대화 단계를 다시 확인하지 않았다.
+
+## checkout 줄바꿈
+
+`.gitattributes`(`* text=auto eol=lf`)가 모든 text 파일을 index와 작업 tree 모두 LF로 둔다. `test/fixtures` 아래 `.bin`은 binary라 변환하지 않는다.
+그래서 `core.autocrlf` 값과 무관하게 Windows checkout도 LF다. root `Dockerfile`은 더 이상 CR을 지우지 않는다.
+
+`.gitattributes`가 들어오기 전에 받은 Windows checkout은 작업 tree에 CRLF가 남아 있으므로 한 번 변환한다.
+commit하지 않은 변경은 먼저 commit하거나 옮겨 둔다. 두 번째 명령이 작업 tree를 index 내용으로 다시 쓴다.
+
+```sh
+git rm --cached -r -q .
+git reset --hard
+git ls-files --eol | grep w/crlf   # 아무것도 출력하지 않아야 한다
+```
 
 ## 직접 빌드
 
@@ -59,7 +76,7 @@ make install DESTDIR=/absolute/new-stage
 
 - `CPPFLAGS`의 `$TOOLS_PREFIX/include`는 Thrift·fb303 header가 include하는 Boost header 위치다
 - `bootstrap.sh`는 autoreconf 뒤 `configure --config-cache`를 실행하고 받은 인자를 경계 그대로 넘긴다. autoreconf가 실패하면 멈춘다
-- `--config-cache` 때문에 같은 폴더에서 `CPPFLAGS` 같은 precious 변수를 바꿔 다시 실행하면 configure가 cache 불일치로 멈춘다. 그때는 `config.cache`를 지우고 다시 실행한다
+- `--config-cache` 때문에 같은 폴더에서 `CPPFLAGS` 같은 precious 변수를 바꿔 다시 실행하면 configure가 cache 불일치로 멈춘다. 그때는 `config.cache`를 지우고 다시 실행한다. HDFS용 `JAVA_HOME`도 precious 변수다([HDFS](hdfs.md#빌드))
 - generated Thrift source는 `src/Makefile.am`의 `BUILT_SOURCES`라 `make`가 먼저 만든다
 - 사용자 `CFLAGS`/`CXXFLAGS`의 명시값과 빈 값을 보존한다. 지정하지 않을 때만 기본 opt·debug 값을 쓴다
 - generated code는 make 규칙으로 생성하고 손으로 고치지 않는다
@@ -115,6 +132,7 @@ git --no-replace-objects --no-lazy-fetch cat-file -e 'fcd294faffd1e88af1643a3a8c
 
 - 원본 선택은 `--disable-static`이다(`--disable-shared`가 아니다)
 - 검증기 `--shared-rpc`는 이 선택만 전달한다. 기본 static, 빌드 규칙, C++, IDL은 바꾸지 않는다
+- 두 `.so`의 target별 `CXXFLAGS`는 `AM_CXXFLAGS`를 포함한다. 그래서 `--disable-static`에서도 `-std=c++17`이 적용된다(`ef1c137`). 그 뒤 shared lane은 다시 실행하지 않았다
 - 검증기는 configured LTYPE, stage의 `libscribe.so`·`libdynamicbucketupdater.so`가 build 결과와 같은지, 설치된 help가 그 두 `.so`를 읽는지 확인한다(9단계)
 - 실행하는 곳에서 두 `.so`와 matching Thrift를 찾을 수 있어야 한다. 빌드한 머신의 절대 경로가 다른 머신에서 유효하다고 가정하지 않는다
 - 구·신 shared daemon 비교와 shared RPM은 없다
@@ -209,6 +227,12 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
 - 다른 무거운 빌드와 동시에 돌리면 loopback 시험 1~2개가 fixture 종료 5초 제한을 넘을 수 있다. Boost 제거 전 `main`(`f09d68e`)에서도 재현된 기존 간헐 문제다
 - 컨테이너는 host kernel을 공유한다. Rocky host kernel 자체의 검증이 아니다
 
+[CI](../.github/workflows/validate.yml)의 `validator` job이 이 recipe를 Rocky 9로 따른다.
+네 archive를 받아 context를 만들고, toolchain 이미지는 GitHub Actions cache(`type=gha`)에 둔다.
+원본 `fcd294f` object는 [준비](#원본-git-object-준비)의 명령으로 따로 가져오며, 검증기는 fetch하지 않는다.
+`validation.json`, `test-results.json`, `logs/`를 artifact로 올린다. 같은 workflow의 `docker-smoke` job은 [Docker](docker.md#확인-기록)에 있다.
+두 job은 아직 어디에서도 실행되지 않았다.
+
 ## Rocky 개발 RPM
 
 [spec](../packaging/rocky/scribe-next-dev.spec)은 daemon 전용 `scribe-next-dev`다.
@@ -247,7 +271,7 @@ docker run --rm --network none --user "$(id -u):$(id -g)" \
 
 SRPM은 의존성을 스스로 준비하지 않는다. 위 recipe의 prefix가 필요하다.
 
-[검증 script](../packaging/rocky/verify-container.py)는 컨테이너 안 root에서만 돈다.
+[검증 script](../packaging/rocky/verify-container.py)는 컨테이너 안 root에서만 돈다. Docker(`/.dockerenv`)와 Podman(`/run/.containerenv`) 컨테이너를 받는다. Podman으로 실행한 기록은 없다.
 `/verify.py`, `/expected-licenses.json`, `/packages`, `/loopback_rpc.py`(기존 `test/loopback_rpc.py`)를 read-only로 붙이고 runtime 이미지의 `/usr/libexec/platform-python -B /verify.py /packages/<rpm>`을 부른다.
 
 - 빈 scriptlet, `rpm -V`, license hash 6개, Boost 없는 loader closure를 확인한다. Requires/Provides는 수집해 결과에 기록만 하고 검사하지 않는다
@@ -284,6 +308,7 @@ sudo rm -rf /usr/lib/python3.*/site-packages/scribe /usr/lib/python3.*/site-pack
 
 저장소 폴더의 빌드 산출물은 `make distclean`으로 다 지워지지 않는다(`configure`, `Makefile.in` 등이 남는다).
 `sudo make install`이 root 소유로 만든 `lib/py/scribe.egg-info`도 있으므로 저장소 폴더에서 `sudo git clean -fdx`로 지운다.
+그 폴더는 `.gitignore`·`.dockerignore`에 있어 `git status`에 보이지 않고 Docker context에도 들어가지 않는다.
 commit하지 않은 파일도 함께 지워지므로 먼저 `git clean -ndx`로 목록을 확인한다.
 
 ## Python client

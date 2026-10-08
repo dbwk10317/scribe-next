@@ -10,6 +10,7 @@
 현대 Linux에서 빌드하면서 기존 구조와 외부 계약을 보존한다. 범위(회사 fork·설정·성능 자료 제외)는 [설계](docs/design.md#목표)에 있다.
 
 작업 전에 [README](README.md)와 [현재 호환성 정책](docs/compatibility-policy.md)을 읽는다.
+원본 버그를 고치거나 남기는 작업은 [고친 버그와 남긴 버그](docs/behaviour.md)도 읽는다.
 빌드·실행 작업은 [빌드 안내](docs/build.md), HDFS는 [HDFS 안내](docs/hdfs.md)를 추가로 읽는다.
 기존 설계가 필요한 변경은 [설계](docs/design.md)를 확인한다.
 과거 검증 기록을 현재 코드의 성공이나 미완료 조건으로 그대로 해석하지 않는다.
@@ -21,8 +22,8 @@
 로그의 분배·내용·파일 형식·전달·손실 집계·상태 조회를 바꾸는 semantic 수정은 하지 않는다.
 그런 원본 버그는 [정책](docs/compatibility-policy.md#남긴-원본-버그)에 남기고 고치는 새 옵션을 추가하지 않는다.
 UB/crash 방지는 유지하되 미정의 결과 자체를 재현하지 않는다.
-예외는 [정책의 세 가지](docs/compatibility-policy.md#원본-오류-세-가지)뿐이며 고친 상태를 유지한다.
-분배와 파일 형식은 같지만, 그 조건에서는 전달 결과와 `lost`·`requeue` 카운터 값이 원본과 달라진다.
+예외는 [정책의 세 가지](docs/compatibility-policy.md#원본-오류-세-가지)와 [운영 경계](docs/compatibility-policy.md#운영-경계-2026-10-08)뿐이며 고친 상태를 유지한다.
+세 가지는 분배와 파일 형식은 같지만, 그 조건에서는 전달 결과와 `lost`·`requeue` 카운터 값이 원본과 달라진다.
 
 - 두 IDL의 method, field ID, enum, requiredness, namespace, 예외와 fb303 API를 유지한다
 - framed binary 및 server·relay·mapping의 명시적 strictRead=false/strictWrite=false를 유지한다
@@ -52,7 +53,8 @@ UB/crash 방지는 유지하되 미정의 결과 자체를 재현하지 않는�
 보류한 현대화 단계는 [설계](docs/design.md#현대화-경계)의 표를 따른다.
 
 관련 호출 경로를 읽고 완료 조건을 정한 뒤 수정한다. 버그 수정은 실패 재현과 수정 후 확인을 남긴다.
-`src/` 코드를 바꾸는 변경의 완료 조건은 `tools/validate_linux.py` 전체 시험 통과와 `tools/old-lane` 구·신 비교 22개 case 통과다.
+`src/` 코드를 바꾸는 변경의 완료 조건은 `tools/validate_linux.py` 전체 시험 통과와 `tools/old-lane` 구·신 비교 25개 case 통과다.
+CI(`.github/workflows/validate.yml`)의 Docker smoke와 Rocky 9 검증기는 이 조건을 대신하지 않는다. 구·신 비교는 CI에 없다.
 문서·도구만 바꾸는 변경은 그 변경에 맞는 최소 시험을 실행한다. 반복·subcase를 고유 시험 수로 합산하지 않는다.
 문서 수정만으로 불필요한 C++ 재빌드나 성능 시험을 하지 않는다. 상세 성능 비교는 현재 보류다.
 

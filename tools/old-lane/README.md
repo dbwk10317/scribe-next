@@ -4,11 +4,12 @@
 modern lane과 함께 실행한다. 설명과 결과는 [검증 안내](../../docs/verification.md#구버전-lane-재현)에 있다.
 전제: modern image는 [Docker 안내](../../docs/docker.md#빌드)대로 저장소 root의 [Dockerfile](../../Dockerfile)로 만든 `scribe-next:local`이다.
 `Dockerfile.runtime`이 `scribe-next-modern:rocky9`라는 이름으로 받으므로 `docker tag scribe-next:local scribe-next-modern:rocky9`로 같은 이미지에 이름을 더한다.
-그 이미지에는 이 저장소의 `/usr/local/bin/scribed`가 있고, harness가 쓰는 python3는 base `rockylinux:9`에 dnf와 함께 들어 있는 것이다.
+그 이미지에는 이 저장소의 `/usr/local/bin/scribed`가 있고, harness가 쓰는 python3는 digest로 고정한 Rocky 9 base에 dnf와 함께 들어 있는 것이다.
+`Dockerfile.old`의 base는 `ubuntu:16.04@sha256:1f1a2d56de1d604801a9671f301190704c25d604a416f59e03c04f5c6ffee0d6`(2026-10-08에 조회한 manifest-list digest)다. apt 패키지 버전은 고정하지 않는다.
 명령은 저장소 root에서 Linux shell로 실행하고 `$WORK`는 저장소 밖 새 디렉터리다.
 
 - modern image는 작업 tree로, harness는 3번 명령의 `git archive HEAD`로 만든다. 두 출처가 같도록 commit하지 않은 변경이 없는 checkout에서 실행한다
-- Windows checkout(`core.autocrlf=true`)에서는 `run_differential.sh`, patch 등 작업 tree 파일과 `git archive` 결과가 CRLF일 수 있어 `sh`·`patch`가 실패할 수 있다. root `Dockerfile`만 CRLF를 LF로 바꾼다. 이때는 Linux에서 따로 받은 checkout을 쓴다
+- `.gitattributes`가 모든 text 파일을 LF로 두므로 `core.autocrlf`와 무관하게 작업 tree와 `git archive` 결과가 LF다. 그 전에 받은 Windows checkout은 [한 번 변환](../../docs/build.md#checkout-줄바꿈)한 뒤 쓴다
 
 ```sh
 # 1. old build image (Ubuntu 16.04, 원본에는 scribe-autotools.patch 한 변경만)
@@ -23,7 +24,7 @@ docker build -f "$WORK/ctx/Dockerfile.old" -t scribe-next-old-build:xenial "$WOR
 docker tag scribe-next:local scribe-next-modern:rocky9
 docker build -t scribe-next-differential:latest - < tools/old-lane/Dockerfile.runtime
 
-# 3. 22개 case 실행 (performance 제외). 두 번째 인자는 새로 만들 출력 디렉터리이며 그 부모는 먼저 있어야 한다
+# 3. 기본 25개 case 실행 (performance 제외). 두 번째 인자는 새로 만들 출력 디렉터리이며 그 부모는 먼저 있어야 한다
 mkdir -p "$WORK/checkout" "$WORK/results" && git archive HEAD | tar -x -C "$WORK/checkout"
 sh tools/old-lane/run_differential.sh "$WORK/checkout" "$WORK/results/run-$(date -u +%Y%m%dT%H%M%SZ)"
 ```

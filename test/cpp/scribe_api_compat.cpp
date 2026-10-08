@@ -500,6 +500,14 @@ int main(int argc, char** argv) {
       testStoreReviewBucket(argv[2]);
     } else if (std::string(argv[1]) == "review-store-invalid-child") {
       testStoreReviewInvalidChild(argv[2]);
+    } else if (std::string(argv[1]) == "review-store-bucket-range") {
+      testStoreReviewBucketRange(argv[2]);
+    } else if (std::string(argv[1]) == "review-store-queue-rebind") {
+      testStoreReviewQueueRebind(argv[2], argv[3]);
+    } else if (std::string(argv[1]) == "review-category-path") {
+      testCategoryPathComponents(argv[2]);
+    } else if (std::string(argv[1]) == "review-category-queue-failure") {
+      testCategoryQueueFailure(argv[2]);
     } else if (std::string(argv[1]) == "relay-loopback-server") {
       alarm(20);
       runRelayLoopbackServer(argv[2], argv[3]);

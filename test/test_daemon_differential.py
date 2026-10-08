@@ -31,6 +31,9 @@ GAME_SPEC.loader.exec_module(game)
 SCENARIO_SPEC = importlib.util.spec_from_file_location("daemon_scenario_case", ROOT / "tools/daemon_scenario_case.py")
 scenario = importlib.util.module_from_spec(SCENARIO_SPEC)
 SCENARIO_SPEC.loader.exec_module(scenario)
+STORE_SPEC = importlib.util.spec_from_file_location("daemon_store_case", ROOT / "tools/daemon_store_case.py")
+store = importlib.util.module_from_spec(STORE_SPEC)
+STORE_SPEC.loader.exec_module(store)
 FIXTURES = ROOT / "test/fixtures/first_daemon_differential"
 
 
@@ -668,6 +671,91 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
                     client.main()
                     isolation.assert_called_once_with();launch.assert_not_called()
                     self.assertEqual(ports.call_args_list,[unittest.mock.call(),unittest.mock.call(14631)])
+                    self.assertEqual(run.call_args_list,[unittest.mock.call(client,spool,case,'old'),
+                                                        unittest.mock.call(client,spool,case,'modern')])
+                    compare.assert_called_once_with(client,{'lane':'old'},{'lane':'modern'},case)
+
+    def test_store_case_expectations_follow_source_rules(self):
+        # djb2 (strhash::hash32) over signed chars; unsigned bytes would move café to bucket 1.
+        self.assertEqual((store.djb2(b''),store.djb2(b'a'),store.djb2(b'caf\xc3\xa9')),(5381,177670,255153275))
+        unsigned=5381
+        for byte in b'caf\xc3\xa9':unsigned=(unsigned*33+byte)%2**32
+        self.assertEqual((store.djb2(b'caf\xc3\xa9')%3+1,unsigned%3+1),(3,1))
+        self.assertEqual([store.bucket('key_hash',m) for m in store.HASHED],[2,3,1,3,0,0])
+        # key_modulo: atol; "x" reads 0, -1 becomes 2**64-1 (2**64-1 % 3 == 0).
+        self.assertEqual([store.bucket('key_modulo',m) for m in store.MODULO],[2,3,1,2,1,1,0])
+        final=store.specification(client,'bucket-hash','2026-10-08')['phases']['final']
+        self.assertEqual({f['path']:binascii.unhexlify(f['hex']) for f in final['files']},{
+            'hash/b001/data_00000':b'P','hash/b002/data_00000':b'L','hash/b003/data_00000':b'SU',
+            'hash/failed/data_00000':b'nokeyempty','modulo/b001/data_00000':b'ninezeroneg',
+            'modulo/b002/data_00000':b'seventen','modulo/b003/data_00000':b'eight',
+            'modulo/failed/data_00000':b'nodelim'})
+        self.assertEqual(len(final['symlinks']),8)
+        rotation=store.specification(client,'rotation-time','2026-10-08')
+        self.assertEqual([(f['path'],f['bytes']) for f in rotation['phases']['final']['files']],
+                         [('fixture-2026-10-08_00000',5),('fixture-2026-10-08_00001',6)])
+        self.assertEqual(rotation['phases']['final']['symlinks'],[{'path':'fixture_current','target':'fixture-2026-10-08_00001'}])
+        pressure=store.specification(client,'backpressure','2026-10-08')
+        logs=[(fields,value) for name,fields,value in pressure['requests'] if name==b'Log']
+        self.assertEqual(sum(len(p) for c,p in store.ENTRIES),9)  # queued bytes > max_queue_size=8
+        self.assertEqual([value for fields,value in logs],[0,1])
+        config=store.config(client,'backpressure','/unused')
+        for text in ('max_queue_size=8\n','target_write_size=1000000\n','max_write_interval=3600\n'):self.assertIn(text,config)
+        config=store.config(client,'rotation-time','/unused')
+        for text in ('rotate_period=2s\n','target_write_size=1\n','check_interval=1\n'):self.assertIn(text,config)
+        config=store.config(client,'bucket-hash','/unused')
+        self.assertEqual((config.count('bucket_type=key_hash\n'),config.count('bucket_type=key_modulo\n'),config.count('remove_key=yes\n')),(1,1,2))
+        self.assertNotIn('@',config)
+
+    def store_report(self,case,label,date='2026-10-08'):
+        # Synthetic expectations only: built from the source-derived specification.
+        spec=store.specification(client,case,date)
+        report={'case':case,'lane':label,'utc_date':date,'status':'passed'}
+        report.update(copy.deepcopy(spec['phases']))
+        report['daemon']={'status':'passed','exit':0,'cleanup_exit':0,
+                          'command':['/unused/'+label,'-c','/unused/'+label+'-'+case+'.conf'],
+                          'records':[self.game_record(name,seq,fields,value) for seq,(name,fields,value) in enumerate(spec['requests'],1)]}
+        return report
+
+    def test_synthetic_store_reports_pass_and_reject_mutations(self):
+        targets={lane:{'command':['/unused/'+lane]} for lane in ('old','modern')}
+        with patch.object(client,'ROOT','/unused'),patch.object(client,'TARGETS',targets):
+            for case in client.STORE_CASES:
+                with self.subTest(case=case):
+                    old=self.store_report(case,'old');new=self.store_report(case,'modern')
+                    result=store.compare_lanes(client,old,new,case)
+                    self.assertEqual(result['status'],'passed');self.assertTrue(all(result['checks'].values()))
+                    counter=max(i for i,r in enumerate(old['daemon']['records']) if r['method']=='getCounters')
+                    wrong=dict(old['daemon']['records'][counter]['value'],**{'scribe_overall:received good':99})
+                    for mutate in (lambda r:r.update(case='file'),
+                                   lambda r:r['final']['files'].pop(),
+                                   lambda r:r['final']['symlinks'][0].update(target='data_00009'),
+                                   lambda r:r['daemon']['records'].__setitem__(counter,self.game_record(b'getCounters',counter+1,b'\0',wrong)),
+                                   lambda r:r['daemon']['records'][2].update(reply_hex='00000000'),
+                                   lambda r:r['daemon'].update(command=['/unused/modern']),
+                                   lambda r:r['daemon'].pop('cleanup_exit')):
+                        broken=copy.deepcopy(old);mutate(broken)
+                        with self.assertRaises(ValueError):store.compare_lanes(client,broken,new,case)
+                    with self.assertRaises(ValueError):store.compare_lanes(client,new,old,case)
+                    # Consistent lanes from different UTC dates are reported as a difference.
+                    self.assertEqual(store.compare_lanes(client,old,self.store_report(case,'modern','2026-10-09'),case)['status'],'failed')
+
+    def test_store_dispatch_keeps_isolation_and_single_port_guard(self):
+        for case in client.STORE_CASES:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as directory:
+                targets=Path(directory)/'targets.json'
+                targets.write_text(json.dumps({lane:{'command':[sys.executable]} for lane in ('old','modern')}))
+                args=['harness','--run-isolated-daemons','--targets',str(targets),'--output',str(Path(directory)/'new'),'--case',case]
+                modules={client.__name__:client,'daemon_spool_case':spool,'daemon_store_case':store}
+                with patch.object(sys,'argv',args),patch.dict(sys.modules,modules), \
+                        patch.object(client,'network_check') as isolation,patch.object(client,'port_free') as ports, \
+                        patch.object(client,'ROOT'),patch.object(client,'PORT'),patch.object(client,'CASE'),patch.object(client,'TARGETS'), \
+                        patch.object(store,'run_lane',side_effect=[{'lane':'old'},{'lane':'modern'}]) as run, \
+                        patch.object(store,'compare_lanes',return_value={'status':'passed'}) as compare, \
+                        patch('builtins.print'),patch.object(client.subprocess,'Popen') as launch:
+                    client.main()
+                    isolation.assert_called_once_with();launch.assert_not_called()
+                    self.assertEqual(ports.call_args_list,[unittest.mock.call()])
                     self.assertEqual(run.call_args_list,[unittest.mock.call(client,spool,case,'old'),
                                                         unittest.mock.call(client,spool,case,'modern')])
                     compare.assert_called_once_with(client,{'lane':'old'},{'lane':'modern'},case)

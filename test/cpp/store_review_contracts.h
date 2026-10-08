@@ -301,6 +301,154 @@ static void testStoreReviewBucket(const std::string& filename) {
   bucket.close();
 }
 
+class ReviewRangeBucket : public BucketStore {
+ public:
+  explicit ReviewRangeBucket(ScribeContext& context) : BucketStore(context, nullptr, "model", false) {}
+  using BucketStore::bucketize;
+};
+
+static void testStoreReviewBucketRange(const std::string& filename) {
+  HandlerFixture fixture(filename);
+  pStoreConf config(new StoreConf);
+  config->parseConfig(filename);
+  ReviewRangeBucket bucket(*fixture.handler);
+  bucket.configure(config, pStoreConf());
+  // num_buckets=1, bucket_range=2^53+1: key 2^53 % range is 2^53, and both round to the
+  // same double, so (key_mod / range) * num_buckets + 1 is 2, one past the last bucket.
+  require(bucket.bucketize("9007199254740992|edge") == 1, "key_range bucket not clamped to num_buckets");
+  require(bucket.bucketize("0|low") == 1, "key_range low key bucket changed");
+  require(bucket.open(), "key_range bucket open failed");
+  auto messages = fileMessages({entry("model", "9007199254740992|edge"), entry("model", "0|low")});
+  require(bucket.handleMessages(messages), "key_range bucket write failed");
+  bucket.flush();
+  bucket.close();
+}
+
+// StoreQueue::store is private. An explicit template instantiation may name a private
+// member, so the copied queue's store is read without changing production access.
+struct ReviewQueueStore {
+  typedef std::shared_ptr<Store> StoreQueue::*type;
+  friend type reviewQueueStore(ReviewQueueStore);
+};
+template <typename Tag, typename Tag::type Member> struct ReviewExpose {
+  friend typename Tag::type reviewQueueStore(Tag) { return Member; }
+};
+template struct ReviewExpose<ReviewQueueStore, &StoreQueue::store>;
+
+// Protected members of an existing BufferStore, through member pointers named in a derived class.
+struct ReviewBufferAccess : BufferStore {
+  static auto queue() { return &ReviewBufferAccess::storeQueue; }
+  static auto primary() { return &ReviewBufferAccess::primaryStore; }
+  static auto secondary() { return &ReviewBufferAccess::secondaryStore; }
+  static auto streaming() { return &ReviewBufferAccess::flushStreaming; }
+  static auto ratio() { return &ReviewBufferAccess::maxByPassRatio; }
+  static void sendingBuffer(BufferStore& buffer) {
+    (buffer.*(&ReviewBufferAccess::changeState))(SENDING_BUFFER);
+  }
+};
+
+static bool reviewFileExists(const std::string& path) {
+  return static_cast<bool>(std::ifstream(path.c_str()));
+}
+
+static void testStoreReviewQueueRebind(const std::string& filename, const std::string& directory) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getMaxQueueSize() == 4, "queue rebind max_queue_size");
+  // The worker of the copied queue never drains or checks its store during the test:
+  // target_write_size/max_write_interval are copied from the model and the queue is never opened.
+  save(directory + "/model.conf",
+       "target_write_size=1000000\nmax_write_interval=3600\n"
+       "<primary>\ntype=null\n</primary>\n<secondary>\ntype=file\nfs_type=std\n"
+       "file_path=" + directory + "/spool\nbase_filename=model\nrotate_period=never\n"
+       "create_symlink=no\nadd_newlines=0\n</secondary>\n");
+  pStoreConf modelConf(new StoreConf);
+  modelConf->parseConfig(directory + "/model.conf");
+  std::shared_ptr<StoreQueue> model(new StoreQueue(*fixture.handler, "buffer", "model", 1, true));
+  model->configureAndOpen(modelConf);
+  std::shared_ptr<StoreQueue> copy(new StoreQueue(model, "copied"));
+  std::shared_ptr<Store> store = (*copy).*reviewQueueStore(ReviewQueueStore());
+  BufferStore& buffer = dynamic_cast<BufferStore&>(*store);
+  require(buffer.*ReviewBufferAccess::queue() == copy.get() &&
+              (*(buffer.*ReviewBufferAccess::primary())).*ReviewBufferAccess::queue() == copy.get() &&
+              (*(buffer.*ReviewBufferAccess::secondary())).*ReviewBufferAccess::queue() == copy.get(),
+          "copied store tree still points at the model queue");
+  model.reset();  // nothing in the copied tree may use the model queue any more
+  copy->addMessage(logentry_ptr_t(new LogEntry(entry("copied", "queued"))));
+  require(copy->getSize() == 6, "copied queue size");
+  // copy() does not carry flushStreaming; set it so periodicCheck reads storeQueue->getSize().
+  buffer.*ReviewBufferAccess::streaming() = true;
+  buffer.*ReviewBufferAccess::ratio() = 1.0;  // 6 queued bytes >= 1.0 * 4: yield, keep the spool
+  ReviewBufferAccess::sendingBuffer(buffer);
+  const std::string spool = directory + "/spool/copied/copied_00000";
+  require(reviewFileExists(spool), "copied secondary spool fixture missing");
+  buffer.periodicCheck();
+  require(reviewFileExists(spool), "replay ignored the copied queue size");
+  buffer.*ReviewBufferAccess::ratio() = 2.0;  // 6 < 2.0 * 4: replay the spool now
+  buffer.periodicCheck();
+  require(!reviewFileExists(spool), "spool was not replayed below the bypass size");
+  require(fixture.handler->getCounter("copied:ignored") == 1, "replayed spool entry count");
+  copy->stop();
+  require(fixture.handler->getCounter("copied:ignored") == 2, "queued message after replay");
+}
+
+static void testCategoryPathComponents(const std::string& filename) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "category path config");
+  require(fixture.handler->scribeHandler::Log({entry("../x", "up"), entry("a/../b", "middle"),
+                                               entry("..", "alone"), entry("a/b", "nested"),
+                                               entry("..x", "dots")}) == ResultCode::OK,
+          "category path Log result");
+  fixture.handler->stopForTest();
+  for (const char* category : {"../x", "a/../b", ".."}) {
+    require(fixture.handler->getCounter(std::string(category) + ":received bad") == 1 &&
+                fixture.handler->getCounter(std::string(category) + ":received good") == 0,
+            "parent-directory category was not rejected");
+  }
+  for (const char* category : {"a/b", "..x"}) {
+    require(fixture.handler->getCounter(std::string(category) + ":received good") == 1,
+            "ordinary dynamic category was rejected");
+  }
+  require(fixture.handler->getCounter("scribe_overall:received bad") == 3, "rejected category total");
+}
+
+// One-shot, per-thread pthread_create failure (-Wl,--wrap=pthread_create); all other
+// thread creation is forwarded unchanged.
+static thread_local bool reviewFailThreadCreate = false;
+extern "C" int __real_pthread_create(pthread_t*, const pthread_attr_t*, void* (*)(void*), void*);
+extern "C" int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attributes,
+                                     void* (*start)(void*), void* argument) {
+  if (reviewFailThreadCreate) {
+    reviewFailThreadCreate = false;
+    return EAGAIN;
+  }
+  return __real_pthread_create(thread, attributes, start, argument);
+}
+
+static void testCategoryQueueFailure(const std::string& filename) {
+  HandlerFixture fixture(filename);
+  fixture.handler->initialize();
+  require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "queue failure config");
+  reviewFailThreadCreate = true;
+  ResultCode result = ResultCode::TRY_LATER;
+  try {
+    result = fixture.handler->scribeHandler::Log({entry("dynamic", "first")});
+  } catch (const std::exception&) {
+    reviewFailThreadCreate = false;
+    throw std::runtime_error("dynamic category queue failure escaped Log");
+  }
+  require(!reviewFailThreadCreate, "dynamic category queue worker creation was not reached");
+  require(result == ResultCode::OK, "failed dynamic category changed the Log result");
+  require(fixture.handler->getCounter("dynamic:received bad") == 1 &&
+              fixture.handler->getCounter("dynamic:received good") == 0,
+          "failed dynamic category counters");
+  // The failed category was not registered; the next message creates it normally.
+  require(fixture.handler->scribeHandler::Log({entry("dynamic", "second")}) == ResultCode::OK &&
+              fixture.handler->getCounter("dynamic:received good") == 1,
+          "dynamic category not created after the failure");
+}
+
 class ReviewBufferChildren : public BufferStore {
  public:
   explicit ReviewBufferChildren(ScribeContext& context)

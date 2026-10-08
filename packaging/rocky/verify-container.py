@@ -6,8 +6,8 @@ def run(command):
         raise RuntimeError('{}: {}: {}'.format(command,result.returncode,result.stdout+result.stderr))
     return result.stdout.strip()
 
-if not pathlib.Path("/.dockerenv").is_file() or os.getuid()!=0:
-    raise SystemExit("Run only as root inside the owned Docker test container")
+if not any(pathlib.Path(p).is_file() for p in ("/.dockerenv","/run/.containerenv")) or os.getuid()!=0:
+    raise SystemExit("Run only as root inside the owned Docker or Podman test container")
 
 # Reuse independent original-IDL wire expectations, without installed clients.
 import loopback_rpc as tcp

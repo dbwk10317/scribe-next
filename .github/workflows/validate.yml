@@ -1,0 +1,156 @@
+# Docker smoke of the root Dockerfile and the full Rocky 9 validator (docs/build.md#rocky-linux-8과-9).
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build image
+        run: docker build -t scribe-next:ci .
+
+      - name: Start scribed
+        run: |
+          mkdir -p "$RUNNER_TEMP/scribe-logs" && chmod 0777 "$RUNNER_TEMP/scribe-logs"
+          docker run -d --name scribe-ci -p 1463:1463 \
+            -v "$RUNNER_TEMP/scribe-logs:/var/log/scribed" scribe-next:ci
+
+      - name: Send one Log and check the file
+        env:
+          LOGS: ${{ runner.temp }}/scribe-logs
+        run: |
+          python3 - <<'PY'
+          import os, socket, struct, sys, time
+          sys.path.insert(0, 'tools')
+          from daemon_differential import framed, log_fields, parse_reply, recv_exact
+          deadline = time.monotonic() + 30
+          while True:
+              try:
+                  s = socket.create_connection(('127.0.0.1', 1463))
+                  break
+              except OSError:
+                  if time.monotonic() > deadline:
+                      raise
+                  time.sleep(0.5)
+          with s:
+              s.sendall(framed(b'Log', 1, log_fields([(b'demo', b'hello ci')])))
+              body = recv_exact(s, struct.unpack('>I', recv_exact(s, 4))[0])
+              reply = parse_reply(body, b'Log', 1)
+          print('Log:', reply)
+          assert reply == 0, reply
+          path = os.path.join(os.environ['LOGS'], 'demo', 'demo_current')
+          deadline = time.monotonic() + 10
+          while True:
+              data = open(path, 'rb').read() if os.path.exists(path) else b''
+              if b'hello ci' in data or time.monotonic() > deadline:
+                  break
+              time.sleep(0.5)
+          print('demo_current:', data)
+          assert b'hello ci' in data, data
+          PY
+
+      - name: Stop with SIGTERM
+        run: |
+          docker stop -t 30 scribe-ci
+          docker logs scribe-ci > "$RUNNER_TEMP/scribed.log" 2>&1
+          cat "$RUNNER_TEMP/scribed.log"
+          code=$(docker inspect -f '{{.State.ExitCode}}' scribe-ci)
+          echo "exit code: $code"
+          test "$code" = 0
+          grep -F 'scribe server exiting' "$RUNNER_TEMP/scribed.log"
+
+      - name: Container log on failure
+        if: failure()
+        run: docker logs scribe-ci || true
+
+  validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      ROCKY9: rockylinux/rockylinux@sha256:8101994123cf3d0a8fee517bee7f39e555c7d92bd2d9eb3303cc988a0eeed00f
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # docs/build.md#원본-git-object-준비, done here explicitly; the validator never fetches.
+      - name: Prepare the pinned upstream object
+        run: |
+          git --no-replace-objects --no-lazy-fetch --version && \
+          git fetch https://github.com/facebookarchive/scribe.git fcd294faffd1e88af1643a3a8c2359c41713f7c2:refs/remotes/upstream/baseline && \
+          git --no-replace-objects --no-lazy-fetch cat-file -e 'fcd294faffd1e88af1643a3a8c2359c41713f7c2^{commit}'
+
+      # Context: the four official archives (SHA256 checked by tools/rocky/Dockerfile), both Dockerfiles,
+      # prepare_fb303.py and the fb303 patch. No checkout and no credentials.
+      - name: Prepare build context
+        run: |
+          CONTEXT="$RUNNER_TEMP/rocky-context"
+          mkdir -p "$CONTEXT" && cd "$CONTEXT"
+          for url in \
+            https://archive.apache.org/dist/thrift/0.25.0/thrift-0.25.0.tar.gz \
+            https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.bz2 \
+            https://www.kernel.org/pub/software/scm/git/git-2.53.0.tar.xz \
+            https://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.xz; do
+            curl -fLO --proto '=https' --retry 3 "$url"
+          done
+          cp "$GITHUB_WORKSPACE/tools/rocky/Dockerfile" "$GITHUB_WORKSPACE/tools/rocky/Dockerfile.validation-runtime" \
+             "$GITHUB_WORKSPACE/tools/prepare_fb303.py" \
+             "$GITHUB_WORKSPACE/dependencies/fb303-0.25.0-counter-lock.patch" .
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build toolchain image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/rocky-context
+          file: ${{ runner.temp }}/rocky-context/Dockerfile
+          build-args: |
+            BASE=${{ env.ROCKY9 }}
+            BUILD_BISON=0
+          tags: scribe-next-rocky-toolchain:9
+          load: true
+          cache-from: type=gha,scope=rocky9-toolchain
+          cache-to: type=gha,scope=rocky9-toolchain,mode=max
+
+      # The default (docker driver) builder sees the image loaded above; the buildx container builder does not.
+      - name: Build validation image
+        run: |
+          CONTEXT="$RUNNER_TEMP/rocky-context"
+          docker buildx build --builder default --load -f "$CONTEXT/Dockerfile.validation-runtime" \
+            --build-arg BASE="scribe-next-rocky-toolchain:9" \
+            -t "scribe-next-rocky-validation:9" "$CONTEXT"
+
+      - name: Run validator
+        run: |
+          OUTPUT="$RUNNER_TEMP/validation-output"
+          mkdir -p "$OUTPUT"
+          docker run --rm --network none --user "$(id -u):$(id -g)" \
+            --cap-drop ALL --security-opt no-new-privileges --cpus 2 --memory 6g --pids-limit 512 \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/validation-input,readonly" \
+            --mount "type=bind,src=$OUTPUT,dst=/validation-output" \
+            "scribe-next-rocky-validation:9" \
+            python3.12 -B tools/validate_linux.py --output /validation-output/new-result
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rocky9-validation
+          path: |
+            ${{ runner.temp }}/validation-output/new-result/validation.json
+            ${{ runner.temp }}/validation-output/new-result/test-results.json
+            ${{ runner.temp }}/validation-output/new-result/logs/
+          if-no-files-found: warn

@@ -6,6 +6,7 @@
 // scribe-next modification: a failed mutex/cond init or worker start destroys the resources created so far and reports the error.
 // scribe-next modification: the destructor stops and joins a never-stopped worker via `stopping`; the worker skips close() on a store it never opened.
 // scribe-next modification: getStatus reads the store only after the worker published its configuration (atomic flag, no lock); until then it reports OK ("").
+// scribe-next modification: a store tree copied from a model is rebound to this queue, not the model queue that may be destroyed.
 //  Copyright (c) 2007-2008 Facebook
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
@@ -88,6 +89,7 @@ StoreQueue::StoreQueue(const std::shared_ptr<StoreQueue> example,
   if (!store) {
     throw std::runtime_error("createStore failed copying model store");
   }
+  store->setStoreQueue(this);
   storeInitCommon();
 }
 

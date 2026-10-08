@@ -59,6 +59,9 @@ FB_WITH_PATH([fb303_home], [fb303path], [/usr/local])
 FB_WITH_PATH([smc_home], [smcpath], [${EXTERNAL_PATH}/services/trunk/src])
 FB_WITH_PATH([fb_home], [fbpath], [${EXTERNAL_PATH}/libfacebook])
 FB_WITH_PATH([hadoop_home], [hadooppath], [/usr/local])
+# scribe-next modification: with --enable-hdfs, a set JAVA_HOME adds $JAVA_HOME/lib/server for -ljvm.
+AC_ARG_VAR([JAVA_HOME], [JDK used to link -ljvm with --enable-hdfs ($JAVA_HOME/lib/server)])
+AM_CONDITIONAL([HAVE_JAVA_HOME], [test "x$JAVA_HOME" != x])
 
 # scribe-next modification: std::filesystem replaces Boost system/filesystem; find -lstdc++fs if needed.
 SCRIBE_STDCXXFS_LIB

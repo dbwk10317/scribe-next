@@ -52,9 +52,16 @@ endif
 
 
 # Set libraries external to this component.
-EXTERNAL_LIBS = -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lfb303 -lthrift -lthriftnb
+# scribe-next modification: -lthriftnb before -lthrift, since libthriftnb depends on libthrift (static link order).
+EXTERNAL_LIBS = -L$(thrift_home)/lib -L$(fb303_home)/lib -L$(hadoop_home)/lib -lfb303 -lthriftnb -lthrift
 EXTERNAL_LIBS += -levent -lpthread
 if USE_SCRIBE_HDFS
+# scribe-next modification: Hadoop 3 keeps libhdfs in lib/native; libjvm is in $(JAVA_HOME)/lib/server
+# when the JAVA_HOME configure variable is set.
+  EXTERNAL_LIBS += -L$(hadoop_home)/lib/native
+if HAVE_JAVA_HOME
+  EXTERNAL_LIBS += -L$(JAVA_HOME)/lib/server
+endif
   EXTERNAL_LIBS += -lhdfs -ljvm
 endif
 
@@ -95,8 +102,9 @@ shareddir = $(prefix)/lib
 shared_PROGRAMS = libscribe.so libdynamicbucketupdater.so
 libscribe_so_SOURCES = gen-cpp/scribe.cpp gen-cpp/scribe_types.cpp
 libdynamicbucketupdater_so_SOURCES = gen-cpp/BucketStoreMapping.cpp gen-cpp/bucketupdater_types.cpp
-libscribe_so_CXXFLAGS = $(SHARED_CXXFLAGS)
-libdynamicbucketupdater_so_CXXFLAGS = $(SHARED_CXXFLAGS)
+# scribe-next modification: per-target CXXFLAGS replace AM_CXXFLAGS, so keep it (C++17, -Wall).
+libscribe_so_CXXFLAGS = $(AM_CXXFLAGS) $(SHARED_CXXFLAGS)
+libdynamicbucketupdater_so_CXXFLAGS = $(AM_CXXFLAGS) $(SHARED_CXXFLAGS)
 libscribe_so_LDFLAGS = $(SHARED_LDFLAGS)
 libdynamicbucketupdater_so_LDFLAGS = $(SHARED_LDFLAGS)
 INTERNAL_LIBS =  libscribe.so libdynamicbucketupdater.so

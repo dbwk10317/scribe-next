@@ -32,6 +32,7 @@ class StoreQueue;
 struct Store {
  static std::shared_ptr<Store> createStore(ScribeContext&,StoreQueue*,const std::string&,const std::string&,bool,bool){return std::shared_ptr<Store>(new Store);}
  std::shared_ptr<Store> copy(const std::string&){return std::shared_ptr<Store>(new Store);}
+ StoreQueue* queue=nullptr; void setStoreQueue(StoreQueue* q){queue=q;}
  void configure(pStoreConf,pStoreConf){fixture_configure();}
  std::string getStatus(){return fixture_status();}
  std::string getType(){return "fixture";}
