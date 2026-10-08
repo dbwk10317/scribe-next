@@ -91,7 +91,7 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 - **mapping**: 직접 unpooled NetworkStore(bucket_id 1, TTL 5)다. A로 보냄 → mapping이 B로 바뀌어도 만료 전 A 유지 → 엄격 만료(`lastUpdated + ttl < now`) 뒤 B → refresh 예외에도 B 유지 → 회복 뒤 A다. A는 `413000ff` `41310a` `4132`, B는 `4230` `4231`을 받는다. bucket_id나 updater port가 없으면 warning과 static A fallback이며 mapping RPC가 없다
 - **game-profile**: 게임 서버 설정 기능을 가상 설정 하나([template](../tools/daemon_game_profile.conf.template))에 모았다. prefix가 섞인 `categories=` 목록과 `type=multi` 아래 buffer 두 개, 연결 pool을 쓰는·안 쓰는 network primary와 `add_newlines=1` file secondary, `rotate_period=1h` file primary, 단독 prefix 모델, `category=default`, 줄 중간 `#` 주석, 기본 `new_thread_per_category`다. 시작 상태, batch 뒤 spool frame과 counter, 수신측 기동 뒤 replay와 spool 삭제를 비교한다. 수신 파일은 `msg\n\n`이고 빈 payload는 `0a0a`다. 파일 이름의 날짜는 TZ=UTC 실행일이며 자정을 넘기면 실패한다
 
-### 운영 시나리오 7개
+### 운영 시나리오 12개
 
 세 역할로 운영 흐름을 흉내 낸다.
 
@@ -102,12 +102,14 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 - **relay-stream, mixed-relay-stream**: 수신측(`category=default`, `max_size=4`)에 송신측이 `Log` 세 번을 relay한다. `fixture_00000` 5 bytes, `_00001` 10 bytes, `_00002` 1 byte가 차례로 생기고 `_current`가 마지막 파일로 옮겨 간다. 이은 내용은 보낸 순서와 같다. mixed는 구 송신 → 신 수신, 신 송신 → 구 수신이다
 - **receiver-restart**: 첫 batch가 수신 파일에 보인 뒤 수신측을 fb303 `shutdown`으로 멈춘다. 송신측은 다음 batch를 spool하고(retries 1, 상태는 `ALIVE`), 같은 설정·폴더로 다시 띄운 수신측에 replay한다. 새 batch도 바로 전달되며 수신측은 같은 `_00000`에 이어 쓴다
 - **receiver-crash**: receiver-restart와 같지만 수신측을 SIGKILL로 멈춘다. 송신측에서는 두 경우가 같아 보이며 기대값도 같다
+- **receiver-stall**: 첫 batch가 수신 파일에 보인 뒤 수신측 프로세스 그룹을 SIGSTOP으로 멈춘다. 송신측은 다음 batch를 보낸 뒤 500 ms 응답 timeout으로 연결을 닫고 spool한다(retries 1, 상태는 `ALIVE`). SIGCONT 뒤 수신측은 socket 버퍼에 남은 그 batch를 기록하고, `retry_interval` 뒤 replay로 같은 batch가 한 번 더 저장된다(중복). 수신 파일은 첫 batch, 둘째 batch 두 번, `Z` 순서이고 received good 7, sent 5, retries 1이다
 - **sender-restart-spool**: 수신측 없이 송신측이 spool 17 bytes를 쓰고 정상 종료한다. spool은 지워지지 않는다. 수신측을 띄우고 같은 spool 폴더로 송신측을 다시 띄우면 이전 프로세스의 spool을 replay한 뒤 스트리밍으로 돌아간다
 - **mixed-sender-restart-spool**: 위 흐름에서 spool을 쓴 쪽과 읽는 쪽의 버전을 바꾼다(수신측은 신버전). 두 버전이 서로 쓴 일반 spool 파일을 디스크에서 읽는 유일한 daemon case다
 - **throttle-retry**: 수신측 `max_msg_per_second=4`, 양쪽 `target_write_size=1`이다. 한 초 안에 메시지 2·2·1개를 보내면 다섯 번째가 `TRY_LATER`와 `denied for rate` 1이 된다. 송신측은 연결을 연 채 spool하고 `retry_interval` 뒤 replay한다. 수신 파일은 다섯 개가 순서대로다
+- **mixed-receiver-restart, mixed-receiver-crash, mixed-receiver-stall, mixed-throttle-retry**: receiver-restart·receiver-crash·receiver-stall·throttle-retry를 구 송신 → 신 수신, 신 송신 → 구 수신으로 한다. 다시 띄운 수신측도 처음 수신측과 같은 버전이다. 기대값과 기준 시각은 바탕 case와 같다
 
 - retry는 `now - lastOpenAttempt > 10`(정수 초)이다. 기준 시각부터 8초 안에 spool 관찰과 카운터 확인이 끝나야 하며 넘으면 실패한다
-- 기준 시각은 receiver-restart·receiver-crash·throttle-retry가 spool로 가는 마지막 입력을 보낸 시각, sender-restart-spool·mixed-sender-restart-spool과 spool·mixed-spool·game-profile이 송신측 daemon 시작 시각이다
+- 기준 시각은 receiver-restart·receiver-crash·receiver-stall·throttle-retry가 spool로 가는 마지막 입력을 보낸 시각, sender-restart-spool·mixed-sender-restart-spool과 spool·mixed-spool·game-profile이 송신측 daemon 시작 시각이다
 - throttle-retry는 다음 초 경계 직후에 시작하고, `Z` 응답이 같은 정수 초가 아니면 실패한다
 - replay·스트리밍 관찰 기한은 20초다. throttle-retry의 첫 두 스트리밍 관찰만 2초다
 
@@ -133,14 +135,14 @@ spool·mixed-spool·game-profile·시나리오 case는 `--port`와 `--port+1`, m
 - configure 변수 세 개를 준다. fb303 `CPPFLAGS=-I/opt/thrift-0.9.0/include`, Scribe `CPPFLAGS='-DHAVE_INTTYPES_H -DHAVE_NETINET_IN_H'`, `LIBS='-lboost_system -lboost_filesystem'`(Ubuntu `--as-needed` 때문)이다
 - 실행 closure는 `/old-lane/bin/scribed`와 `/old-lane/lib`의 라이브러리다(위 빌드에서 7개). ldd·`--help`·SHA256·패키지 버전은 이미지 안 `/old-lane/manifest.txt`에 남기며 저장소에는 넣지 않았다
 - `Dockerfile.runtime`은 root `Dockerfile` 이미지를 `scribe-next-modern:rocky9`라는 이름으로 받아 `/old-lane`을 더한다. [Docker 안내](docker.md#빌드)의 `scribe-next:local`에 이 tag를 붙여 쓴다. 구버전은 Rocky 9의 glibc·libstdc++ 위에서 돈다
-- `run_differential.sh`는 기본 17개 case를 case마다 새 컨테이너(`--network none`, `--user 65534:65534`, `--cap-drop ALL`, no-new-privileges, 2 CPU, 2 GiB, 512 PIDs)에서 돌린다. 통과 판정과 결과 파일은 [old-lane 안내](../tools/old-lane/README.md)에 있다
+- `run_differential.sh`는 기본 22개 case를 case마다 새 컨테이너(`--network none`, `--user 65534:65534`, `--cap-drop ALL`, no-new-privileges, 2 CPU, 2 GiB, 512 PIDs)에서 돌린다. 통과 판정과 결과 파일은 [old-lane 안내](../tools/old-lane/README.md)에 있다
 
 ## 비교가 증명하지 않는 것
 
 - `OK`는 큐 수락이다. fsync, 전원 장애 durability, exactly-once를 보여 주지 않는다. SIGKILL은 첫 batch가 파일에 보인 뒤에만 보낸다
 - 모든 replay는 한 번에 성공하는 `deleteOldest` 경로다. 부분 replay는 구·신이 [일부러 다르게](compatibility-policy.md#원본-오류-세-가지) 동작해 비교하지 않는다
 - 반복 실패, 여러 송신측, 연결 pool 공유, `service_list`, `adaptive_backoff`, 빈 frame spool, disk full, 운영 설정·부하는 다루지 않는다
-- 응답 유실, malformed frame, 큰 frame, 시간 의존 backpressure는 daemon 비교에 없다
+- receiver-stall의 응답 timeout 외의 응답 유실, malformed frame, 큰 frame, 시간 의존 backpressure는 daemon 비교에 없다
 - 구버전은 Ubuntu 16.04 전체 userland가 아니라 비교 이미지의 Rocky 시스템 라이브러리 위에서 돈다
 - 각 case를 한 번씩 실행했다. 반복 통계는 없다
 

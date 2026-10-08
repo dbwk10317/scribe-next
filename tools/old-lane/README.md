@@ -23,7 +23,7 @@ docker build -f "$WORK/ctx/Dockerfile.old" -t scribe-next-old-build:xenial "$WOR
 docker tag scribe-next:local scribe-next-modern:rocky9
 docker build -t scribe-next-differential:latest - < tools/old-lane/Dockerfile.runtime
 
-# 3. 17개 case 실행 (performance 제외). 두 번째 인자는 새로 만들 출력 디렉터리이며 그 부모는 먼저 있어야 한다
+# 3. 22개 case 실행 (performance 제외). 두 번째 인자는 새로 만들 출력 디렉터리이며 그 부모는 먼저 있어야 한다
 mkdir -p "$WORK/checkout" "$WORK/results" && git archive HEAD | tar -x -C "$WORK/checkout"
 sh tools/old-lane/run_differential.sh "$WORK/checkout" "$WORK/results/run-$(date -u +%Y%m%dT%H%M%SZ)"
 ```
