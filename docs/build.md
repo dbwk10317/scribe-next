@@ -28,6 +28,7 @@
 | Debian 13 | GCC 14.2 | 기본·shared 빌드와 시험, HDFS 빌드·local JNI | 2026-10-05 |
 | Ubuntu 26.04.1 | GCC 15.2 | 기본·shared 빌드와 시험, HDFS | 2026-10-05 |
 | Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `0afe2b4` 검증기 241 tests; `acc7edd` 검증기 241 tests, 구·신 비교 17개 case, Docker smoke([검증](verification.md#0afe2b4와-acc7edd의-재확인-2026-10-07)) | 2026-10-07 |
+| Rocky 9 Docker 검증 이미지(WSL) | GCC 11.5 | `f2494d4`(src는 `e2fe61a`와 같음) 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke([검증](verification.md#재검증-2026-10-08)) | 2026-10-08 |
 
 첫 두 행은 `9e8d775`에서 잰 것이다. 그 뒤 코드를 바꾼 PR #63(`28a4d9a`), PR #65(`e4bb4cc`)를 합친 `0afe2b4`와 리뷰 수정 `acc7edd`는 마지막 행의 Rocky 9 Docker 이미지에서만 다시 확인했다.
 지금 README의 설치 명령(`SCRIBE_SRC`, `curl` 추가, 기록 목록 기반 삭제)도 실행 기록이 없다.
@@ -257,6 +258,33 @@ SRPM은 의존성을 스스로 준비하지 않는다. 위 recipe의 prefix가 �
 2026-10-07 Boost 제거 단계 뒤 Rocky 8.10 RPM을 다시 만들어 위 검사를 모두 통과했다.
 Rocky 9 RPM은 fb303 patch와 Boost 제거 뒤 다시 만들지 않았다.
 버전 간 upgrade, 비정상 중단, HDFS·shared RPM, 운영 kernel·service 배포는 확인하지 않았다.
+
+## 설치한 파일 직접 삭제
+
+README의 [설치 삭제](../README.md#6-삭제)는 빌드 폴더의 `make uninstall`과 Thrift `install_manifest.txt`를 쓴다.
+빌드 폴더를 이미 지웠다면 설치된 파일을 직접 지운다. README 설치 순서가 `/usr/local`에 만드는 파일은 다음이 전부다.
+
+```sh
+sudo rm -rf /usr/local/bin/scribed /usr/local/bin/thrift \
+  /usr/local/lib/libscribe.a /usr/local/lib/libdynamicbucketupdater.a /usr/local/lib/libfb303.a \
+  /usr/local/lib/libthrift.so /usr/local/lib/libthrift.so.0.25.0 \
+  /usr/local/lib/libthriftnb.so /usr/local/lib/libthriftnb.so.0.25.0 \
+  /usr/local/lib/pkgconfig/thrift.pc /usr/local/lib/pkgconfig/thrift-nb.pc \
+  /usr/local/include/thrift /usr/local/lib/cmake/thrift /usr/local/share/fb303
+```
+
+- Python package는 `PY_PREFIX`(기본값 `/usr`) 아래 시스템 Python 경로에만 들어간다. 다른 `PY_PREFIX`로 설치했다면 `/usr` 대신 그 값 아래의 `scribe` 폴더를 지운다
+- `import scribe`로 경로를 찾으면 가상환경이나 사용자 디렉터리의 다른 package를 지울 수 있으므로 설치 경로를 직접 지정한다
+- Rocky는 `site-packages`, Ubuntu는 `dist-packages`다
+
+```sh
+sudo rm -rf /usr/lib/python3.*/site-packages/scribe /usr/lib/python3.*/site-packages/scribe-2.0-*.egg-info \
+  /usr/lib/python3/dist-packages/scribe /usr/lib/python3/dist-packages/scribe-2.0-*.egg-info
+```
+
+저장소 폴더의 빌드 산출물은 `make distclean`으로 다 지워지지 않는다(`configure`, `Makefile.in` 등이 남는다).
+`sudo make install`이 root 소유로 만든 `lib/py/scribe.egg-info`도 있으므로 저장소 폴더에서 `sudo git clean -fdx`로 지운다.
+commit하지 않은 파일도 함께 지워지므로 먼저 `git clean -ndx`로 목록을 확인한다.
 
 ## Python client
 

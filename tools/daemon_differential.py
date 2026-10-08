@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Opt-in actual-daemon old/new comparison (17 cases plus performance); stdlib, Python2/3.
+"""Opt-in actual-daemon old/new comparison (22 cases plus performance); stdlib, Python2/3.
 
 Requires an already isolated lo-only environment and uid65534. This tool never
 sets up Docker, namespaces, privileges, dependencies or deployment.
@@ -14,7 +14,7 @@ TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'daemon_diff
 MAX_REPLY = 262144
 PAYLOADS = [b'A\x00B\n\xff', b'', b'tail']
 METHODS = ['getName','getVersion','getStatus','getStatusDetails','getCounters','Log','Log','getCounters','shutdown']
-SCENARIO_CASES = ('relay-stream','mixed-relay-stream','receiver-restart','receiver-crash','sender-restart-spool','mixed-sender-restart-spool','throttle-retry')
+SCENARIO_CASES = ('relay-stream','mixed-relay-stream','receiver-restart','mixed-receiver-restart','receiver-crash','mixed-receiver-crash','receiver-stall','mixed-receiver-stall','sender-restart-spool','mixed-sender-restart-spool','throttle-retry','mixed-throttle-retry')
 EXPECTED_DELTA = {'fixture:received good':3,'scribe_overall:received good':3,'unknown:received bad':1,'scribe_overall:received bad':1,'scribe_overall:received blank category':1}
 
 def case_data(case):

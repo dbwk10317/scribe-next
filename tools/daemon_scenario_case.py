@@ -10,7 +10,9 @@ src/conn_pool.cpp, src/scribe_server.cpp and src/file.cpp (same behaviour in the
 import binascii, hashlib, os, signal, struct, time
 
 FIX, OTHER = b'fixture', b'other'
-BASE = {'mixed-relay-stream': 'relay-stream', 'mixed-sender-restart-spool': 'sender-restart-spool'}
+BASE = {'mixed-relay-stream': 'relay-stream', 'mixed-sender-restart-spool': 'sender-restart-spool',
+        'mixed-receiver-restart': 'receiver-restart', 'mixed-receiver-crash': 'receiver-crash',
+        'mixed-receiver-stall': 'receiver-stall', 'mixed-throttle-retry': 'throttle-retry'}
 # Config edits on the two existing templates; each old text must exist exactly as written.
 SENDER_EDITS = {'relay-stream': [('category=fixture', 'categories=fixture other')],
                 # target_write_size=1: addMessage signals the queue thread at once, so every
@@ -142,6 +144,27 @@ def specification(c, case):
                   'streamed': receiver(c, whole), 'final_receiver': receiver(c, whole), 'final_spool': spool(c)}
         streams = {'fixture': whole}
         exits = {'receiver': 0 if base == 'receiver-restart' else -signal.SIGKILL, 'sender': 0, 'receiver-restarted': 0}
+    elif base == 'receiver-stall':
+        b1, b2, b3 = [(FIX, p[0]), (FIX, p[2])], [(FIX, b'second'), (FIX, b'third')], [(FIX, b'Z')]
+        # Receiver SIGSTOPped: its kernel still accepts batch 2, but no reply arrives within the
+        # primary timeout=500 (setRecvTimeout) -> TTransportException -> fatal -> close ->
+        # CONN_FATAL, so the sender side matches receiver-restart (retries 1, spool, ALIVE).
+        # After SIGCONT the receiver reads the frame left in its socket buffer and logs batch 2
+        # (the reply goes to a closed peer). The retry replays the spool, so batch 2 is stored
+        # twice: OK is queue acceptance and a timed-out batch is resent, never deduplicated.
+        roles = {'receiver': [get(b'getVersion', v), get(b'getStatus', 2), get(b'getCounters', {}),
+                              get(b'getCounters', received(2)), get(b'getCounters', received(7)), stop],
+                 'sender': [get(b'getVersion', v), log(b1), log(b2),
+                            get(b'getCounters', sender(4, 2, 1)), get(b'getStatus', 2),
+                            get(b'getCounters', sender(4, 4, 1)), get(b'getStatus', 2),
+                            log(b3), get(b'getCounters', sender(5, 5, 1)), stop]}
+        whole = joined(b1 + b2 + b2 + b3)
+        phases = {'before_stall': receiver(c, joined(b1)), 'spooled': spool(c, b2),
+                  'resumed': receiver(c, joined(b1 + b2)), 'replayed': receiver(c, joined(b1 + b2 + b2)),
+                  'drained': spool(c), 'streamed': receiver(c, whole), 'final_receiver': receiver(c, whole),
+                  'final_spool': spool(c)}
+        streams = {'fixture': whole}
+        exits = {'receiver': 0, 'sender': 0}
     elif base == 'sender-restart-spool':
         b1, b2 = [(FIX, p[0]), (FIX, p[2])], [(FIX, b'Z')]
         roles = {# Receiver absent: BufferStore::open -> NetworkStore "Failed to connect" (WARNING),
@@ -193,7 +216,8 @@ def specification(c, case):
 def role_targets(c, case, lane):
     other = 'modern' if lane == 'old' else 'old'
     targets = dict((role, lane) for role in specification(c, case)['roles'])
-    if case == 'mixed-relay-stream': targets['receiver'] = other
+    if case in ('mixed-relay-stream', 'mixed-receiver-stall', 'mixed-throttle-retry'): targets['receiver'] = other
+    if case in ('mixed-receiver-restart', 'mixed-receiver-crash'): targets.update({'receiver': other, 'receiver-restarted': other})
     if case == 'mixed-sender-restart-spool': targets.update({'sender-restarted': other, 'receiver': 'modern'})
     return targets
 
@@ -215,6 +239,26 @@ def kill(session):
     while process.poll() is None and time.time() < deadline: time.sleep(0.05)
     if process.returncode != -signal.SIGKILL: raise ValueError('injected crash exit differs')
     part['exit'] = process.returncode; part['status'] = 'passed'
+
+
+def stopped(process):
+    # /proc/PID/stat field 3 is the state; comm (field 2) may contain spaces and ')'.
+    with open('/proc/%d/stat' % process.pid) as f: return f.read().rsplit(')', 1)[1].split()[0] == 'T'
+
+
+def stall(session, stop=True):
+    process = session[0]
+    # Same owned session as kill(); never by name. SIGSTOP freezes the whole receiver while its
+    # kernel still accepts TCP data; resume() sends SIGCONT. Waits for the /proc state.
+    if process.poll() is not None: raise ValueError('receiver exited before injected stall')
+    os.killpg(process.pid, signal.SIGSTOP if stop else signal.SIGCONT)
+    deadline = time.time() + 10
+    while stopped(process) != stop and time.time() < deadline: time.sleep(0.05)
+    if stopped(process) != stop: raise ValueError('injected stall state differs')
+
+
+def resume(session):
+    stall(session, False)
 
 
 def run_lane(c, helpers, case, lane):
@@ -284,6 +328,26 @@ def run_lane(c, helpers, case, lane):
                     observe('streamed', recv_path)
                     step(r2, 'receiver-restarted', 4); step(s, 'sender', 9)
                     helpers.shutdown(c, s, 10); helpers.shutdown(c, r2, 5)
+    elif base == 'receiver-stall':
+        with start('receiver', recv_conf, c.PORT + 1) as r:
+            for seq in (1, 2, 3): step(r, 'receiver', seq)
+            with start('sender', send_conf, c.PORT) as s:
+                step(s, 'sender', 1); step(s, 'sender', 2)
+                observe('before_stall', recv_path)
+                step(r, 'receiver', 4)
+                stall(r)  # no receiver RPC until resume(): a stopped receiver never replies
+                c.save_json(result_path, result)
+                sent_batch2 = time.time()
+                step(s, 'sender', 3)
+                observe('spooled', spool_path, window(sent_batch2))
+                resume(r)
+                observe('resumed', recv_path, window(sent_batch2))
+                window(sent_batch2); step(s, 'sender', 4); step(s, 'sender', 5)
+                observe('replayed', recv_path); observe('drained', spool_path)
+                for seq in (6, 7, 8): step(s, 'sender', seq)
+                observe('streamed', recv_path)
+                step(r, 'receiver', 5); step(s, 'sender', 9)
+                helpers.shutdown(c, s, 10); helpers.shutdown(c, r, 6)
     elif base == 'sender-restart-spool':
         with start('sender', send_conf, c.PORT) as s1:
             step(s1, 'sender', 1); step(s1, 'sender', 2)

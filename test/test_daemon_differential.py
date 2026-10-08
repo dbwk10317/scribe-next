@@ -590,6 +590,9 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
         self.assertEqual((restart['exits']['receiver'],crash['exits']['receiver']),(0,-signal.SIGKILL))
         self.assertEqual([r[0] for r in crash['roles']['receiver']],[b'getVersion',b'getStatus',b'getCounters',b'getCounters'])
         self.assertEqual(restart['consumer']['current'],[{'path':'fixture_current','target':'fixture_00000'}])
+        stall=scenario.specification(client,'receiver-stall')  # the timed-out batch is stored twice
+        self.assertEqual(stall['roles']['sender'],restart['roles']['sender'])
+        self.assertEqual(stall['consumer']['streams'],{'fixture':b'A\0B\n\xfftailsecondthirdsecondthirdZ'.hex()})
         restarted=scenario.specification(client,'sender-restart-spool')
         self.assertEqual(restarted['phases']['spooled']['files'][0]['hex'],spool.SPOOL.hex())
         self.assertEqual(restarted['phases']['after_sender_exit'],restarted['phases']['spooled'])
@@ -597,6 +600,11 @@ class DaemonDifferentialOfflineTests(unittest.TestCase):
         self.assertEqual(scenario.role_targets(client,'mixed-sender-restart-spool','modern'),
                          {'sender':'modern','sender-restarted':'old','receiver':'modern'})
         self.assertEqual(scenario.role_targets(client,'mixed-relay-stream','old'),{'sender':'old','receiver':'modern'})
+        for lane,other in (('old','modern'),('modern','old')):
+            for case in ('mixed-receiver-restart','mixed-receiver-crash'):
+                self.assertEqual(scenario.role_targets(client,case,lane),{'sender':lane,'receiver':other,'receiver-restarted':other})
+            for case in ('mixed-receiver-stall','mixed-throttle-retry'):
+                self.assertEqual(scenario.role_targets(client,case,lane),{'sender':lane,'receiver':other})
         with self.assertRaisesRegex(ValueError,'file name'):
             scenario.consumer_view(client,{'files':[{'path':'meta','bytes':0,'hex':'','sha256':''}],'symlinks':[]})
         for case,template,edits in (('relay-stream',client.TEMPLATE,scenario.RECEIVER_EDITS),
