@@ -212,9 +212,12 @@ class StoreReviewContracts:
                          ["..x", "..x/..x_00000", "a", "a/b"])
         self.assertEqual((directory / "data/..x/..x_00000").read_bytes(), b"dots")
 
-    def test_review_dynamic_category_queue_failure_counts_bad_and_still_acks(self):
-        self.run_fixture("review-category-queue-failure",
-                         "port=1463\n<store>\ncategory=default\ntype=null\n</store>\n")
+    def test_review_dynamic_category_queue_failure_rolls_back_and_defers(self):
+        store = "<store>\ncategory=default\ntype=null\n</store>\n"
+        for models in (1, 2):
+            with self.subTest(models=models):
+                self.run_fixture("review-category-queue-failure",
+                                 f"port=1463\ntest_models={models}\n" + store * models)
 
     def test_review_store_distinct_service_lists_share_legacy_empty_pool_key(self):
         for kind in ("list", "default-list"):

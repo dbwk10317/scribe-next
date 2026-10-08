@@ -413,14 +413,13 @@ static void testCategoryPathComponents(const std::string& filename) {
   require(fixture.handler->getCounter("scribe_overall:received bad") == 3, "rejected category total");
 }
 
-// One-shot, per-thread pthread_create failure (-Wl,--wrap=pthread_create); all other
-// thread creation is forwarded unchanged.
-static thread_local bool reviewFailThreadCreate = false;
+// One-shot, per-thread pthread_create failure (-Wl,--wrap=pthread_create) on the Nth call
+// from now; all other thread creation is forwarded unchanged.
+static thread_local unsigned long reviewFailThreadCreate = 0;
 extern "C" int __real_pthread_create(pthread_t*, const pthread_attr_t*, void* (*)(void*), void*);
 extern "C" int __wrap_pthread_create(pthread_t* thread, const pthread_attr_t* attributes,
                                      void* (*start)(void*), void* argument) {
-  if (reviewFailThreadCreate) {
-    reviewFailThreadCreate = false;
+  if (reviewFailThreadCreate && --reviewFailThreadCreate == 0) {
     return EAGAIN;
   }
   return __real_pthread_create(thread, attributes, start, argument);
@@ -430,23 +429,32 @@ static void testCategoryQueueFailure(const std::string& filename) {
   HandlerFixture fixture(filename);
   fixture.handler->initialize();
   require(fixture.handler->getStatus() == facebook::fb303::ALIVE, "queue failure config");
-  reviewFailThreadCreate = true;
-  ResultCode result = ResultCode::TRY_LATER;
+  // Fail the last model's worker, after the earlier models' queues have started.
+  unsigned long models = 1;
+  fixture.handler->getConfig().getUnsigned("test_models", models);
+  reviewFailThreadCreate = models;
+  ResultCode result = ResultCode::OK;
   try {
     result = fixture.handler->scribeHandler::Log({entry("dynamic", "first")});
   } catch (const std::exception&) {
-    reviewFailThreadCreate = false;
+    reviewFailThreadCreate = 0;
     throw std::runtime_error("dynamic category queue failure escaped Log");
   }
   require(!reviewFailThreadCreate, "dynamic category queue worker creation was not reached");
-  require(result == ResultCode::OK, "failed dynamic category changed the Log result");
-  require(fixture.handler->getCounter("dynamic:received bad") == 1 &&
-              fixture.handler->getCounter("dynamic:received good") == 0,
+  require(result == ResultCode::TRY_LATER, "failed dynamic category store creation was acknowledged");
+  require(fixture.handler->getCounter("dynamic:received bad") == 0 &&
+              fixture.handler->getCounter("dynamic:received good") == 0 &&
+              fixture.handler->getCounter("dynamic:denied for store creation") == 1 &&
+              fixture.handler->getCounter("scribe_overall:denied for store creation") == 1,
           "failed dynamic category counters");
-  // The failed category was not registered; the next message creates it normally.
+  // The partial category was rolled back; the next message creates it normally.
   require(fixture.handler->scribeHandler::Log({entry("dynamic", "second")}) == ResultCode::OK &&
               fixture.handler->getCounter("dynamic:received good") == 1,
           "dynamic category not created after the failure");
+  // Each model's null store ignores "second" once; a kept partial list would hold fewer.
+  fixture.handler->stopForTest();
+  require(fixture.handler->getCounter("dynamic:ignored") == static_cast<long>(models),
+          "rolled-back dynamic category kept a partial store list");
 }
 
 class ReviewBufferChildren : public BufferStore {

@@ -1030,7 +1030,8 @@ file store는 일정 시간이나 크기가 되면 새 파일을 엽니다(회�
   - **그 밖의 정리.**
     설정 값을 읽는 무리한 형 변환, 실행되지 않던 검사, 쓰지 않는 코드를 정리했습니다.
     store thread를 만들지 못하면(원래 미정의 동작) 이제 `Bad config - can't create a store of type: ...` 설정 오류가 됩니다.
-    처음 보는 category의 store를 모델에서 만들지 못하면(thread·잠금 생성 실패, 모델 복사 실패) `failed to create category store from model`을 남기고 그 메시지를 `received bad`로 셉니다. client에는 연결 오류가 가지 않습니다. default·prefix 모델이 여럿이면 실패한 모델만 빠지고 다른 모델의 store는 남습니다.
+    처음 보는 category의 store를 모델에서 만들지 못하면(thread·잠금 생성 실패, 모델 복사 실패) `failed to create category store from model`을 남기고 그 요청에 `TRY_LATER`를 돌려주며 `denied for store creation` 카운터를 올립니다. 앞선 모델로 만든 store는 멈추고 등록을 되돌리므로 client가 다시 보내면 처음부터 다시 만듭니다.
+    원본은 thread 생성 결과를 보지 않아 이때 로그가 조용히 사라졌습니다. `..` 조각 거부는 그대로 `received bad`입니다.
     dynamic bucket updater의 "매핑 없음" 진단 로그는 이제 실제 내용을 찍고, 실행될 수 없던 "socket 생성 실패" 로그는 삭제했습니다.
 - **일부러 건드리지 않은 것.**
   겉보기에는 고칠 곳 같지만 원본의 관찰 결과를 만드는 코드입니다.

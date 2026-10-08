@@ -35,7 +35,7 @@ symlink·setuid 파일, Thrift 0.25.0이 아닌 compiler, 원본 Git object 누�
 - 시험에는 C++03 원본 component와의 일반 spool 교차 비교, ASan·UBSan component, loopback RPC, fb303 patch 회귀가 들어 있다
 - LSan은 `test/test_hdfs_compat.py`의 component 하나에서만 켠다(`detect_leaks=1`). `test/test_ordinary_spool.py`의 ASan은 `detect_leaks=0`이다
 - TSan은 어디에서도 실행하지 않는다. 전체 daemon sanitizer 결과가 아니다. 리뷰 수정과 함께 더한 store 시험도 ASan 아래에서 돌지 않는다(sanitizer 범위는 그대로)
-- 신호 정지(SIGTERM·SIGINT 뒤 종료 코드 0)와 port 사용 중 종료 코드 1은 `test/test_scribe_api_compat.py`가 이번에 빌드한 실제 scribed로 확인한다. 설치본이나 Docker 이미지가 아니다. 같은 fixture는 `pthread_create`를 한 번 실패하게 감싸 동적 category 큐 생성 실패를 본다
+- 신호 정지(SIGTERM·SIGINT 뒤 종료 코드 0)와 port 사용 중 종료 코드 1은 `test/test_scribe_api_compat.py`가 이번에 빌드한 실제 scribed로 확인한다. 설치본이나 Docker 이미지가 아니다. 같은 fixture는 `pthread_create`를 한 번 실패하게 감싸 동적 category 큐 생성 실패(`TRY_LATER`, `denied for store creation`, 모델 둘 중 둘째 실패 때 등록 되돌림)를 본다
 - packaging 시험은 `SCRIBE_BUILD`의 임시 사본에서 install·uninstall을 돌린다
 - 253개 중 약 108개는 scribed가 아니라 harness·검증 도구를 확인한다. daemon 수준의 근거는 구·신 비교 case와, scribed source로 만든 fixture 프로그램을 돌리는 시험이다
 - 검증기 밖에서 `python3 -m unittest discover test`를 실행하면 준비된 prefix가 없는 module 대부분을 조용히 건너뛴다. 의미 있는 실행이 아니다
@@ -275,10 +275,24 @@ Rocky 9 digest에서 toolchain `scribe-next-rocky-toolchain:9`와 검증 이미�
 
 이 실행에 없는 것: 설치·삭제 명령, systemd 아래 실제 실행, HDFS 빌드, `--shared-rpc` lane, RPM, Podman, CI workflow.
 
+## P1·P2 수정 뒤 재검증 (2026-10-08)
+
+branch `fix/review-p1-p2`의 commit `ab8ab27`(동적 category store 생성 실패의 `TRY_LATER` 전환과 등록 되돌림, 서버 publish를 Thrift `preServe()`로 이동)을 확인한 실행이다.
+WSL Rocky 9.8의 Docker 29.8에서 toolchain·검증·구버전·신버전·비교 이미지를 모두 처음부터 다시 만들었다.
+
+| 항목 | 결과 |
+| --- | --- |
+| 검증기 | `ab8ab27`에서 253 tests, 실패·오류·건너뜀 0, `status: passed`. 시험 수는 같고 `test_review_dynamic_category_queue_failure_rolls_back_and_defers`가 모델 1개·2개 subcase로 `TRY_LATER`·`denied for store creation`·등록 되돌림을 본다 |
+| 구·신 비교 | 기본 25개 case 모두 `exit=0` |
+
+이 실행에 없는 것: performance, Docker smoke, 설치·삭제 명령, systemd 아래 실제 실행, HDFS 빌드, `--shared-rpc` lane, RPM, Podman, CI workflow.
+기동 직후 신호가 `preServe()` 전에 오는 창은 시험하지 않았다. 그때는 이전처럼 서버 정지를 건너뛰고 종료한다.
+
 ## 확인한 것과 하지 않은 것
 
 확인한 것은 다음과 같다.
 
+- `ab8ab27`의 검증기 253 tests와 구·신 비교 25개 case 모두 `exit=0`([P1·P2 수정 뒤 재검증](#p1p2-수정-뒤-재검증-2026-10-08))
 - 통합 branch `fix/review-20261008` 최종 commit의 검증기 253 tests, Docker smoke(신호 정지·종료 코드 1), 구·신 비교 25개 case 모두 `exit=0`, performance 정확성 통과([리뷰 수정 뒤 재검증](#리뷰-수정-뒤-재검증-2026-10-08))
 - `examples/scribed.service`의 `systemd-analyze verify`(unit 주석의 기록)
 - `f2494d4`(src는 `e2fe61a`와 같음)의 검증기 241 tests, 구·신 비교 22개 case, performance, Docker smoke와 그때 unit의 `ExecStop`([재검증](#재검증-2026-10-08))

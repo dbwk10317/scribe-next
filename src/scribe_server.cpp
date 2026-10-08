@@ -3,7 +3,7 @@
 // scribe-next modification: C++17 cleanup; RAII guard keeps Log's lock points, unused local removed.
 // scribe-next modification: std::shared_ptr/std::weak_ptr replace the internal Boost pointers; no behaviour change.
 // scribe-next modification: the no-op category name check is replaced by rejecting dynamic categories with a ".." path component (user-approved security exception to the compatibility policy).
-// scribe-next modification: SIGTERM/SIGINT run the shutdown RPC path from a sigwait thread; startup failure exits 1; a failed dynamic category store creation counts as received bad.
+// scribe-next modification: SIGTERM/SIGINT run the shutdown RPC path from a sigwait thread; startup failure exits 1; a failed dynamic category store creation is rolled back and returns TRY_LATER (denied for store creation).
 // scribe-next modification: the server context is injected (ScribeContext) instead of read from process globals; no behaviour change.
 // scribe-next modification: new thrift_max_frame_size/thrift_max_message_size startup keys; an invalid value leaves the listener not started (on reinitialize it fails the store reload).
 // scribe-next modification: --config FILE/--port N reach the value-less long options with optarg NULL and exit through usage.
@@ -323,13 +323,14 @@ bool scribeHandler::createCategoryFromModel(
 
   std::shared_ptr<StoreQueue> pstore;
   if (newThreadPerCategory) {
-    // Create a new thread/StoreQueue for this category
+    // Create a new thread/StoreQueue for this category. A resource failure
+    // propagates so Log() can roll back the category and return TRY_LATER.
     try {
       pstore = std::shared_ptr<StoreQueue>(new StoreQueue(model, category));
     } catch (const std::exception& e) {
       LOG_OPER("[%s] failed to create category store from model %s: %s",
                category.c_str(), model->getCategoryHandled().c_str(), e.what());
-      return false;
+      throw;
     }
     LOG_OPER("[%s] Creating new category store from model %s",
              category.c_str(), model->getCategoryHandled().c_str());
@@ -519,7 +520,24 @@ ResultCode scribeHandler::Log(const vector<LogEntry>&  messages) {
       if ((cat_iter = categories.find(category)) != categories.end()) {
         store_list = cat_iter->second;
       } else {
-        store_list = createNewCategory(category);
+        try {
+          store_list = createNewCategory(category);
+        } catch (const std::exception& e) {
+          // Not an invalid category: undo the partial registration (stores
+          // copied from earlier models) so the client's retry creates it again.
+          if ((cat_iter = categories.find(category)) != categories.end()) {
+            if (newThreadPerCategory) {  // otherwise the list holds shared stores
+              for (const auto& store : *cat_iter->second) {
+                store->stop();
+              }
+            }
+            categories.erase(cat_iter);
+          }
+          LOG_OPER("[%s] denying request, category store creation failed: %s",
+                   category.c_str(), e.what());
+          incCounter(category, "denied for store creation");
+          return TRY_LATER;
+        }
       }
 
     }
