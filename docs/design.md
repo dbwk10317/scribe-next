@@ -64,6 +64,7 @@ store 계층은 출력, relay, buffering, 분배를 맡는다.
 - `OK`는 메모리 큐 수락이다. 빈 category나 route가 없는 category를 버려도 `OK`일 수 있다
 - 한 store의 큐가 한도를 넘으면 요청과 무관한 category도 `TRY_LATER`가 될 수 있다
 - 종료 중 동적 category 생성에서 일부가 큐에 들어간 뒤 `TRY_LATER`가 나올 수 있다. 재시도 중복도 원본대로다
+- 동적 category 이름의 `/` 조각이 `..`이면 만들지 않고 `received bad`로 센다. 2026-10-08 사용자 승인 운영 경계다([정책](compatibility-policy.md#동적-category-이름의-상위-폴더-조각))
 
 ### 큐와 시간
 
@@ -71,7 +72,7 @@ store 계층은 출력, relay, buffering, 분배를 맡는다.
 - 큐 크기는 message bytes 합이다. 요청을 넣기 전 전체 category 큐를 검사해 `size > max_queue_size`면 거절한다
 - 이 한도는 RSS 상한이 아니다
 - 기본 `new_thread_per_category=yes`는 category마다 worker를 만든다
-- mutex, condition variable, worker 수, command 순서, 실패 batch 우선, `must_succeed`, retry, `flush_streaming`, 종료 동작을 유지한다
+- mutex, condition variable, worker 수, command 순서, 실패 batch 우선, `must_succeed`, retry, `flush_streaming`, 종료 동작을 유지한다. 신호 정지도 같은 종료 경로를 쓴다
 - 시간 기준과 wakeup 의미가 바뀔 수 있어 StoreQueue의 pthread·조건 변수는 그대로 둔다
 - StoreQueue의 status 조회는 원본처럼 잠그지 않는다. worker가 첫 구성·open을 마치기 전에는 빈 문자열을 돌려준다
 - handler 등록 전에 파괴되는 StoreQueue는 소멸자가 worker를 멈추고 join한다. 구성·open하지 않은 store는 닫지 않는다
@@ -93,7 +94,8 @@ store 계층은 출력, relay, buffering, 분배를 맡는다.
 ### 설정과 운영
 
 - CLI `-p`, `-c`, 위치 인자 설정 경로를 유지한다. 설정의 `port`가 `-p`보다 우선한다
-- 프로세스 종료 코드와 fb303 method·counter·status·details를 유지한다
+- fb303 method·counter·status·details를 유지한다
+- 종료 코드는 시작 실패만 1로 바꿨고, SIGTERM·SIGINT는 fb303 `shutdown`과 같은 정지를 한다. 둘 다 2026-10-08 사용자 승인 운영 경계다([운영 경계](compatibility-policy.md#운영-경계-2026-10-08))
 - 설정 key, 기본값, 파싱, 잘못된 값 처리, 부모 상속을 유지한다
 - 현대 플랫폼에 없는 OS 기능을 만날 때만 좁은 호환 처리를 한다
 - 새 설정 key는 `thrift_max_frame_size`, `thrift_max_message_size` 두 개다([통신 크기 한도](compatibility-policy.md#통신-크기-한도))
@@ -136,7 +138,7 @@ Thrift 0.25.0 경계에서 정한 것은 다음과 같다.
 
 - 3단계 뒤 전역 `g_Handler`는 Thrift 서버 구성(`main`, `scribe::createServer`)에만 남는다
 - 서버 하나에 context 하나이므로 값·카운터·연결 공유 범위는 같다
-- raw StoreQueue backlink의 소유권은 바꾸지 않았다. clone이 모델 queue를 가리키는 원본 문제는 [정책](compatibility-policy.md#남긴-원본-버그)의 "clone의 StoreQueue 포인터" 행에 있다
+- raw StoreQueue backlink의 소유권은 바꾸지 않았다. clone이 모델 queue를 가리키던 원본 문제는 `Store::setStoreQueue`로 소유 queue에 다시 묶어 고쳤다([정책](compatibility-policy.md#안전이식-수정)의 "복사본의 StoreQueue 포인터" 행)
 - 자체 분리 함수가 Boost 1.58·1.83의 `boost::split`과 1,921,600개 입력에서 같은 결과를 냈다는 것은 `1e66160` commit 메시지의 기록이다. 그 비교 프로그램과 결과는 저장소에 없어 다시 실행할 수 없다
 - 파일 함수 실패 시 진단 로그 문구만 표준 라이브러리 표현으로 바뀔 수 있다
 - GCC 8은 `std::filesystem`에 `-lstdc++fs`가 필요하며 configure가 확인해 붙인다

@@ -6,7 +6,10 @@
 ## 빌드
 
 - configure에 `--enable-hdfs --with-hadooppath=<Hadoop>`을 준다. `-lhdfs -ljvm`을 링크한다
-- 빌드 규칙은 `-L<Hadoop>/lib`만 더한다. Hadoop 3의 `lib/native`와 `$JAVA_HOME/lib/server`는 `LDFLAGS`로 준다(아래 Rocky 명령)
+- 빌드 규칙은 `-L<Hadoop>/lib`와 Hadoop 3의 `-L<Hadoop>/lib/native`를 더한다. configure 변수 `JAVA_HOME`이 있으면 `-L$JAVA_HOME/lib/server`도 더한다(`ef1c137`)
+- 실행 때 찾을 rpath는 여전히 `LDFLAGS`의 `-Wl,-rpath,...`로 준다(아래 Rocky 명령). 검증기는 `--java-home` 값을 `JAVA_HOME`으로 넘긴다
+- `JAVA_HOME`은 precious 변수라 `config.cache`에 남는다. 값을 바꾸면 `config.cache`를 지우고 configure를 다시 실행한다
+- 이 빌드 규칙 변경 뒤 HDFS를 켠 빌드는 다시 하지 않았다
 - `libhdfs.so`는 `libjvm.so`에 의존한다. 두 native 폴더와 그 의존성을 process-local loader 경로로 주고 Hadoop jar classpath도 준다
 - 실행 파일 RUNPATH만으로는 JVM 전이 의존성을 찾지 못했다. 전역 ldconfig, 보안 설정, 시스템 설치는 필요 없다
 - 검증기에 `--hadoop`, `--java-home`을 주면 HDFS ELF, Java version, local JNI 시험을 더해 11단계를 실행한다
@@ -19,6 +22,7 @@
 - 원본 Scribe의 모든 API가 Hadoop 0.20.2와 빌드된다는 뜻은 아니다(`hdfsConnectNewInstance`도 쓴다)
 - 이식 전에는 HDFS를 켠 `HdfsFile.o` compile이 실패했고, 이식 후 2026-10-06까지 전체 compile·link를 확인했다
 - 그 뒤 `28a4d9a`(PR #63)와 `e4bb4cc`(PR #65)가 `src/HdfsFile.h`·`HdfsFile.cpp`를 바꿨고 HDFS를 켠 빌드는 다시 하지 않았다
+- `c226849`도 `HdfsFile.cpp`를 바꿨다. 소멸자는 열린 파일을 닫은 뒤 연결을 끊고, `openRead`는 이미 열린 파일을 `openWrite`처럼 거부한다(누수 수정). 이 변경도 HDFS 빌드로 확인하지 않았다
 
 ## 원본 그대로인 HDFS 동작
 
